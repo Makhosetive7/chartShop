@@ -42,7 +42,7 @@ class CommandService {
       return await this.handleListProducts(shop._id);
     }
 
-    // Daily total - ENHANCED: now shows detailed product sales
+    // Daily total command
     if (command === "daily" || command === "total") {
       return await this.handleDailyTotal(shop._id);
     }
@@ -60,6 +60,21 @@ class CommandService {
     // Set stock threshold command
     if (command.startsWith("threshold ")) {
       return await this.handleSetThreshold(shop._id, text);
+    }
+
+    //update price command
+    if (command.startsWith("price ")) {
+      return await this.handleUpdatePrice(shop._id, text);
+    }
+
+    //delete product command
+    if (command.startsWith("delete ")) {
+      return await this.handleDeleteProduct(shop._id, text);
+    }
+
+    //edit product command
+    if (command.startsWith("edit ")) {
+      return await this.handleEditProduct(shop._id, text);
     }
 
     // Help
@@ -473,6 +488,194 @@ class CommandService {
     }
   }
 
+  async handleUpdatePrice(shopId, text) {
+    try {
+      const parts = text.replace("price ", "").trim().split(" ");
+
+      if (parts.length < 2) {
+        return "Invalid format.\n\nUse: price [product] [new price]\nExample: price bread 3.00";
+      }
+
+      const productName = parts[0];
+      const newPrice = parseFloat(parts[1]);
+
+      if (isNaN(newPrice) || newPrice <= 0) {
+        return "Invalid price. Please use a positive number greater than 0.\nExample: 2.50";
+      }
+
+      const product = await Product.findOne({
+        shopId,
+        name: new RegExp(`^${productName}$`, "i"),
+        isActive: true,
+      });
+
+      if (!product) {
+        return `Product "${productName}" not found.\n\nType "list" to see available products.`;
+      }
+
+      const oldPrice = product.price;
+      product.price = newPrice;
+      await product.save();
+
+      return `*Price Updated Successfully!*\n\n${
+        product.name
+      }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
+        2
+      )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
+    } catch (error) {
+      console.error("Update price error:", error);
+      return "Failed to update price. Please try again.";
+    }
+  }
+
+  async handleDeleteProduct(shopId, text) {
+    try {
+      const parts = text.replace("delete ", "").trim().split(" ");
+      const productName = parts[0];
+      const isConfirmed = parts[1] && parts[1].toLowerCase() === "confirm";
+
+      const product = await Product.findOne({
+        shopId,
+        name: new RegExp(`^${productName}$`, "i"),
+        isActive: true,
+      });
+
+      if (!product) {
+        return `Product "${productName}" not found.\n\nType "list" to see available products.`;
+      }
+
+      const salesCount = await Sale.countDocuments({
+        shopId,
+        "items.productId": product._id,
+      });
+
+      if (!isConfirmed) {
+        let warningMessage = `*DELETE PRODUCT CONFIRMATION* ⚠️\n\n`;
+        warningMessage += `Product: ${product.name}\n`;
+        warningMessage += `Price: $${product.price.toFixed(2)}\n`;
+        warningMessage += `Current Stock: ${product.stock}\n`;
+        warningMessage += `Sales History: ${salesCount} transactions\n\n`;
+
+        if (salesCount > 0) {
+          warningMessage += `This product has sales history and will be *archived*.\n`;
+          warningMessage += `Sales reports will still show this product.\n\n`;
+        }
+
+        warningMessage += `Type: *delete ${product.name} confirm* to proceed.`;
+        return warningMessage;
+      }
+
+      // soft delete - always preserve data
+      product.isActive = false;
+      await product.save();
+
+      if (salesCount > 0) {
+        return `*Product Archived Successfully!*\n\n${product.name} has been archived.\n\n Note: This product appears in ${salesCount} past sales and will remain in your sales history reports.`;
+      } else {
+        return `*Product Deleted Successfully!*\n\n${product.name} has been removed from your product list.`;
+      }
+    } catch (error) {
+      console.error("Delete product error:", error);
+      return "Failed to delete product. Please try again.";
+    }
+  }
+
+  async handleEditProduct(shopId, text) {
+    try {
+      const parts = text.replace("edit ", "").trim().split(" ");
+
+      if (parts.length < 3) {
+        return 'Invalid format.\n\nUse: edit [product] [field] [value]\n\nAvailable fields:\n• price [amount]\n• stock [quantity]\n• threshold [quantity]\n• name [new-name]\n\nExamples:\n• edit bread price 3.00\n• edit milk stock 25\n• edit sugar threshold 10\n• edit bread name "White Bread"';
+      }
+
+      const productName = parts[0];
+      const field = parts[1].toLowerCase();
+      const value = parts[2];
+
+      const product = await Product.findOne({
+        shopId,
+        name: new RegExp(`^${productName}$`, "i"),
+        isActive: true,
+      });
+
+      if (!product) {
+        return `Product "${productName}" not found.`;
+      }
+
+      let oldValue, newValue, response;
+
+      switch (field) {
+        case "price":
+          newValue = parseFloat(value);
+          if (isNaN(newValue) || newValue <= 0) {
+            return "Invalid price. Must be greater than 0.\nExample: 2.50";
+          }
+          oldValue = product.price;
+          product.price = newValue;
+          response = `*Price Updated!*\n\n${
+            product.name
+          }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
+          break;
+
+        case "stock":
+          newValue = parseInt(value);
+          if (isNaN(newValue) || newValue < 0) {
+            return "Invalid stock quantity.\nExample: 50";
+          }
+          oldValue = product.stock;
+          product.stock = newValue;
+          response = `*Stock Updated!*\n\n${product.name}\nOld: ${oldValue} units\nNew: ${newValue} units`;
+
+          if (newValue <= product.lowStockThreshold) {
+            response += `\n\n*LOW STOCK!* Current stock (${newValue}) is at or below threshold (${product.lowStockThreshold})`;
+          }
+          break;
+
+        case "threshold":
+          newValue = parseInt(value);
+          if (isNaN(newValue) || newValue < 0) {
+            return "Invalid threshold.\nExample: 15";
+          }
+          oldValue = product.lowStockThreshold;
+          product.lowStockThreshold = newValue;
+          response = `*Low Stock Threshold Updated!*\n\n${product.name}\nOld: ${oldValue} units\nNew: ${newValue} units`;
+
+          if (product.stock <= newValue) {
+            response += `\n\n*NOTE:* Current stock (${product.stock}) is at or below new threshold`;
+          }
+          break;
+
+        case "name":
+          newValue = value;
+          // Check if new name already exists
+          const existingProduct = await Product.findOne({
+            shopId,
+            name: new RegExp(`^${newValue}$`, "i"),
+            isActive: true,
+            _id: { $ne: product._id },
+          });
+
+          if (existingProduct) {
+            return `Product name "${newValue}" already exists.`;
+          }
+
+          oldValue = product.name;
+          product.name = newValue;
+          response = `*Product Renamed!*\n\nOld: ${oldValue}\nNew: ${newValue}`;
+          break;
+
+        default:
+          return `Invalid field "${field}".\nAvailable fields: price, stock, threshold, name`;
+      }
+
+      await product.save();
+      return response;
+    } catch (error) {
+      console.error("Edit product error:", error);
+      return "Failed to update product. Please try again.";
+    }
+  }
+
   async handleSetThreshold(shopId, text) {
     try {
       // Parse: threshold bread 15
@@ -634,37 +837,91 @@ class CommandService {
   }
 
   getHelpText() {
-    return `*CHATSHOP COMMANDS*
+    return ` *SMART SHOP ASSISTANT* - Complete Business Management
 
-*Authentication:*
-• register "Shop Name" 1234
-• login 1234
-• logout - Sign out
+*PRODUCT MANAGEMENT*
 
-*Sales:*
-• sell [qty] [item] [price?] [qty] [item] [price?]...
-  _Example:_ sell 2 bread 1 milk
-  _Example with custom price:_ sell 2 bread 2.00 1 milk 1.50
+*Add New Products:*
+• add bread 2.50 stock 100
+ *Real use:* "I just bought 100 breads at $2.50 each"
+• add "Coca Cola" 1.80 stock 24
+ *Real use:* "Adding a case of 24 Cokes at $1.80 per bottle"
+• add milk 3.20 stock 15 threshold 5
+ *Real use:* "Milk supply - alert me when only 5 left"
 
-*Products:*
-• add [product] [price] stock [qty]
-  _Example:_ add bread 2.50 stock 50
-• list - Show all products
+*Update Prices:*
+• price bread 2.75
+ *Real use:* "Bread supplier increased price, updating from $2.50 to $2.75"
+• price milk 3.50
+ *Real use:* "Competition raised prices, matching to $3.50"
+• price sugar 1.20
+ *Real use:* "Got sugar at wholesale discount, reducing price to $1.20"
+
+*Edit Product Details:*
+• edit bread stock 45
+ *Real use:* "Just sold 55 breads, updating current stock to 45"
+• edit milk threshold 8
+ *Real use:* "Milk sells faster now, increasing low stock alert to 8"
+• edit "Coca Cola" name "Coke 500ml"
+ *Real use:* "Renaming to be more specific for customers"
+• edit bread price 2.60
+ *Real use:* "Small price adjustment for weekend sale"
+
+*Remove Products:*
+• delete bread
+ *Real use:* "Stopped selling bread - will ask for confirmation"
+• delete "Expired Product"
+ *Real use:* "Removing discontinued items from active list"
+
+*SALES & CUSTOMER SERVICE*
+
+*Record Sales:*
+• sell 2 bread 1 milk
+ *Real use:* "Customer bought 2 breads and 1 milk at regular prices"
+• sell 3 bread 2.25 2 milk 3.00
+ *Real use:* "Bulk customer negotiated discount - bread $2.25 (was $2.50), milk $3.00 (was $3.20)"
+• sell 5 "Coke 500ml" 1.50
+ *Real use:* "Sold 5 Cokes at promotional price of $1.50 each"
+
+*Quick Sales:*
+• sell 1 bread 2 milk 1 sugar
+ *Real use:* "Busy hour - fast checkout for multiple items"
+
+*BUSINESS INTELLIGENCE*
+
+*Daily Reports:*
+• daily
+ *Real use:* "End of day - check today's total sales and profit"
+ *Shows:* Total revenue, items sold, negotiated sales count
 
 *Stock Management:*
-• stock [product] [qty] - Set stock
-• stock +[product] [qty] - Add stock
-• stock -[product] [qty] - Remove stock
-• low stock - Show low stock items
-• threshold [product] [qty] - Set alert level
+• stock bread 80
+ *Real use:* "Restocked bread - updating inventory to 80 units"
+• stock +milk 20
+ *Real use:* "Received 20 more milk, adding to current stock"
+• stock -bread 5
+ *Real use:* "Found 5 damaged breads, removing from inventory"
 
-*Reports:*
-• daily - Today's detailed report with product prices
+*Low Stock Alerts:*
+• low stock
+ *Real use:* "Morning check - see what needs restocking today"
+• threshold milk 10
+ *Real use:* "Milk sells faster now, want earlier warning at 10 units"
 
-*Help:*
-• help - Show this message
+*ACCOUNT MANAGEMENT*
 
-Type any command to get started!`;
+*Security:*
+• login 1234
+ *Real use:* "Starting work day - secure access to my shop data"
+• logout
+ *Real use:* "Closing shop - protecting business information"
+
+*NEED HELP?*
+• Type any command name for examples
+• Use "list" to see all your products
+• Use "daily" for sales performance
+
+*Pro Tip:* Use negotiated pricing (sell 2 bread 2.25) for loyal customers!`;
   }
 }
 
