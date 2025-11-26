@@ -17,6 +17,15 @@ const productSchema = new mongoose.Schema({
   stock: {
     type: Number,
     default: 0,
+    min: 0,
+  },
+  lowStockThreshold: {
+    type: Number,
+    default: 2,
+  },
+  trackStock: {
+    type: Boolean,
+    default: true,
   },
   isActive: {
     type: Boolean,
@@ -27,5 +36,11 @@ const productSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
+
+
+
+//Add index for faster quires
+productSchema.index({ shopId: 1, name: 1 });
+productSchema.index({ shopId: 1, isActive: 1 });
 
 export default mongoose.model('Product', productSchema);
