@@ -3,6 +3,7 @@ import Sale from "../models/Sale.js";
 import Shop from "../models/Shop.js";
 import bcrypt from "bcrypt";
 import PDFService from "./PDFService.js";
+import CancellationService from "./CancellationService.js";
 
 class CommandService {
   async processCommand(telegramId, text) {
@@ -96,10 +97,15 @@ class CommandService {
       return await this.handleBestSellingProducts(shop._id, text);
     }
 
-        // PDF Export commands - Enhanced handling
+    // PDF Export commands - Enhanced handling
     if (command.startsWith("export ") || command.startsWith("pdf ")) {
       return await this.handleExportReport(shop, text);
     }
+
+    if (command.startsWith('cancel')) {
+      return await this.handleCancelSale(shop._id, text);
+    }
+
 
     // Help
     if (command === "help") {
@@ -309,9 +315,8 @@ class CommandService {
       let receipt = "*SALE RECORDED*\n\n";
       items.forEach((item) => {
         const priceIndicator = item.isCustomPrice ? "💲" : "💰";
-        receipt += `${priceIndicator} ${item.quantity}x ${
-          item.productName
-        } @ $${item.price.toFixed(2)}`;
+        receipt += `${priceIndicator} ${item.quantity}x ${item.productName
+          } @ $${item.price.toFixed(2)}`;
 
         if (item.isCustomPrice) {
           receipt += ` (standard: $${item.standardPrice.toFixed(2)})`;
@@ -567,11 +572,10 @@ class CommandService {
       product.price = newPrice;
       await product.save();
 
-      return `*Price Updated Successfully!*\n\n${
-        product.name
-      }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
-        2
-      )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
+      return `*Price Updated Successfully!*\n\n${product.name
+        }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
+          2
+        )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
     } catch (error) {
       console.error("Update price error:", error);
       return "Failed to update price. Please try again.";
@@ -662,9 +666,8 @@ class CommandService {
           }
           oldValue = product.price;
           product.price = newValue;
-          response = `*Price Updated!*\n\n${
-            product.name
-          }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
+          response = `*Price Updated!*\n\n${product.name
+            }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
           break;
 
         case "stock":
@@ -821,6 +824,7 @@ class CommandService {
       const sales = await Sale.find({
         shopId,
         date: { $gte: today },
+        isCancelled: false
       });
 
       const yesterdaySales = await Sale.find({
@@ -870,15 +874,13 @@ class CommandService {
       report += `Items Sold: ${itemCount}\n`;
       report += `Transactions: ${sales.length}\n`;
       report += `Average per Sale: $${(total / sales.length).toFixed(2)}\n`;
-      report += `Vs Yesterday: ${
-        growth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(growth).toFixed(1)}%\n\n`;
+      report += `Vs Yesterday: ${growth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(growth).toFixed(1)}%\n\n`;
 
       report += `🛍️ *PRODUCT BREAKDOWN*\n`;
       Object.entries(productSales).forEach(([product, data]) => {
-        report += `• ${product}: ${
-          data.quantity
-        } units ($${data.revenue.toFixed(2)})\n`;
+        report += `• ${product}: ${data.quantity
+          } units ($${data.revenue.toFixed(2)})\n`;
       });
 
       // Today's best seller
@@ -908,6 +910,7 @@ class CommandService {
       const currentSales = await Sale.find({
         shopId,
         date: { $gte: startDate, $lte: endDate },
+        isCancelled: false
       });
 
       // Get previous period data for comparison
@@ -918,6 +921,7 @@ class CommandService {
       const previousSales = await Sale.find({
         shopId,
         date: { $gte: prevStartDate, $lte: prevEndDate },
+        isCancelled: false
       });
 
       if (currentSales.length === 0) {
@@ -995,16 +999,14 @@ class CommandService {
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Week: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${
-        revenueGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Week: ${previousItems}\n`;
-      report += `Growth: ${
-        volumeGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*TRANSACTION SUMMARY*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1023,9 +1025,8 @@ class CommandService {
         report += `\n*TOP 5 PRODUCTS THIS WEEK*\n`;
         topProducts.forEach(([product, data], index) => {
           const medals = ["Gold", "Silver", "Bronze", "4th", "5️th"];
-          report += `${medals[index]} ${product}: ${
-            data.quantity
-          } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${data.quantity
+            } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1052,6 +1053,7 @@ class CommandService {
       const currentSales = await Sale.find({
         shopId,
         date: { $gte: startDate, $lte: endDate },
+        isCancelled: false
       });
 
       // Get previous period data
@@ -1062,6 +1064,7 @@ class CommandService {
       const previousSales = await Sale.find({
         shopId,
         date: { $gte: prevStartDate, $lte: prevEndDate },
+        isCancelled: false
       });
 
       if (currentSales.length === 0) {
@@ -1142,16 +1145,14 @@ class CommandService {
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Period: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${
-        revenueGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Period: ${previousItems}\n`;
-      report += `Growth: ${
-        volumeGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*BUSINESS METRICS*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1160,9 +1161,8 @@ class CommandService {
 
       report += `*WEEKLY PERFORMANCE*\n`;
       Object.entries(weeklyBreakdown).forEach(([week, data], index) => {
-        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${
-          data.items
-        } items)\n`;
+        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${data.items
+          } items)\n`;
       });
 
       if (topProducts.length > 0) {
@@ -1178,9 +1178,8 @@ class CommandService {
             "7️th",
             "8️th",
           ];
-          report += `${medals[index]} ${product}: ${
-            data.quantity
-          } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${data.quantity
+            } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1214,6 +1213,7 @@ class CommandService {
       const sales = await Sale.find({
         shopId,
         date: { $gte: startDate },
+        isCancelled: false
       });
 
       if (sales.length === 0) {
@@ -1343,6 +1343,7 @@ class CommandService {
           sales = await Sale.find({
             shopId: shop._id,
             date: { $gte: startDate, $lte: endDate },
+            isCancelled: false
           });
           break;
 
@@ -1411,15 +1412,14 @@ class CommandService {
           ? days === 1
             ? "today's"
             : days === 7
-            ? "weekly"
-            : "monthly"
+              ? "weekly"
+              : "monthly"
           : reportType;
 
       const response = {
         type: "pdf_generating",
-        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${
-          sales.length
-        } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
+        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${sales.length
+          } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
       };
 
       // Generate PDF asynchronously and return file info
@@ -1526,6 +1526,56 @@ class CommandService {
     }
   }
 
+  // Add to CommandService class
+  async handleCancelSale(shopId, text) {
+    try {
+      const parts = text.replace('cancel', '').trim().split(' ');
+      const command = parts[0]?.toLowerCase();
+
+      if (!command) {
+        // Show recent sales for cancellation
+        const result = await CancellationService.getRecentSalesForCancellation(shopId);
+        return result.message;
+      }
+
+      if (command === 'last') {
+        const reason = parts.slice(1).join(' ') || 'No reason provided';
+        const result = await CancellationService.cancelLastSale(shopId, reason);
+        return result.message;
+      }
+
+      if (command === 'sale') {
+        const saleIdentifier = parts[1];
+        const reason = parts.slice(2).join(' ') || 'No reason provided';
+
+        if (!saleIdentifier) {
+          return 'Please specify which sale to cancel.\n\nUse: cancel sale [number]\nExample: cancel sale 2 "Wrong price"\n\nType "cancel" to see recent sales.';
+        }
+
+        const result = await CancellationService.cancelSpecificSale(shopId, saleIdentifier, reason);
+        return result.message;
+      }
+
+      if (command === 'report' || command === 'refunds') {
+        const days = parseInt(parts[1]) || 30;
+        return await CancellationService.getRefundsReport(shopId, days);
+      }
+
+      // If it's a number, treat as sale index
+      if (!isNaN(parseInt(command))) {
+        const reason = parts.slice(1).join(' ') || 'No reason provided';
+        const result = await CancellationService.cancelSpecificSale(shopId, command, reason);
+        return result.message;
+      }
+
+      return `Invalid cancel command. Use:\n• cancel - Show recent sales\n• cancel last [reason] - Cancel last sale\n• cancel sale [number] [reason] - Cancel specific sale\n• cancel refunds - Show refunds report`;
+
+    } catch (error) {
+      console.error('Cancel sale error:', error);
+      return 'Failed to process cancellation. Please try again.';
+    }
+  }
+
   getHelpText() {
     return `*SMART SHOP ASSISTANT* - Complete Business Management
 
@@ -1554,16 +1604,22 @@ class CommandService {
 • export best month - Generate monthly best sellers PDF
 • pdf daily - Same as export daily (alternative syntax)
 
+*Cancel Sales:*
+• cancel - Show recent sales for cancellation
+• cancel last [reason] - Cancel most recent sale
+• cancel sale 2 [reason] - Cancel specific sale by number
+• cancel refunds - Show refunds report
+
 *ACCOUNT MANAGEMENT*
 • login 1234 - Access your account
 • logout - Secure logout
 • help - Show this guide
 
 *Pro Tips:*
-📊 PDF reports include professional charts and insights
-💾 Reports are automatically saved with timestamps
-📈 Use monthly reports for strategic planning
-🏆 Best sellers reports help optimize inventory
+PDF reports include professional charts and insights
+Reports are automatically saved with timestamps
+Use monthly reports for strategic planning
+Best sellers reports help optimize inventory
 
 Type any command to get started!`;
   }

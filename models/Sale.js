@@ -1,24 +1,37 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const saleSchema = new mongoose.Schema({
   shopId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Shop',
+    ref: "Shop",
     required: true,
   },
-  items: [{
-    productId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Product',
+  items: [
+    {
+      productId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+      },
+      productName: String,
+      quantity: Number,
+      price: Number,
+      total: Number,
     },
-    productName: String,
-    quantity: Number,
-    price: Number,
-    total: Number,
-  }],
+  ],
   total: {
     type: Number,
     required: true,
+  },
+  isCancelled: {
+    type: Boolean,
+    default: false,
+  },
+  cancelledAt: Date,
+  cancellationReason: String,
+  cancelledBy: String,
+  originalSaleId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Sale",
   },
   date: {
     type: Date,
@@ -26,4 +39,4 @@ const saleSchema = new mongoose.Schema({
   },
 });
 
-export default mongoose.model('Sale', saleSchema);
+export default mongoose.model("Sale", saleSchema);
