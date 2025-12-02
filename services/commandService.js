@@ -6,6 +6,7 @@ import PDFService from "./PDFService.js";
 import CancellationService from "./CancellationService.js";
 import CustomerService from "./CustomerService.js";
 import OrderService from "./OrderService.js";
+import ExpenseService from "./ExpenseService.js";
 
 class CommandService {
   async processCommand(telegramId, text) {
@@ -138,6 +139,18 @@ class CommandService {
       command.startsWith("cancel order")
     ) {
       return await this.handleOrderStatusUpdate(shop._id, text);
+    }
+
+    if (command.startsWith("expense ") && !command.startsWith("expenses")) {
+      return await this.handleExpenseRecording(shop._id, text);
+    }
+
+    if (command.startsWith("expenses")) {
+      return await this.handleExpenseReports(shop._id, text);
+    }
+
+    if (command.startsWith("profit")) {
+      return await this.handleProfitCalculation(shop._id, text);
     }
 
     // Help
@@ -348,8 +361,9 @@ class CommandService {
       let receipt = "*SALE RECORDED*\n\n";
       items.forEach((item) => {
         const priceIndicator = item.isCustomPrice ? "💲" : "💰";
-        receipt += `${priceIndicator} ${item.quantity}x ${item.productName
-          } @ $${item.price.toFixed(2)}`;
+        receipt += `${priceIndicator} ${item.quantity}x ${
+          item.productName
+        } @ $${item.price.toFixed(2)}`;
 
         if (item.isCustomPrice) {
           receipt += ` (standard: $${item.standardPrice.toFixed(2)})`;
@@ -605,10 +619,11 @@ class CommandService {
       product.price = newPrice;
       await product.save();
 
-      return `*Price Updated Successfully!*\n\n${product.name
-        }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
-          2
-        )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
+      return `*Price Updated Successfully!*\n\n${
+        product.name
+      }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
+        2
+      )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
     } catch (error) {
       console.error("Update price error:", error);
       return "Failed to update price. Please try again.";
@@ -699,8 +714,9 @@ class CommandService {
           }
           oldValue = product.price;
           product.price = newValue;
-          response = `*Price Updated!*\n\n${product.name
-            }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
+          response = `*Price Updated!*\n\n${
+            product.name
+          }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
           break;
 
         case "stock":
@@ -907,13 +923,15 @@ class CommandService {
       report += `Items Sold: ${itemCount}\n`;
       report += `Transactions: ${sales.length}\n`;
       report += `Average per Sale: $${(total / sales.length).toFixed(2)}\n`;
-      report += `Vs Yesterday: ${growth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(growth).toFixed(1)}%\n\n`;
+      report += `Vs Yesterday: ${
+        growth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(growth).toFixed(1)}%\n\n`;
 
       report += `🛍️ *PRODUCT BREAKDOWN*\n`;
       Object.entries(productSales).forEach(([product, data]) => {
-        report += `• ${product}: ${data.quantity
-          } units ($${data.revenue.toFixed(2)})\n`;
+        report += `• ${product}: ${
+          data.quantity
+        } units ($${data.revenue.toFixed(2)})\n`;
       });
 
       // Today's best seller
@@ -1032,14 +1050,16 @@ class CommandService {
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Week: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${
+        revenueGrowth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Week: ${previousItems}\n`;
-      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${
+        volumeGrowth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*TRANSACTION SUMMARY*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1058,8 +1078,9 @@ class CommandService {
         report += `\n*TOP 5 PRODUCTS THIS WEEK*\n`;
         topProducts.forEach(([product, data], index) => {
           const medals = ["Gold", "Silver", "Bronze", "4th", "5️th"];
-          report += `${medals[index]} ${product}: ${data.quantity
-            } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${
+            data.quantity
+          } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1178,14 +1199,16 @@ class CommandService {
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Period: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${
+        revenueGrowth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Period: ${previousItems}\n`;
-      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${
+        volumeGrowth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*BUSINESS METRICS*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1194,8 +1217,9 @@ class CommandService {
 
       report += `*WEEKLY PERFORMANCE*\n`;
       Object.entries(weeklyBreakdown).forEach(([week, data], index) => {
-        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${data.items
-          } items)\n`;
+        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${
+          data.items
+        } items)\n`;
       });
 
       if (topProducts.length > 0) {
@@ -1211,8 +1235,9 @@ class CommandService {
             "7️th",
             "8️th",
           ];
-          report += `${medals[index]} ${product}: ${data.quantity
-            } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${
+            data.quantity
+          } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1445,14 +1470,15 @@ class CommandService {
           ? days === 1
             ? "today's"
             : days === 7
-              ? "weekly"
-              : "monthly"
+            ? "weekly"
+            : "monthly"
           : reportType;
 
       const response = {
         type: "pdf_generating",
-        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${sales.length
-          } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
+        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${
+          sales.length
+        } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
       };
 
       // Generate PDF asynchronously and return file info
@@ -1908,8 +1934,9 @@ class CommandService {
 
       items.forEach((item) => {
         const priceIndicator = item.isCustomPrice ? "💲" : "💰";
-        receipt += `${priceIndicator} ${item.quantity}x ${item.productName
-          } @ $${item.price.toFixed(2)}`;
+        receipt += `${priceIndicator} ${item.quantity}x ${
+          item.productName
+        } @ $${item.price.toFixed(2)}`;
 
         if (item.isCustomPrice) {
           receipt += ` (reg: $${item.standardPrice.toFixed(2)})`;
@@ -2031,8 +2058,9 @@ class CommandService {
 
       receipt += `*ITEMS ON CREDIT*\n`;
       items.forEach((item) => {
-        receipt += `• ${item.quantity}x ${item.productName
-          } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
+        receipt += `• ${item.quantity}x ${
+          item.productName
+        } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
       });
 
       receipt += `\n*Total Credit: $${totalAmount.toFixed(2)}*\n\n`;
@@ -2097,12 +2125,13 @@ class CommandService {
       }
 
       if (amount > customer.currentBalance) {
-        return `*Payment Exceeds Debt*\n\n${customer.name
-          } owes: $${customer.currentBalance.toFixed(
-            2
-          )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
-            amount - customer.currentBalance
-          ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
+        return `*Payment Exceeds Debt*\n\n${
+          customer.name
+        } owes: $${customer.currentBalance.toFixed(
+          2
+        )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
+          amount - customer.currentBalance
+        ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
       }
 
       const previousBalance = customer.currentBalance;
@@ -2161,10 +2190,11 @@ class CommandService {
         !customer.creditTransactions ||
         customer.creditTransactions.length === 0
       ) {
-        return `*No Credit History*\n\n${customer.name
-          } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
-            2
-          )}`;
+        return `*No Credit History*\n\n${
+          customer.name
+        } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
+          2
+        )}`;
       }
 
       let history = `*CREDIT HISTORY*\n\n`;
@@ -2200,8 +2230,9 @@ class CommandService {
       });
 
       if (customer.creditTransactions.length > 10) {
-        history += `... and ${customer.creditTransactions.length - 10
-          } more transactions`;
+        history += `... and ${
+          customer.creditTransactions.length - 10
+        } more transactions`;
       }
 
       return history;
@@ -2373,6 +2404,178 @@ class CommandService {
     }
   }
 
+  /**
+   * Handle expense recording
+   */
+  async handleExpenseRecording(shopId, text) {
+    try {
+      // Format: expense 50.00 "supplier payment" supplies bank INV001
+      // or: expense 50.00 supplier payment
+      const parts = text.replace("expense", "").trim().split(" ");
+
+      if (parts.length < 2) {
+        return 'Invalid format.\n\nUse: expense [amount] [description] [category?] [payment?] [receipt?]\n\nExamples:\n• expense 50.00 "supplier payment"\n• expense 25.50 transport cash\n• expense 1000.00 rent bank "July rent"\n• expense 150.00 supplies cash INV123';
+      }
+
+      const amount = parseFloat(parts[0]);
+      if (isNaN(amount) || amount <= 0) {
+        return "Invalid amount. Please use a positive number greater than 0.\nExample: 50.00";
+      }
+
+      // Parse description (could be in quotes or multiple words)
+      let description = "";
+      let category = "other";
+      let paymentMethod = "cash";
+      let receiptNumber = "";
+
+      // Check if description is in quotes
+      if (parts[1].startsWith('"')) {
+        const quoteMatch = text.match(/expense\s+[\d.]+\s+"([^"]+)"/);
+        if (quoteMatch) {
+          description = quoteMatch[1];
+          const remaining = text
+            .replace(`expense ${parts[0]} "${description}"`, "")
+            .trim()
+            .split(" ");
+          if (remaining[0]) category = remaining[0];
+          if (remaining[1]) paymentMethod = remaining[1];
+          if (remaining[2]) receiptNumber = remaining[2];
+        }
+      } else {
+        // Simple format
+        description = parts.slice(1).join(" ");
+
+        // Try to extract known categories and payment methods
+        const knownCategories = [
+          "supplies",
+          "utilities",
+          "rent",
+          "salary",
+          "transport",
+          "marketing",
+          "maintenance",
+          "taxes",
+          "insurance",
+          "packaging",
+        ];
+
+        const knownPayments = ["cash", "bank", "mobile", "credit"];
+
+        // Split description to find category and payment
+        const words = description.split(" ");
+        for (let i = words.length - 1; i >= 0; i--) {
+          const word = words[i].toLowerCase();
+          if (knownPayments.includes(word) && paymentMethod === "cash") {
+            paymentMethod = word;
+            words.splice(i, 1);
+          } else if (knownCategories.includes(word) && category === "other") {
+            category = word;
+            words.splice(i, 1);
+          } else if (word.match(/^[A-Z0-9]{3,}$/) && !receiptNumber) {
+            // Looks like a receipt number
+            receiptNumber = word;
+            words.splice(i, 1);
+          }
+        }
+
+        description = words.join(" ").trim();
+      }
+
+      if (!description.trim()) {
+        return 'Expense description is required.\n\nExample: expense 50.00 "supplier payment"';
+      }
+
+      const result = await ExpenseService.recordExpense(
+        shopId,
+        amount,
+        description,
+        category,
+        paymentMethod,
+        receiptNumber
+      );
+
+      return result.message;
+    } catch (error) {
+      console.error("Expense recording error:", error);
+      return "Failed to record expense. Please try again.";
+    }
+  }
+
+  /**
+   * Handle expense reports
+   */
+  async handleExpenseReports(shopId, text) {
+    try {
+      const parts = text.replace("expenses", "").trim().split(" ");
+      const period = parts[0]?.toLowerCase() || "daily";
+
+      if (period === "breakdown") {
+        const breakdownPeriod = parts[1] || "monthly";
+        const result = await ExpenseService.getExpenseBreakdown(
+          shopId,
+          breakdownPeriod
+        );
+
+        if (!result.success) {
+          return result.message;
+        }
+
+        return ExpenseService.generateExpenseBreakdownMessage(result);
+      }
+
+      // Valid periods
+      const validPeriods = ["daily", "today", "yesterday", "weekly", "monthly"];
+      if (!validPeriods.includes(period)) {
+        return `Invalid period. Use: daily, weekly, or monthly.\n\nExample: expenses weekly`;
+      }
+
+      const actualPeriod = period === "today" ? "daily" : period;
+      const result = await ExpenseService.getExpenses(shopId, actualPeriod);
+
+      if (!result.success) {
+        return result.message;
+      }
+
+      return ExpenseService.generateExpensesReportMessage(
+        result.expenses,
+        result.total,
+        actualPeriod,
+        result.startDate,
+        result.endDate
+      );
+    } catch (error) {
+      console.error("Expense reports error:", error);
+      return "Failed to generate expense report. Please try again.";
+    }
+  }
+
+  /**
+   * Handle profit calculations
+   */
+  async handleProfitCalculation(shopId, text) {
+    try {
+      const parts = text.replace("profit", "").trim().split(" ");
+      const period = parts[0]?.toLowerCase() || "daily";
+
+      const validPeriods = ["daily", "today", "yesterday", "weekly", "monthly"];
+      if (!validPeriods.includes(period)) {
+        return `Invalid period. Use: daily, weekly, or monthly.\n\nExample: profit weekly`;
+      }
+
+      const actualPeriod = period === "today" ? "daily" : period;
+      const result = await ExpenseService.calculateProfit(shopId, actualPeriod);
+
+      if (!result.success) {
+        return result.message;
+      }
+
+      return ExpenseService.generateProfitReportMessage(result);
+    } catch (error) {
+      console.error("Profit calculation error:", error);
+      return "Failed to calculate profit. Please try again.";
+    }
+  }
+
   getHelpText() {
     return `*SMART SHOP ASSISTANT* - Complete Business Management
 
@@ -2438,6 +2641,24 @@ class CommandService {
 • ready order A1B2 - Mark as ready
 • complete order A1B2 - Complete order
 • cancel order A1B2 "reason" - Cancel order
+
+*Record Expenses:*
+• expense 50.00 "supplier payment" - Basic expense
+• expense 25.50 transport cash - With category & payment
+• expense 1000.00 rent bank "July rent" - Detailed expense
+• expense 150.00 supplies cash INV123 - With receipt number
+
+*View Expenses:*
+• expenses daily - Today's expenses
+• expenses weekly - This week's expenses
+• expenses monthly - This month's expenses
+• expenses breakdown - Category breakdown
+
+*Profit Calculation:*
+• profit daily - Today's profit (Revenue - Expenses)
+• profit weekly - Weekly profit analysis
+• profit monthly - Monthly profit & loss
+
 
 
 
