@@ -4,6 +4,7 @@ import Shop from "../models/Shop.js";
 import bcrypt from "bcrypt";
 import PDFService from "./PDFService.js";
 import CancellationService from "./CancellationService.js";
+import CustomerService from "./CustomerService.js";
 
 class CommandService {
   async processCommand(telegramId, text) {
@@ -27,6 +28,10 @@ class CommandService {
     const shop = await Shop.findOne({ telegramId, isActive: true });
     if (!shop) {
       return 'Please register or login first.\n\nUse: register [business name] [pin]\nOr: login [pin]\nExample: register "My Shop" 1234';
+    }
+
+    if (command.startsWith("sell to")) {
+      return await this.handleSellToCustomer(shop._id, text);
     }
 
     // Sell command with optional pricing
@@ -102,9 +107,25 @@ class CommandService {
       return await this.handleExportReport(shop, text);
     }
 
-    if (command.startsWith('cancel')) {
+    if (command.startsWith("cancel")) {
       return await this.handleCancelSale(shop._id, text);
     }
+
+    if (command.startsWith("customer") || command.startsWith("customers")) {
+      return await this.handleCustomerCommands(shop._id, text);
+    }
+    if (command.startsWith('credit history')) {
+  return await this.handleCreditHistory(shop._id, text);
+}
+
+    if (command.startsWith("credit ")) {
+      return await this.handleCustomerCredit(shop._id, text);
+    }
+
+    if (command.startsWith("payment ")) {
+      return await this.handleCustomerPayment(shop._id, text);
+    }
+
 
 
     // Help
@@ -315,8 +336,9 @@ class CommandService {
       let receipt = "*SALE RECORDED*\n\n";
       items.forEach((item) => {
         const priceIndicator = item.isCustomPrice ? "💲" : "💰";
-        receipt += `${priceIndicator} ${item.quantity}x ${item.productName
-          } @ $${item.price.toFixed(2)}`;
+        receipt += `${priceIndicator} ${item.quantity}x ${
+          item.productName
+        } @ $${item.price.toFixed(2)}`;
 
         if (item.isCustomPrice) {
           receipt += ` (standard: $${item.standardPrice.toFixed(2)})`;
@@ -572,10 +594,11 @@ class CommandService {
       product.price = newPrice;
       await product.save();
 
-      return `*Price Updated Successfully!*\n\n${product.name
-        }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
-          2
-        )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
+      return `*Price Updated Successfully!*\n\n${
+        product.name
+      }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
+        2
+      )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
     } catch (error) {
       console.error("Update price error:", error);
       return "Failed to update price. Please try again.";
@@ -666,8 +689,9 @@ class CommandService {
           }
           oldValue = product.price;
           product.price = newValue;
-          response = `*Price Updated!*\n\n${product.name
-            }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
+          response = `*Price Updated!*\n\n${
+            product.name
+          }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
           break;
 
         case "stock":
@@ -824,7 +848,7 @@ class CommandService {
       const sales = await Sale.find({
         shopId,
         date: { $gte: today },
-        isCancelled: false
+        isCancelled: false,
       });
 
       const yesterdaySales = await Sale.find({
@@ -874,13 +898,15 @@ class CommandService {
       report += `Items Sold: ${itemCount}\n`;
       report += `Transactions: ${sales.length}\n`;
       report += `Average per Sale: $${(total / sales.length).toFixed(2)}\n`;
-      report += `Vs Yesterday: ${growth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(growth).toFixed(1)}%\n\n`;
+      report += `Vs Yesterday: ${
+        growth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(growth).toFixed(1)}%\n\n`;
 
       report += `🛍️ *PRODUCT BREAKDOWN*\n`;
       Object.entries(productSales).forEach(([product, data]) => {
-        report += `• ${product}: ${data.quantity
-          } units ($${data.revenue.toFixed(2)})\n`;
+        report += `• ${product}: ${
+          data.quantity
+        } units ($${data.revenue.toFixed(2)})\n`;
       });
 
       // Today's best seller
@@ -910,7 +936,7 @@ class CommandService {
       const currentSales = await Sale.find({
         shopId,
         date: { $gte: startDate, $lte: endDate },
-        isCancelled: false
+        isCancelled: false,
       });
 
       // Get previous period data for comparison
@@ -921,7 +947,7 @@ class CommandService {
       const previousSales = await Sale.find({
         shopId,
         date: { $gte: prevStartDate, $lte: prevEndDate },
-        isCancelled: false
+        isCancelled: false,
       });
 
       if (currentSales.length === 0) {
@@ -999,14 +1025,16 @@ class CommandService {
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Week: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${
+        revenueGrowth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Week: ${previousItems}\n`;
-      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${
+        volumeGrowth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*TRANSACTION SUMMARY*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1025,8 +1053,9 @@ class CommandService {
         report += `\n*TOP 5 PRODUCTS THIS WEEK*\n`;
         topProducts.forEach(([product, data], index) => {
           const medals = ["Gold", "Silver", "Bronze", "4th", "5️th"];
-          report += `${medals[index]} ${product}: ${data.quantity
-            } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${
+            data.quantity
+          } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1053,7 +1082,7 @@ class CommandService {
       const currentSales = await Sale.find({
         shopId,
         date: { $gte: startDate, $lte: endDate },
-        isCancelled: false
+        isCancelled: false,
       });
 
       // Get previous period data
@@ -1064,7 +1093,7 @@ class CommandService {
       const previousSales = await Sale.find({
         shopId,
         date: { $gte: prevStartDate, $lte: prevEndDate },
-        isCancelled: false
+        isCancelled: false,
       });
 
       if (currentSales.length === 0) {
@@ -1145,14 +1174,16 @@ class CommandService {
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Period: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${
+        revenueGrowth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Period: ${previousItems}\n`;
-      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${
+        volumeGrowth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*BUSINESS METRICS*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1161,8 +1192,9 @@ class CommandService {
 
       report += `*WEEKLY PERFORMANCE*\n`;
       Object.entries(weeklyBreakdown).forEach(([week, data], index) => {
-        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${data.items
-          } items)\n`;
+        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${
+          data.items
+        } items)\n`;
       });
 
       if (topProducts.length > 0) {
@@ -1178,8 +1210,9 @@ class CommandService {
             "7️th",
             "8️th",
           ];
-          report += `${medals[index]} ${product}: ${data.quantity
-            } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${
+            data.quantity
+          } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1213,7 +1246,7 @@ class CommandService {
       const sales = await Sale.find({
         shopId,
         date: { $gte: startDate },
-        isCancelled: false
+        isCancelled: false,
       });
 
       if (sales.length === 0) {
@@ -1343,7 +1376,7 @@ class CommandService {
           sales = await Sale.find({
             shopId: shop._id,
             date: { $gte: startDate, $lte: endDate },
-            isCancelled: false
+            isCancelled: false,
           });
           break;
 
@@ -1412,14 +1445,15 @@ class CommandService {
           ? days === 1
             ? "today's"
             : days === 7
-              ? "weekly"
-              : "monthly"
+            ? "weekly"
+            : "monthly"
           : reportType;
 
       const response = {
         type: "pdf_generating",
-        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${sales.length
-          } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
+        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${
+          sales.length
+        } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
       };
 
       // Generate PDF asynchronously and return file info
@@ -1526,53 +1560,660 @@ class CommandService {
     }
   }
 
-  // Add to CommandService class
   async handleCancelSale(shopId, text) {
     try {
-      const parts = text.replace('cancel', '').trim().split(' ');
+      const parts = text.replace("cancel", "").trim().split(" ");
       const command = parts[0]?.toLowerCase();
 
       if (!command) {
         // Show recent sales for cancellation
-        const result = await CancellationService.getRecentSalesForCancellation(shopId);
+        const result = await CancellationService.getRecentSalesForCancellation(
+          shopId
+        );
         return result.message;
       }
 
-      if (command === 'last') {
-        const reason = parts.slice(1).join(' ') || 'No reason provided';
+      if (command === "last") {
+        const reason = parts.slice(1).join(" ") || "No reason provided";
         const result = await CancellationService.cancelLastSale(shopId, reason);
         return result.message;
       }
 
-      if (command === 'sale') {
+      if (command === "sale") {
         const saleIdentifier = parts[1];
-        const reason = parts.slice(2).join(' ') || 'No reason provided';
+        const reason = parts.slice(2).join(" ") || "No reason provided";
 
         if (!saleIdentifier) {
           return 'Please specify which sale to cancel.\n\nUse: cancel sale [number]\nExample: cancel sale 2 "Wrong price"\n\nType "cancel" to see recent sales.';
         }
 
-        const result = await CancellationService.cancelSpecificSale(shopId, saleIdentifier, reason);
+        const result = await CancellationService.cancelSpecificSale(
+          shopId,
+          saleIdentifier,
+          reason
+        );
         return result.message;
       }
 
-      if (command === 'report' || command === 'refunds') {
+      if (command === "report" || command === "refunds") {
         const days = parseInt(parts[1]) || 30;
         return await CancellationService.getRefundsReport(shopId, days);
       }
 
       // If it's a number, treat as sale index
       if (!isNaN(parseInt(command))) {
-        const reason = parts.slice(1).join(' ') || 'No reason provided';
-        const result = await CancellationService.cancelSpecificSale(shopId, command, reason);
+        const reason = parts.slice(1).join(" ") || "No reason provided";
+        const result = await CancellationService.cancelSpecificSale(
+          shopId,
+          command,
+          reason
+        );
         return result.message;
       }
 
       return `Invalid cancel command. Use:\n• cancel - Show recent sales\n• cancel last [reason] - Cancel last sale\n• cancel sale [number] [reason] - Cancel specific sale\n• cancel refunds - Show refunds report`;
-
     } catch (error) {
-      console.error('Cancel sale error:', error);
-      return 'Failed to process cancellation. Please try again.';
+      console.error("Cancel sale error:", error);
+      return "Failed to process cancellation. Please try again.";
+    }
+  }
+
+  /**
+   * Handle customer management commands with debugging
+   */
+  async handleCustomerCommands(shopId, text) {
+    try {
+      console.log("[CommandService] Customer command received:", text);
+      console.log("[CommandService] Shop ID:", shopId);
+
+      const lowerText = text.toLowerCase().trim();
+
+      // customer add [name] [phone] [email?]
+      if (lowerText.includes("add")) {
+        return await this.handleAddCustomer(shopId, text);
+      }
+
+      // customers (list all)
+      if (lowerText === "customers" || lowerText === "customer") {
+        console.log("[CommandService] Listing all customers");
+        const result = await CustomerService.listCustomers(shopId, "all");
+        return result.message;
+      }
+
+      // customers active
+      if (lowerText === "customers active" || lowerText === "customer active") {
+        console.log("[CommandService] Listing active customers");
+        const result = await CustomerService.listCustomers(shopId, "active");
+        return result.message;
+      }
+
+      // customers top
+      if (lowerText === "customers top" || lowerText === "customer top") {
+        console.log("[CommandService] Listing top customers");
+        const result = await CustomerService.listCustomers(shopId, "top");
+        return result.message;
+      }
+
+      // customer [name/phone] - view specific customer
+      const customerIdentifier = text.replace(/^customers?/i, "").trim();
+      if (customerIdentifier) {
+        console.log(
+          "[CommandService] Looking up customer:",
+          customerIdentifier
+        );
+        const result = await CustomerService.getCustomerHistory(
+          shopId,
+          customerIdentifier
+        );
+        return result.message;
+      }
+
+      // Default help
+      return `*CUSTOMER COMMANDS*\n\n*Add Customer:*\n• customer add John 0771234567\n• customer add "Jane Doe" +263771234567 jane@email.com\n\n*View Customers:*\n• customers - List all\n• customers active - Last 30 days\n• customers top - Top spenders\n• customer John - View details\n\n*Sales:*\n• sell to John 2 bread 1 milk\n\n*Credit:*\n• credit John 50\n• payment John 25`;
+    } catch (error) {
+      console.error("[CommandService] Customer command error:", error);
+      return "Failed to process customer command. Please try again.";
+    }
+  }
+
+  /**
+   * Handle adding a new customer
+   */
+  async handleAddCustomer(shopId, text) {
+    try {
+      console.log("[CommandService] Adding customer from text:", text);
+
+      // Remove "customer add" or "customers add" prefix
+      let cleanText = text.replace(/^customers?\s+add\s+/i, "").trim();
+      console.log("[CommandService] Clean text:", cleanText);
+
+      // Try to match quoted name first: "John Doe" 1234567890
+      let nameMatch = cleanText.match(/^"([^"]+)"\s+(\S+)\s*(.*)/);
+
+      if (nameMatch) {
+        const name = nameMatch[1];
+        const phone = nameMatch[2];
+        const email = nameMatch[3] || "";
+
+        console.log("[CommandService] Parsed (quoted):", {
+          name,
+          phone,
+          email,
+        });
+        const result = await CustomerService.addCustomer(
+          shopId,
+          name,
+          phone,
+          email
+        );
+        return result.message;
+      }
+
+      // Try unquoted name: John 1234567890
+      nameMatch = cleanText.match(/^(\S+)\s+(\S+)\s*(.*)/);
+
+      if (nameMatch) {
+        const name = nameMatch[1];
+        const phone = nameMatch[2];
+        const email = nameMatch[3] || "";
+
+        console.log("[CommandService] Parsed (unquoted):", {
+          name,
+          phone,
+          email,
+        });
+        const result = await CustomerService.addCustomer(
+          shopId,
+          name,
+          phone,
+          email
+        );
+        return result.message;
+      }
+
+      // Invalid format
+      console.log("[CommandService] Invalid format");
+      return `*Invalid Format*\n\nUse: customer add [name] [phone] [email?]\n\n*Examples:*\n• customer add John 0771234567\n• customer add "Jane Doe" +263771234567\n• customer add Mike 0771234567 mike@email.com`;
+    } catch (error) {
+      console.error("[CommandService] Add customer error:", error);
+      return `Failed to add customer: ${error.message}`;
+    }
+  }
+
+  /**
+   * Handle sales to specific customers
+   */
+  async handleSellToCustomer(shopId, text) {
+    try {
+      console.log("[CommandService] Sell to customer:", text);
+
+      // Format: sell to John 2 bread 1 milk
+      // OR: sell to "John Doe" 2 bread 1 milk
+      // OR: sell to 0771234567 2 bread 1 milk
+
+      let match = text.match(/sell\s+to\s+"([^"]+)"\s+(.+)/i);
+
+      if (!match) {
+        match = text.match(/sell\s+to\s+(\S+)\s+(.+)/i);
+      }
+
+      if (!match) {
+        return `*Invalid Format*\n\nUse: sell to [customer] [items]\n\n*Examples:*\n• sell to John 2 bread 1 milk\n• sell to "Jane Doe" 3 eggs\n• sell to 0771234567 2 bread 2.50`;
+      }
+
+      const customerIdentifier = match[1];
+      const itemsText = match[2];
+
+      console.log("[CommandService] Customer identifier:", customerIdentifier);
+      console.log("[CommandService] Items text:", itemsText);
+
+      // Find customer
+      const customer = await CustomerService.findCustomer(
+        shopId,
+        customerIdentifier
+      );
+
+      if (!customer) {
+        return `*Customer Not Found* ❌\n\nNo customer found matching "${customerIdentifier}".\n\n*Add them first:*\ncustomer add "${customerIdentifier}" [phone]`;
+      }
+
+      console.log("[CommandService] Found customer:", customer.name);
+
+      // Process the sale
+      const result = await this.processSaleWithCustomer(
+        shopId,
+        itemsText,
+        customer
+      );
+      return result;
+    } catch (error) {
+      console.error("[CommandService] Sell to customer error:", error);
+      return `Failed to process sale: ${error.message}`;
+    }
+  }
+
+  /**
+   * Process sale with customer linking
+   */
+  async processSaleWithCustomer(shopId, itemsText, customer) {
+    try {
+      console.log("[CommandService] Processing sale with customer:", {
+        customerId: customer._id,
+        customerName: customer.name,
+        items: itemsText,
+      });
+
+      // Parse items (reuse existing logic)
+      const parts = itemsText.trim().split(" ");
+      const items = [];
+      let total = 0;
+
+      let i = 0;
+      while (i < parts.length) {
+        const quantity = parseInt(parts[i]);
+
+        if (isNaN(quantity)) {
+          return `Invalid quantity: "${parts[i]}"`;
+        }
+
+        const productName = parts[i + 1];
+        if (!productName) {
+          return "Missing product name after quantity.";
+        }
+
+        let price = null;
+        let nextIndex = i + 2;
+
+        if (nextIndex < parts.length && !isNaN(parseFloat(parts[nextIndex]))) {
+          price = parseFloat(parts[nextIndex]);
+          nextIndex++;
+        }
+
+        const product = await Product.findOne({
+          shopId,
+          name: new RegExp(`^${productName}$`, "i"),
+          isActive: true,
+        });
+
+        if (!product) {
+          return `Product "${productName}" not found.\n\nType "list" to see available products.`;
+        }
+
+        if (product.trackStock && product.stock < quantity) {
+          return `*Insufficient Stock* ❌\n\n${product.name}\nRequested: ${quantity}\nAvailable: ${product.stock}`;
+        }
+
+        const finalPrice = price !== null ? price : product.price;
+        const itemTotal = quantity * finalPrice;
+
+        items.push({
+          productId: product._id,
+          product: product,
+          productName: product.name,
+          quantity,
+          price: finalPrice,
+          standardPrice: product.price,
+          isCustomPrice: price !== null,
+          total: itemTotal,
+        });
+
+        total += itemTotal;
+        i = nextIndex;
+      }
+
+      console.log(
+        "[CommandService] Parsed items:",
+        items.length,
+        "Total:",
+        total
+      );
+
+      // Deduct stock
+      for (const item of items) {
+        if (item.product.trackStock) {
+          item.product.stock -= item.quantity;
+          await item.product.save();
+        }
+      }
+
+      // Create sale with customer reference
+      const sale = await Sale.create({
+        shopId,
+        items: items.map((item) => ({
+          productId: item.productId,
+          productName: item.productName,
+          quantity: item.quantity,
+          price: item.price,
+          standardPrice: item.standardPrice,
+          isCustomPrice: item.isCustomPrice,
+          total: item.total,
+        })),
+        total,
+        customerId: customer._id,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+      });
+
+      console.log("[CommandService] Sale created:", sale._id);
+
+      // Update customer statistics
+      const linked = await CustomerService.linkSaleToCustomer(
+        sale,
+        customer,
+        total
+      );
+      console.log("[CommandService] Customer linked:", linked);
+
+      // Generate receipt
+      let receipt = `👤 *SALE TO ${customer.name.toUpperCase()}*\n\n`;
+
+      items.forEach((item) => {
+        const priceIndicator = item.isCustomPrice ? "💲" : "💰";
+        receipt += `${priceIndicator} ${item.quantity}x ${
+          item.productName
+        } @ $${item.price.toFixed(2)}`;
+
+        if (item.isCustomPrice) {
+          receipt += ` (reg: $${item.standardPrice.toFixed(2)})`;
+        }
+        receipt += "\n";
+
+        if (item.product.trackStock) {
+          receipt += `   (${item.product.stock} remaining)`;
+          if (item.product.stock <= item.product.lowStockThreshold) {
+            receipt += ` ⚠️ LOW`;
+          }
+          receipt += "\n";
+        }
+      });
+
+      receipt += `\n💰 *Total: $${total.toFixed(2)}*\n\n`;
+      receipt += `*CUSTOMER STATS*\n`;
+      receipt += `📊 Total Spent: $${customer.totalSpent.toFixed(2)}\n`;
+      receipt += `🛒 Total Visits: ${customer.totalVisits}\n`;
+      receipt += `⭐ Loyalty Points: ${customer.loyaltyPoints}`;
+
+      return receipt;
+    } catch (error) {
+      console.error(
+        "[CommandService] Process sale with customer error:",
+        error
+      );
+      throw error;
+    }
+  }
+
+  async handleCustomerCredit(shopId, text) {
+    try {
+      console.log("[CommandService] Customer credit:", text);
+
+      // Remove "credit " prefix
+      const cleanText = text.replace(/^credit\s+/i, "").trim();
+
+      // Parse: John 10 bread 5 milk
+      const parts = cleanText.split(/\s+/);
+
+      if (parts.length < 3) {
+        return `*Invalid Format*\n\nUse: credit [customer] [qty] [product] [qty] [product]...\n\n*Examples:*\n• credit John 10 bread\n• credit John 5 bread 3 milk\n• credit 0771234567 2 sugar 1 flour`;
+      }
+
+      const customerIdentifier = parts[0];
+
+      // Find customer
+      const customer = await CustomerService.findCustomer(
+        shopId,
+        customerIdentifier
+      );
+
+      if (!customer) {
+        return `*Customer Not Found* ❌\n\nNo customer found matching "${customerIdentifier}".\n\n*Add them first:*\ncustomer add ${customerIdentifier} [phone]`;
+      }
+
+      // Parse items: 10 bread 5 milk
+      const items = [];
+      let totalAmount = 0;
+      let i = 1; // Start after customer name
+
+      while (i < parts.length) {
+        const quantity = parseInt(parts[i]);
+
+        if (isNaN(quantity)) {
+          return `Invalid quantity: "${parts[i]}"\n\nFormat: credit [customer] [qty] [product] [qty] [product]...`;
+        }
+
+        const productName = parts[i + 1];
+        if (!productName) {
+          return "Missing product name after quantity.";
+        }
+
+        // Find product
+        const product = await Product.findOne({
+          shopId,
+          name: new RegExp(`^${productName}$`, "i"),
+          isActive: true,
+        });
+
+        if (!product) {
+          return `Product "${productName}" not found.\n\nType "list" to see available products.`;
+        }
+
+        const itemTotal = quantity * product.price;
+
+        items.push({
+          productName: product.name,
+          quantity,
+          price: product.price,
+          total: itemTotal,
+        });
+
+        totalAmount += itemTotal;
+        i += 2;
+      }
+
+      if (items.length === 0) {
+        return `No items found.\n\nUse: credit ${customerIdentifier} [qty] [product]...`;
+      }
+
+      // Create description
+      const itemsDescription = items
+        .map((item) => `${item.quantity}x ${item.productName}`)
+        .join(", ");
+
+      // Add credit transaction
+      await customer.addCreditTransaction(
+        totalAmount,
+        items,
+        `Credit sale: ${itemsDescription}`
+      );
+
+      // Generate receipt
+      let receipt = `*CREDIT TRANSACTION RECORDED* 💳\n\n`;
+      receipt += `Customer: ${customer.name}\n`;
+      receipt += `Date: ${new Date().toLocaleString()}\n\n`;
+
+      receipt += `*ITEMS ON CREDIT*\n`;
+      items.forEach((item) => {
+        receipt += `• ${item.quantity}x ${
+          item.productName
+        } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
+      });
+
+      receipt += `\n*Total Credit: $${totalAmount.toFixed(2)}*\n\n`;
+      receipt += `*ACCOUNT BALANCE*\n`;
+      receipt += `Previous: $${(customer.currentBalance - totalAmount).toFixed(
+        2
+      )}\n`;
+      receipt += `Added: $${totalAmount.toFixed(2)}\n`;
+      receipt += `Current Owes: $${customer.currentBalance.toFixed(2)} 🔴\n\n`;
+
+      if (customer.creditLimit > 0) {
+        const remaining = customer.creditLimit - customer.currentBalance;
+        receipt += `Credit Limit: $${customer.creditLimit.toFixed(2)}\n`;
+        receipt += `Remaining: $${remaining.toFixed(2)}\n\n`;
+      }
+
+      receipt += `Use "customer ${customer.name}" to view full credit history`;
+
+      return receipt;
+    } catch (error) {
+      console.error("[CommandService] Customer credit error:", error);
+      return `Failed to process credit: ${error.message}`;
+    }
+  }
+
+  /**
+   * Handle customer payments
+   */
+  async handleCustomerPayment(shopId, text) {
+    try {
+      console.log("[CommandService] Customer payment:", text);
+
+      // Format: payment John 50.00
+      const parts = text
+        .replace(/^payment\s+/i, "")
+        .trim()
+        .split(/\s+/);
+
+      if (parts.length < 2) {
+        return `*Invalid Format*\n\nUse: payment [customer] [amount]\n\n*Examples:*\n• payment John 50\n• payment John 25.50\n• payment 0771234567 100`;
+      }
+
+      const customerIdentifier = parts[0];
+      const amount = parseFloat(parts[1]);
+
+      if (isNaN(amount) || amount <= 0) {
+        return "Invalid amount. Please use a positive number.\n\nExample: payment John 50.00";
+      }
+
+      // Find customer
+      const customer = await CustomerService.findCustomer(
+        shopId,
+        customerIdentifier
+      );
+
+      if (!customer) {
+        return `*Customer Not Found* ❌\n\nNo customer found matching "${customerIdentifier}".`;
+      }
+
+      if (customer.currentBalance === 0) {
+        return `*No Outstanding Balance* ✅\n\n${customer.name} doesn't owe anything.\n\nCurrent Balance: $0.00`;
+      }
+
+      if (amount > customer.currentBalance) {
+        return `*Payment Exceeds Debt* ⚠️\n\n${
+          customer.name
+        } owes: $${customer.currentBalance.toFixed(
+          2
+        )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
+          amount - customer.currentBalance
+        ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
+      }
+
+      const previousBalance = customer.currentBalance;
+
+      // Record payment
+      await customer.recordPayment(
+        amount,
+        `Payment received: $${amount.toFixed(2)}`
+      );
+
+      // Generate receipt
+      let receipt = `*PAYMENT RECEIVED* ✅\n\n`;
+      receipt += `Customer: ${customer.name}\n`;
+      receipt += `Date: ${new Date().toLocaleString()}\n\n`;
+
+      receipt += `*PAYMENT DETAILS*\n`;
+      receipt += `Amount Paid: $${amount.toFixed(2)}\n\n`;
+
+      receipt += `*ACCOUNT BALANCE*\n`;
+      receipt += `Previous Owed: $${previousBalance.toFixed(2)}\n`;
+      receipt += `Payment: -$${amount.toFixed(2)}\n`;
+      receipt += `Current Owes: $${customer.currentBalance.toFixed(2)}`;
+
+      if (customer.currentBalance === 0) {
+        receipt += ` 🎉\n\n*Account Cleared!* ${customer.name}'s account is now paid in full.`;
+      } else {
+        receipt += ` 🔴\n\n*Remaining Balance:* $${customer.currentBalance.toFixed(
+          2
+        )} still owed`;
+      }
+
+      receipt += `\n\n📝 Use "customer ${customer.name}" to view full payment history`;
+
+      return receipt;
+    } catch (error) {
+      console.error("[CommandService] Customer payment error:", error);
+      return `Failed to process payment: ${error.message}`;
+    }
+  }
+
+  async handleCreditHistory(shopId, text) {
+    try {
+      const parts = text.replace(/^credit\s+history\s+/i, "").trim();
+      const customerIdentifier = parts;
+
+      const customer = await CustomerService.findCustomer(
+        shopId,
+        customerIdentifier
+      );
+
+      if (!customer) {
+        return `*Customer Not Found* ❌\n\nNo customer found matching "${customerIdentifier}".`;
+      }
+
+      if (
+        !customer.creditTransactions ||
+        customer.creditTransactions.length === 0
+      ) {
+        return `*No Credit History* 📝\n\n${
+          customer.name
+        } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
+          2
+        )}`;
+      }
+
+      let history = `*CREDIT HISTORY* 📋\n\n`;
+      history += `Customer: ${customer.name}\n`;
+      history += `Current Balance: $${customer.currentBalance.toFixed(2)}\n`;
+      history += `Total Transactions: ${customer.creditTransactions.length}\n\n`;
+
+      // Show last 10 transactions
+      const recentTransactions = customer.creditTransactions
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 10);
+
+      recentTransactions.forEach((trans, index) => {
+        const icon = trans.type === "credit" ? "💳" : "💰";
+        const sign = trans.type === "credit" ? "+" : "-";
+
+        history += `${index + 1}. ${icon} ${trans.type.toUpperCase()}\n`;
+        history += `   Date: ${new Date(trans.date).toLocaleDateString()}\n`;
+        history += `   Amount: ${sign}$${trans.amount.toFixed(2)}\n`;
+
+        if (trans.items && trans.items.length > 0) {
+          history += `   Items: `;
+          history += trans.items
+            .map((item) => `${item.quantity}x ${item.productName}`)
+            .join(", ");
+          history += "\n";
+        }
+
+        history += `   Balance: $${trans.balanceBefore.toFixed(
+          2
+        )} → $${trans.balanceAfter.toFixed(2)}\n`;
+        history += `   Note: ${trans.description}\n\n`;
+      });
+
+      if (customer.creditTransactions.length > 10) {
+        history += `... and ${
+          customer.creditTransactions.length - 10
+        } more transactions`;
+      }
+
+      return history;
+    } catch (error) {
+      console.error("[CommandService] Credit history error:", error);
+      return `Failed to get credit history: ${error.message}`;
     }
   }
 
@@ -1609,6 +2250,25 @@ class CommandService {
 • cancel last [reason] - Cancel most recent sale
 • cancel sale 2 [reason] - Cancel specific sale by number
 • cancel refunds - Show refunds report
+
+*Customer Management:*
+• customer add "John Doe" 1234567890 - Add new customer
+• customers - List all customers
+• customers active - Active customers (last 30 days)
+• customer John - View customer profile & history
+• customer 1234567890 - Find by phone
+
+*Customer Sales:*
+• sell to John 2 bread 1 milk - Sell to specific customer
+• sell to 1234567890 3 eggs 1 sugar - Sell by phone
+
+*Credit & Payments:*
+• credit John 50.00 - Add credit (customer owes you)
+• payment John 50.00 - Record payment received
+• credit history John - View customer's credit history
+
+
+
 
 *ACCOUNT MANAGEMENT*
 • login 1234 - Access your account

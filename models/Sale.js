@@ -33,6 +33,12 @@ const saleSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Sale",
   },
+  customerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Customer",
+  },
+  customerName: String,
+  customerPhone: String,
   date: {
     type: Date,
     default: Date.now,
