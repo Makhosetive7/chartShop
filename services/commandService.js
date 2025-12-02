@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 import PDFService from "./PDFService.js";
 import CancellationService from "./CancellationService.js";
 import CustomerService from "./CustomerService.js";
+import OrderService from "./OrderService.js";
 
 class CommandService {
   async processCommand(telegramId, text) {
@@ -114,9 +115,9 @@ class CommandService {
     if (command.startsWith("customer") || command.startsWith("customers")) {
       return await this.handleCustomerCommands(shop._id, text);
     }
-    if (command.startsWith('credit history')) {
-  return await this.handleCreditHistory(shop._id, text);
-}
+    if (command.startsWith("credit history")) {
+      return await this.handleCreditHistory(shop._id, text);
+    }
 
     if (command.startsWith("credit ")) {
       return await this.handleCustomerCredit(shop._id, text);
@@ -126,7 +127,18 @@ class CommandService {
       return await this.handleCustomerPayment(shop._id, text);
     }
 
+    if (command.startsWith("order") || command.startsWith("orders")) {
+      return await this.handleOrderCommands(shop._id, text);
+    }
 
+    if (
+      command.startsWith("confirm order") ||
+      command.startsWith("ready order") ||
+      command.startsWith("complete order") ||
+      command.startsWith("cancel order")
+    ) {
+      return await this.handleOrderStatusUpdate(shop._id, text);
+    }
 
     // Help
     if (command === "help") {
@@ -336,9 +348,8 @@ class CommandService {
       let receipt = "*SALE RECORDED*\n\n";
       items.forEach((item) => {
         const priceIndicator = item.isCustomPrice ? "💲" : "💰";
-        receipt += `${priceIndicator} ${item.quantity}x ${
-          item.productName
-        } @ $${item.price.toFixed(2)}`;
+        receipt += `${priceIndicator} ${item.quantity}x ${item.productName
+          } @ $${item.price.toFixed(2)}`;
 
         if (item.isCustomPrice) {
           receipt += ` (standard: $${item.standardPrice.toFixed(2)})`;
@@ -594,11 +605,10 @@ class CommandService {
       product.price = newPrice;
       await product.save();
 
-      return `*Price Updated Successfully!*\n\n${
-        product.name
-      }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
-        2
-      )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
+      return `*Price Updated Successfully!*\n\n${product.name
+        }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
+          2
+        )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
     } catch (error) {
       console.error("Update price error:", error);
       return "Failed to update price. Please try again.";
@@ -689,9 +699,8 @@ class CommandService {
           }
           oldValue = product.price;
           product.price = newValue;
-          response = `*Price Updated!*\n\n${
-            product.name
-          }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
+          response = `*Price Updated!*\n\n${product.name
+            }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
           break;
 
         case "stock":
@@ -898,15 +907,13 @@ class CommandService {
       report += `Items Sold: ${itemCount}\n`;
       report += `Transactions: ${sales.length}\n`;
       report += `Average per Sale: $${(total / sales.length).toFixed(2)}\n`;
-      report += `Vs Yesterday: ${
-        growth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(growth).toFixed(1)}%\n\n`;
+      report += `Vs Yesterday: ${growth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(growth).toFixed(1)}%\n\n`;
 
       report += `🛍️ *PRODUCT BREAKDOWN*\n`;
       Object.entries(productSales).forEach(([product, data]) => {
-        report += `• ${product}: ${
-          data.quantity
-        } units ($${data.revenue.toFixed(2)})\n`;
+        report += `• ${product}: ${data.quantity
+          } units ($${data.revenue.toFixed(2)})\n`;
       });
 
       // Today's best seller
@@ -1025,16 +1032,14 @@ class CommandService {
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Week: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${
-        revenueGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Week: ${previousItems}\n`;
-      report += `Growth: ${
-        volumeGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*TRANSACTION SUMMARY*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1053,9 +1058,8 @@ class CommandService {
         report += `\n*TOP 5 PRODUCTS THIS WEEK*\n`;
         topProducts.forEach(([product, data], index) => {
           const medals = ["Gold", "Silver", "Bronze", "4th", "5️th"];
-          report += `${medals[index]} ${product}: ${
-            data.quantity
-          } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${data.quantity
+            } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1174,16 +1178,14 @@ class CommandService {
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Period: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${
-        revenueGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Period: ${previousItems}\n`;
-      report += `Growth: ${
-        volumeGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*BUSINESS METRICS*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1192,9 +1194,8 @@ class CommandService {
 
       report += `*WEEKLY PERFORMANCE*\n`;
       Object.entries(weeklyBreakdown).forEach(([week, data], index) => {
-        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${
-          data.items
-        } items)\n`;
+        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${data.items
+          } items)\n`;
       });
 
       if (topProducts.length > 0) {
@@ -1210,9 +1211,8 @@ class CommandService {
             "7️th",
             "8️th",
           ];
-          report += `${medals[index]} ${product}: ${
-            data.quantity
-          } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${data.quantity
+            } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1445,15 +1445,14 @@ class CommandService {
           ? days === 1
             ? "today's"
             : days === 7
-            ? "weekly"
-            : "monthly"
+              ? "weekly"
+              : "monthly"
           : reportType;
 
       const response = {
         type: "pdf_generating",
-        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${
-          sales.length
-        } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
+        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${sales.length
+          } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
       };
 
       // Generate PDF asynchronously and return file info
@@ -1905,13 +1904,12 @@ class CommandService {
       console.log("[CommandService] Customer linked:", linked);
 
       // Generate receipt
-      let receipt = `👤 *SALE TO ${customer.name.toUpperCase()}*\n\n`;
+      let receipt = `*SALE TO ${customer.name.toUpperCase()}*\n\n`;
 
       items.forEach((item) => {
         const priceIndicator = item.isCustomPrice ? "💲" : "💰";
-        receipt += `${priceIndicator} ${item.quantity}x ${
-          item.productName
-        } @ $${item.price.toFixed(2)}`;
+        receipt += `${priceIndicator} ${item.quantity}x ${item.productName
+          } @ $${item.price.toFixed(2)}`;
 
         if (item.isCustomPrice) {
           receipt += ` (reg: $${item.standardPrice.toFixed(2)})`;
@@ -1966,7 +1964,7 @@ class CommandService {
       );
 
       if (!customer) {
-        return `*Customer Not Found* ❌\n\nNo customer found matching "${customerIdentifier}".\n\n*Add them first:*\ncustomer add ${customerIdentifier} [phone]`;
+        return `*Customer Not Found* \n\nNo customer found matching "${customerIdentifier}".\n\n*Add them first:*\ncustomer add ${customerIdentifier} [phone]`;
       }
 
       // Parse items: 10 bread 5 milk
@@ -2027,15 +2025,14 @@ class CommandService {
       );
 
       // Generate receipt
-      let receipt = `*CREDIT TRANSACTION RECORDED* 💳\n\n`;
+      let receipt = `*CREDIT TRANSACTION RECORDED*\n\n`;
       receipt += `Customer: ${customer.name}\n`;
       receipt += `Date: ${new Date().toLocaleString()}\n\n`;
 
       receipt += `*ITEMS ON CREDIT*\n`;
       items.forEach((item) => {
-        receipt += `• ${item.quantity}x ${
-          item.productName
-        } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
+        receipt += `• ${item.quantity}x ${item.productName
+          } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
       });
 
       receipt += `\n*Total Credit: $${totalAmount.toFixed(2)}*\n\n`;
@@ -2092,21 +2089,20 @@ class CommandService {
       );
 
       if (!customer) {
-        return `*Customer Not Found* ❌\n\nNo customer found matching "${customerIdentifier}".`;
+        return `*Customer Not Found* \n\nNo customer found matching "${customerIdentifier}".`;
       }
 
       if (customer.currentBalance === 0) {
-        return `*No Outstanding Balance* ✅\n\n${customer.name} doesn't owe anything.\n\nCurrent Balance: $0.00`;
+        return `*No Outstanding Balance* \n\n${customer.name} doesn't owe anything.\n\nCurrent Balance: $0.00`;
       }
 
       if (amount > customer.currentBalance) {
-        return `*Payment Exceeds Debt* ⚠️\n\n${
-          customer.name
-        } owes: $${customer.currentBalance.toFixed(
-          2
-        )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
-          amount - customer.currentBalance
-        ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
+        return `*Payment Exceeds Debt*\n\n${customer.name
+          } owes: $${customer.currentBalance.toFixed(
+            2
+          )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
+            amount - customer.currentBalance
+          ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
       }
 
       const previousBalance = customer.currentBalance;
@@ -2118,7 +2114,7 @@ class CommandService {
       );
 
       // Generate receipt
-      let receipt = `*PAYMENT RECEIVED* ✅\n\n`;
+      let receipt = `*PAYMENT RECEIVED* \n\n`;
       receipt += `Customer: ${customer.name}\n`;
       receipt += `Date: ${new Date().toLocaleString()}\n\n`;
 
@@ -2131,14 +2127,14 @@ class CommandService {
       receipt += `Current Owes: $${customer.currentBalance.toFixed(2)}`;
 
       if (customer.currentBalance === 0) {
-        receipt += ` 🎉\n\n*Account Cleared!* ${customer.name}'s account is now paid in full.`;
+        receipt += `\n\n*Account Cleared!* ${customer.name}'s account is now paid in full.`;
       } else {
-        receipt += ` 🔴\n\n*Remaining Balance:* $${customer.currentBalance.toFixed(
+        receipt += `\n\n*Remaining Balance:* $${customer.currentBalance.toFixed(
           2
         )} still owed`;
       }
 
-      receipt += `\n\n📝 Use "customer ${customer.name}" to view full payment history`;
+      receipt += `\n\nUse "customer ${customer.name}" to view full payment history`;
 
       return receipt;
     } catch (error) {
@@ -2165,14 +2161,13 @@ class CommandService {
         !customer.creditTransactions ||
         customer.creditTransactions.length === 0
       ) {
-        return `*No Credit History* 📝\n\n${
-          customer.name
-        } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
-          2
-        )}`;
+        return `*No Credit History*\n\n${customer.name
+          } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
+            2
+          )}`;
       }
 
-      let history = `*CREDIT HISTORY* 📋\n\n`;
+      let history = `*CREDIT HISTORY*\n\n`;
       history += `Customer: ${customer.name}\n`;
       history += `Current Balance: $${customer.currentBalance.toFixed(2)}\n`;
       history += `Total Transactions: ${customer.creditTransactions.length}\n\n`;
@@ -2183,7 +2178,7 @@ class CommandService {
         .slice(0, 10);
 
       recentTransactions.forEach((trans, index) => {
-        const icon = trans.type === "credit" ? "💳" : "💰";
+        const icon = trans.type === "credit" ? "Ecocash" : "Cash";
         const sign = trans.type === "credit" ? "+" : "-";
 
         history += `${index + 1}. ${icon} ${trans.type.toUpperCase()}\n`;
@@ -2205,15 +2200,176 @@ class CommandService {
       });
 
       if (customer.creditTransactions.length > 10) {
-        history += `... and ${
-          customer.creditTransactions.length - 10
-        } more transactions`;
+        history += `... and ${customer.creditTransactions.length - 10
+          } more transactions`;
       }
 
       return history;
     } catch (error) {
       console.error("[CommandService] Credit history error:", error);
       return `Failed to get credit history: ${error.message}`;
+    }
+  }
+
+  /**
+   * Handle order placement and management
+   */
+  async handleOrderCommands(shopId, text) {
+    try {
+      const parts = text
+        .replace("order", "")
+        .replace("orders", "")
+        .trim()
+        .split(" ");
+      const command = parts[0]?.toLowerCase();
+
+      if (!command) {
+        // Show all orders
+        const result = await OrderService.listOrders(shopId);
+        return result.message;
+      }
+
+      if (command === "place" || command === "new") {
+        // Format: order place John 2 bread 1 milk
+        const remainingText = text
+          .replace("place", "")
+          .replace("new", "")
+          .trim();
+        return await this.processNewOrder(shopId, remainingText);
+      }
+
+      if (
+        command === "pending" ||
+        command === "confirmed" ||
+        command === "ready" ||
+        command === "completed" ||
+        command === "cancelled"
+      ) {
+        const result = await OrderService.listOrders(shopId, command);
+        return result.message;
+      }
+
+      if (command === "details") {
+        const orderIdentifier = parts[1];
+        if (!orderIdentifier) {
+          return "Please specify order ID.\n\nUse: order details [order-id]\nExample: order details A1B2";
+        }
+        const result = await OrderService.getOrderDetails(
+          shopId,
+          orderIdentifier
+        );
+        return result.message;
+      }
+
+      // If no specific command, treat as new order
+      return await this.processNewOrder(
+        shopId,
+        text.replace("order", "").trim()
+      );
+    } catch (error) {
+      console.error("Order command error:", error);
+      return "Failed to process order command. Please try again.";
+    }
+  }
+
+  /**
+   * Process new order placement
+   */
+  async processNewOrder(shopId, orderText) {
+    try {
+      // Format: John 2 bread 1 milk pickup "Need by Friday"
+      const parts = orderText.trim().split(" ");
+      const customerIdentifier = parts[0];
+
+      if (!customerIdentifier) {
+        return 'Please specify customer.\n\nUse: order [customer] [items] [type?] [notes?]\nExamples:\n• order John 2 bread 1 milk\n• order John 2 bread 1 milk delivery "Leave at door"\n• order 1234567890 3 eggs 1 sugar pickup';
+      }
+
+      // Extract order type and notes
+      let itemsText = "";
+      let orderType = "pickup";
+      let notes = "";
+
+      const typeIndex = parts.findIndex((part) =>
+        ["pickup", "delivery", "reservation"].includes(part.toLowerCase())
+      );
+
+      if (typeIndex !== -1) {
+        itemsText = parts.slice(1, typeIndex).join(" ");
+        orderType = parts[typeIndex].toLowerCase();
+        notes = parts.slice(typeIndex + 1).join(" ");
+      } else {
+        itemsText = parts.slice(1).join(" ");
+      }
+
+      if (!itemsText.trim()) {
+        return "Please specify items for the order.\n\nUse: order [customer] [items]\nExample: order John 2 bread 1 milk";
+      }
+
+      const result = await OrderService.placeOrder(
+        shopId,
+        customerIdentifier,
+        itemsText,
+        orderType,
+        notes
+      );
+      return result.message;
+    } catch (error) {
+      console.error("Process new order error:", error);
+      return "Failed to place order. Please try again.";
+    }
+  }
+
+  /**
+   * Handle order status updates
+   */
+  async handleOrderStatusUpdate(shopId, text) {
+    try {
+      // Format: confirm order A1B2, ready order A1B2, complete order A1B2, cancel order A1B2 "reason"
+      const parts = text.trim().split(" ");
+      const action = parts[0].toLowerCase(); // confirm, ready, complete, cancel
+      const command = parts[1]?.toLowerCase(); // order
+      const orderIdentifier = parts[2];
+      const notes = parts.slice(3).join(" ");
+
+      if (!["confirm", "ready", "complete", "cancel"].includes(action)) {
+        return "Invalid order action. Use: confirm, ready, complete, or cancel.";
+      }
+
+      if (command !== "order") {
+        return "Invalid format. Use: [action] order [order-id]\nExample: confirm order A1B2";
+      }
+
+      if (!orderIdentifier) {
+        return "Please specify order ID.\n\nUse: [action] order [order-id]\nExample: confirm order A1B2";
+      }
+
+      let newStatus;
+      switch (action) {
+        case "confirm":
+          newStatus = "confirmed";
+          break;
+        case "ready":
+          newStatus = "ready";
+          break;
+        case "complete":
+          newStatus = "completed";
+          break;
+        case "cancel":
+          newStatus = "cancelled";
+          break;
+      }
+
+      const result = await OrderService.updateOrderStatus(
+        shopId,
+        orderIdentifier,
+        newStatus,
+        notes
+      );
+      return result.message;
+    } catch (error) {
+      console.error("Order status update error:", error);
+      return "Failed to update order status. Please try again.";
     }
   }
 
@@ -2266,6 +2422,22 @@ class CommandService {
 • credit John 50.00 - Add credit (customer owes you)
 • payment John 50.00 - Record payment received
 • credit history John - View customer's credit history
+
+*Place Orders:*
+• order John 2 bread 1 milk - Place pickup order
+• order John 2 bread 1 milk delivery - Delivery order
+• order John 2 bread 1 milk reservation - Reservation
+• order 1234567890 3 eggs 1 sugar - Order by phone
+
+*Manage Orders:*
+• orders - All orders
+• orders pending - Pending orders only
+• orders ready - Ready for pickup
+• order details A1B2 - Order details
+• confirm order A1B2 - Confirm order
+• ready order A1B2 - Mark as ready
+• complete order A1B2 - Complete order
+• cancel order A1B2 "reason" - Cancel order
 
 
 
