@@ -5,7 +5,7 @@ dotenv.config();
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+    const conn = await mongoose.connect('mongodb+srv://sibandamakhosetive7_db_user:keIZPtBYenrdY9wj@cluster0.0jqd93f.mongodb.net/chartshop?retryWrites=true&w=majority&appName=Cluster0', {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
