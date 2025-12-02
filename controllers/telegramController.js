@@ -1,11 +1,13 @@
 import telegramService from '../services/telegramService.js';
-import commandService from '../services/commandService.js';
+import commandService from '../services/commandService.js'; 
 
 export const handleWebhook = async (req, res) => {
   try {
     const update = req.body;
+    console.log('Webhook received:', update.update_id);
 
     if (!update.message || !update.message.text) {
+      console.log(' No text message, ignoring');
       return res.sendStatus(200);
     }
 
@@ -15,8 +17,10 @@ export const handleWebhook = async (req, res) => {
 
     console.log(`Message from ${telegramId}: ${text}`);
 
+    // Process the command
     const response = await commandService.processCommand(telegramId, text);
 
+    // Send response back to user
     await telegramService.sendMessage(chatId, response);
 
     res.sendStatus(200);
@@ -33,7 +37,7 @@ export const setWebhook = async (req, res) => {
     if (!webhookUrl) {
       return res.status(400).json({ 
         error: 'URL required',
-        example: { url: 'https://your-domain.com/webhook/telegram' }
+        example: { url: 'https://chartshop-production.up.railway.app//webhook/telegram' }
       });
     }
 
@@ -42,9 +46,11 @@ export const setWebhook = async (req, res) => {
     res.json({ 
       success: true, 
       message: 'Webhook set successfully',
+      url: webhookUrl,
       data: result 
     });
   } catch (error) {
+    console.error('Set webhook error:', error);
     res.status(500).json({ 
       success: false, 
       error: error.message 
@@ -52,3 +58,13 @@ export const setWebhook = async (req, res) => {
   }
 };
 
+// Add a GET endpoint for testing
+export const testWebhook = (req, res) => {
+  res.json({
+    status: 'active',
+    message: 'Telegram webhook endpoint',
+    method: 'POST',
+    description: 'Send Telegram updates to this endpoint',
+    instructions: 'Use POST with Telegram update JSON'
+  });
+};
