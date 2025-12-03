@@ -206,7 +206,7 @@ Need help? Just type *help* anytime!`;
         text.match(/register\s+(\S+(?:\s+\S+)*?)\s+(\d{4})/i);
 
       if (!match) {
-        return ' *Registration Format*\n\nPlease use:\n• \`register "Business Name" 1234\`\n• \`register BusinessName 1234\`\n\n*Example:*\n\`register "Family Bakery" 5678\`\n\`register QuickMart 4321\`\n\n *Security Tip:* Use a unique 4-digit PIN you will remember.';
+        return ' *Registration Format*\n\nPlease use:\n• `register "Business Name" 1234`\n• `register BusinessName 1234`\n\n*Example:*\n`register "Family Bakery" 5678`\n`register QuickMart 4321`\n\n *Security Tip:* Use a unique 4-digit PIN you will remember.';
       }
 
       const businessName = match[1];
@@ -214,7 +214,7 @@ Need help? Just type *help* anytime!`;
 
       const existing = await Shop.findOne({ telegramId });
       if (existing) {
-        return "*Already Registered!*\n\nWelcome back! It looks like you already have an account.\n\n• To login: \`login ${existing.businessName.substring(0, 3)}***\`\n• Forgot PIN? Contact support.\n\nYou can only have one shop per Telegram account.";
+        return "*Already Registered!*\n\nWelcome back! It looks like you already have an account.\n\n• To login: `login ${existing.businessName.substring(0, 3)}***`\n• Forgot PIN? Contact support.\n\nYou can only have one shop per Telegram account.";
       }
 
       const hashedPin = await bcrypt.hash(pin, 10);
@@ -370,25 +370,41 @@ Need help? Just type *help* anytime!`;
       });
 
       // Format receipt
-      let receipt = "SALE RECORDED\n\n";
-      items.forEach((item) => {
-        receipt += `${item.quantity}x ${item.productName} @ $${item.price.toFixed(2)}`;
+      const now = new Date();
+      let receipt = `INVOICE #${Date.now().toString().slice(-6)}\n`;
+      receipt += `Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString(
+        [],
+        { hour: "2-digit", minute: "2-digit" }
+      )}\n`;
+      receipt += "-".repeat(35) + "\n\n";
+
+      items.forEach((item, index) => {
+        const lineTotal = item.quantity * item.price;
+        receipt += `${index + 1}. ${item.productName}\n`;
+        receipt += `   Qty: ${item.quantity}`.padEnd(15);
+        receipt += `Price: $${item.price.toFixed(2)}`.padEnd(20);
+        receipt += `Subtotal: $${lineTotal.toFixed(2)}`;
 
         if (item.isCustomPrice) {
-          receipt += ` (standard: $${item.standardPrice.toFixed(2)})`;
+          receipt += `\n   Note: Custom price (standard: $${item.standardPrice.toFixed(
+            2
+          )})`;
         }
-        receipt += "\n";
 
         if (item.product.trackStock) {
-          receipt += `   Stock: ${item.product.stock} units`;
-
+          receipt += `\n   Stock remaining: ${item.product.stock}`;
           if (item.product.stock <= item.product.lowStockThreshold) {
-            receipt += ` [LOW]`;
+            receipt += ` - LOW STOCK`;
           }
-          receipt += "\n";
         }
+        receipt += "\n\n";
       });
-      receipt += `\nTOTAL: $${total.toFixed(2)}`;
+
+      receipt += "-".repeat(35) + "\n";
+      receipt +=
+        "GRAND TOTAL:".padEnd(25) + `$${total.toFixed(2)}`.padStart(10);
+      receipt += "\n" + "=".repeat(35);
+      receipt += "\nThank you for your business!";
 
       // Add low stock summary if any
       const lowStockItems = items.filter(
@@ -626,10 +642,11 @@ Need help? Just type *help* anytime!`;
       product.price = newPrice;
       await product.save();
 
-      return `*Price Updated Successfully!*\n\n${product.name
-        }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
-          2
-        )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
+      return `*Price Updated Successfully!*\n\n${
+        product.name
+      }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
+        2
+      )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
     } catch (error) {
       console.error("Update price error:", error);
       return "Failed to update price. Please try again.";
@@ -720,8 +737,9 @@ Need help? Just type *help* anytime!`;
           }
           oldValue = product.price;
           product.price = newValue;
-          response = `*Price Updated!*\n\n${product.name
-            }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
+          response = `*Price Updated!*\n\n${
+            product.name
+          }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
           break;
 
         case "stock":
@@ -928,13 +946,15 @@ Need help? Just type *help* anytime!`;
       report += `Items Sold: ${itemCount}\n`;
       report += `Transactions: ${sales.length}\n`;
       report += `Average per Sale: $${(total / sales.length).toFixed(2)}\n`;
-      report += `Vs Yesterday: ${growth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(growth).toFixed(1)}%\n\n`;
+      report += `Vs Yesterday: ${
+        growth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(growth).toFixed(1)}%\n\n`;
 
-      report += `🛍️ *PRODUCT BREAKDOWN*\n`;
+      report += `*PRODUCT BREAKDOWN*\n`;
       Object.entries(productSales).forEach(([product, data]) => {
-        report += `• ${product}: ${data.quantity
-          } units ($${data.revenue.toFixed(2)})\n`;
+        report += `• ${product}: ${
+          data.quantity
+        } units ($${data.revenue.toFixed(2)})\n`;
       });
 
       // Today's best seller
@@ -1053,14 +1073,16 @@ Need help? Just type *help* anytime!`;
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Week: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${
+        revenueGrowth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Week: ${previousItems}\n`;
-      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${
+        volumeGrowth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*TRANSACTION SUMMARY*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1079,8 +1101,9 @@ Need help? Just type *help* anytime!`;
         report += `\n*TOP 5 PRODUCTS THIS WEEK*\n`;
         topProducts.forEach(([product, data], index) => {
           const medals = ["1st", "2nd", "3rd", "4th", "5️th"];
-          report += `${medals[index]} ${product}: ${data.quantity
-            } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${
+            data.quantity
+          } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1199,14 +1222,16 @@ Need help? Just type *help* anytime!`;
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Period: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${
+        revenueGrowth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Period: ${previousItems}\n`;
-      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${
+        volumeGrowth >= 0 ? "Increase" : "Decrease"
+      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*BUSINESS METRICS*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1215,8 +1240,9 @@ Need help? Just type *help* anytime!`;
 
       report += `*WEEKLY PERFORMANCE*\n`;
       Object.entries(weeklyBreakdown).forEach(([week, data], index) => {
-        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${data.items
-          } items)\n`;
+        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${
+          data.items
+        } items)\n`;
       });
 
       if (topProducts.length > 0) {
@@ -1232,8 +1258,9 @@ Need help? Just type *help* anytime!`;
             "7️th",
             "8️th",
           ];
-          report += `${medals[index]} ${product}: ${data.quantity
-            } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${
+            data.quantity
+          } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1313,16 +1340,16 @@ Need help? Just type *help* anytime!`;
 
       sortedProducts.forEach(([product, data], index) => {
         const medals = [
-          "1st",
-          "2nd",
-          "3rd",
-          "4️th",
-          "5️th",
-          "6️th",
-          "7️th",
-          "8th",
-          "9️th",
-          "10th",
+          "1st: ",
+          "2nd: ",
+          "3rd: ",
+          "4️th: ",
+          "5️th: ",
+          "6️th: ",
+          "7️th: ",
+          "8th: ",
+          "9️th: ",
+          "10th: ",
         ];
         const medal = index < 10 ? medals[index] : `${index + 1}.`;
 
@@ -1466,14 +1493,15 @@ Need help? Just type *help* anytime!`;
           ? days === 1
             ? "today's"
             : days === 7
-              ? "weekly"
-              : "monthly"
+            ? "weekly"
+            : "monthly"
           : reportType;
 
       const response = {
         type: "pdf_generating",
-        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${sales.length
-          } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
+        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${
+          sales.length
+        } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
       };
 
       // Generate PDF asynchronously and return file info
@@ -1815,152 +1843,173 @@ Need help? Just type *help* anytime!`;
   /**
    * Process sale with customer linking
    */
-  async processSaleWithCustomer(shopId, itemsText, customer) {
-    try {
-      console.log("[CommandService] Processing sale with customer:", {
-        customerId: customer._id,
-        customerName: customer.name,
-        items: itemsText,
-      });
+async processSaleWithCustomer(shopId, itemsText, customer) {
+  try {
+    console.log("[CommandService] Processing sale with customer:", {
+      customerId: customer._id,
+      customerName: customer.name,
+      items: itemsText,
+    });
 
-      // Parse items (reuse existing logic)
-      const parts = itemsText.trim().split(" ");
-      const items = [];
-      let total = 0;
+    // Parse items (reuse existing logic)
+    const parts = itemsText.trim().split(" ");
+    const items = [];
+    let total = 0;
 
-      let i = 0;
-      while (i < parts.length) {
-        const quantity = parseInt(parts[i]);
+    let i = 0;
+    while (i < parts.length) {
+      const quantity = parseInt(parts[i]);
 
-        if (isNaN(quantity)) {
-          return `Invalid quantity: "${parts[i]}"`;
-        }
-
-        const productName = parts[i + 1];
-        if (!productName) {
-          return "Missing product name after quantity.";
-        }
-
-        let price = null;
-        let nextIndex = i + 2;
-
-        if (nextIndex < parts.length && !isNaN(parseFloat(parts[nextIndex]))) {
-          price = parseFloat(parts[nextIndex]);
-          nextIndex++;
-        }
-
-        const product = await Product.findOne({
-          shopId,
-          name: new RegExp(`^${productName}$`, "i"),
-          isActive: true,
-        });
-
-        if (!product) {
-          return `Product "${productName}" not found.\n\nType "list" to see available products.`;
-        }
-
-        if (product.trackStock && product.stock < quantity) {
-          return `*Insufficient Stock* \n\n${product.name}\nRequested: ${quantity}\nAvailable: ${product.stock}`;
-        }
-
-        const finalPrice = price !== null ? price : product.price;
-        const itemTotal = quantity * finalPrice;
-
-        items.push({
-          productId: product._id,
-          product: product,
-          productName: product.name,
-          quantity,
-          price: finalPrice,
-          standardPrice: product.price,
-          isCustomPrice: price !== null,
-          total: itemTotal,
-        });
-
-        total += itemTotal;
-        i = nextIndex;
+      if (isNaN(quantity)) {
+        return `Invalid quantity: "${parts[i]}"`;
       }
 
-      console.log(
-        "[CommandService] Parsed items:",
-        items.length,
-        "Total:",
-        total
-      );
-
-      // Deduct stock
-      for (const item of items) {
-        if (item.product.trackStock) {
-          item.product.stock -= item.quantity;
-          await item.product.save();
-        }
+      const productName = parts[i + 1];
+      if (!productName) {
+        return "Missing product name after quantity.";
       }
 
-      // Create sale with customer reference
-      const sale = await Sale.create({
+      let price = null;
+      let nextIndex = i + 2;
+
+      if (nextIndex < parts.length && !isNaN(parseFloat(parts[nextIndex]))) {
+        price = parseFloat(parts[nextIndex]);
+        nextIndex++;
+      }
+
+      const product = await Product.findOne({
         shopId,
-        items: items.map((item) => ({
-          productId: item.productId,
-          productName: item.productName,
-          quantity: item.quantity,
-          price: item.price,
-          standardPrice: item.standardPrice,
-          isCustomPrice: item.isCustomPrice,
-          total: item.total,
-        })),
-        total,
-        customerId: customer._id,
-        customerName: customer.name,
-        customerPhone: customer.phone,
+        name: new RegExp(`^${productName}$`, "i"),
+        isActive: true,
       });
 
-      console.log("[CommandService] Sale created:", sale._id);
+      if (!product) {
+        return `Product "${productName}" not found.\n\nType "list" to see available products.`;
+      }
 
-      // Update customer statistics
-      const linked = await CustomerService.linkSaleToCustomer(
-        sale,
-        customer,
-        total
-      );
-      console.log("[CommandService] Customer linked:", linked);
+      if (product.trackStock && product.stock < quantity) {
+        return `INSUFFICIENT STOCK\n\n${product.name}\nRequested: ${quantity}\nAvailable: ${product.stock}`;
+      }
 
-      // Generate receipt
-      let receipt = `*SALE TO ${customer.name.toUpperCase()}*\n\n`;
+      const finalPrice = price !== null ? price : product.price;
+      const itemTotal = quantity * finalPrice;
 
-      items.forEach((item) => {
-        const priceIndicator = item.isCustomPrice ? "💲" : "💰";
-        receipt += `${priceIndicator} ${item.quantity}x ${item.productName
-          } @ $${item.price.toFixed(2)}`;
+      items.push({
+        productId: product._id,
+        product: product,
+        productName: product.name,
+        quantity,
+        price: finalPrice,
+        standardPrice: product.price,
+        isCustomPrice: price !== null,
+        total: itemTotal,
+      });
 
-        if (item.isCustomPrice) {
-          receipt += ` (reg: $${item.standardPrice.toFixed(2)})`;
+      total += itemTotal;
+      i = nextIndex;
+    }
+
+    console.log(
+      "[CommandService] Parsed items:",
+      items.length,
+      "Total:",
+      total
+    );
+
+    // Deduct stock
+    for (const item of items) {
+      if (item.product.trackStock) {
+        item.product.stock -= item.quantity;
+        await item.product.save();
+      }
+    }
+
+    // Create sale with customer reference
+    const sale = await Sale.create({
+      shopId,
+      items: items.map((item) => ({
+        productId: item.productId,
+        productName: item.productName,
+        quantity: item.quantity,
+        price: item.price,
+        standardPrice: item.standardPrice,
+        isCustomPrice: item.isCustomPrice,
+        total: item.total,
+      })),
+      total,
+      customerId: customer._id,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+    });
+
+    console.log("[CommandService] Sale created:", sale._id);
+
+    // Update customer statistics
+    const linked = await CustomerService.linkSaleToCustomer(
+      sale,
+      customer,
+      total
+    );
+    console.log("[CommandService] Customer linked:", linked);
+
+    // Generate professional invoice-style receipt
+    const now = new Date();
+    const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
+    
+    let receipt = `INVOICE: ${invoiceNumber}\n`;
+    receipt += "=".repeat(40) + "\n";
+    receipt += `CUSTOMER: ${customer.name.toUpperCase()}\n`;
+    if (customer.phone) {
+      receipt += `PHONE: ${customer.phone}\n`;
+    }
+    receipt += `DATE: ${now.toLocaleDateString()}\n`;
+    receipt += `TIME: ${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}\n`;
+    receipt += "-".repeat(40) + "\n\n";
+    
+    receipt += "ITEM DETAILS:\n";
+    receipt += "-".repeat(40) + "\n";
+
+    items.forEach((item, index) => {
+      receipt += `${index + 1}. ${item.productName}\n`;
+      receipt += `   Quantity: ${item.quantity}`.padEnd(20);
+      receipt += `Price: $${item.price.toFixed(2)}\n`;
+      receipt += `   Subtotal: $${item.total.toFixed(2)}\n`;
+      
+      if (item.isCustomPrice) {
+        receipt += `   Note: Custom price (standard: $${item.standardPrice.toFixed(2)})\n`;
+      }
+      
+      if (item.product.trackStock) {
+        receipt += `   Stock after sale: ${item.product.stock}`;
+        if (item.product.stock <= item.product.lowStockThreshold) {
+          receipt += ` [LOW STOCK]`;
         }
         receipt += "\n";
+      }
+      receipt += "\n";
+    });
 
-        if (item.product.trackStock) {
-          receipt += `   (${item.product.stock} remaining)`;
-          if (item.product.stock <= item.product.lowStockThreshold) {
-            receipt += ` LOW`;
-          }
-          receipt += "\n";
-        }
-      });
+    receipt += "-".repeat(40) + "\n";
+    receipt += "TOTAL AMOUNT:".padEnd(30) + `$${total.toFixed(2)}`.padStart(10);
+    receipt += "\n" + "=".repeat(40) + "\n\n";
+    
+    receipt += "CUSTOMER SUMMARY\n";
+    receipt += "-".repeat(40) + "\n";
+    receipt += `Total Spent: $${customer.totalSpent.toFixed(2)}\n`;
+    receipt += `Total Visits: ${customer.totalVisits}\n`;
+    receipt += `Loyalty Points: ${customer.loyaltyPoints}\n\n`;
+    
+    receipt += "Thank you for your business!";
 
-      receipt += `\n *Total: $${total.toFixed(2)}*\n\n`;
-      receipt += `*CUSTOMER STATS*\n`;
-      receipt += `Total Spent: $${customer.totalSpent.toFixed(2)}\n`;
-      receipt += `Total Visits: ${customer.totalVisits}\n`;
-      receipt += `Loyalty Points: ${customer.loyaltyPoints}`;
-
-      return receipt;
-    } catch (error) {
-      console.error(
-        "[CommandService] Process sale with customer error:",
-        error
-      );
-      throw error;
-    }
+    return receipt;
+  } catch (error) {
+    console.error(
+      "[CommandService] Process sale with customer error:",
+      error
+    );
+    throw error;
   }
+}
 
   async handleCustomerCredit(shopId, text) {
     try {
@@ -2052,8 +2101,9 @@ Need help? Just type *help* anytime!`;
 
       receipt += `*ITEMS ON CREDIT*\n`;
       items.forEach((item) => {
-        receipt += `• ${item.quantity}x ${item.productName
-          } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
+        receipt += `• ${item.quantity}x ${
+          item.productName
+        } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
       });
 
       receipt += `\n*Total Credit: $${totalAmount.toFixed(2)}*\n\n`;
@@ -2118,12 +2168,13 @@ Need help? Just type *help* anytime!`;
       }
 
       if (amount > customer.currentBalance) {
-        return `*Payment Exceeds Debt*\n\n${customer.name
-          } owes: $${customer.currentBalance.toFixed(
-            2
-          )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
-            amount - customer.currentBalance
-          ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
+        return `*Payment Exceeds Debt*\n\n${
+          customer.name
+        } owes: $${customer.currentBalance.toFixed(
+          2
+        )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
+          amount - customer.currentBalance
+        ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
       }
 
       const previousBalance = customer.currentBalance;
@@ -2182,10 +2233,11 @@ Need help? Just type *help* anytime!`;
         !customer.creditTransactions ||
         customer.creditTransactions.length === 0
       ) {
-        return `*No Credit History*\n\n${customer.name
-          } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
-            2
-          )}`;
+        return `*No Credit History*\n\n${
+          customer.name
+        } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
+          2
+        )}`;
       }
 
       let history = `*CREDIT HISTORY*\n\n`;
@@ -2221,8 +2273,9 @@ Need help? Just type *help* anytime!`;
       });
 
       if (customer.creditTransactions.length > 10) {
-        history += `... and ${customer.creditTransactions.length - 10
-          } more transactions`;
+        history += `... and ${
+          customer.creditTransactions.length - 10
+        } more transactions`;
       }
 
       return history;
@@ -2566,106 +2619,128 @@ Need help? Just type *help* anytime!`;
     }
   }
 
-  getHelpText() {
-    return `*SMART SHOP ASSISTANT* - Complete Business Management
+getHelpText() {
+  return `SMART SHOP ASSISTANT - Business Management Tool
 
-*PRODUCT MANAGEMENT*
-• add bread 2.50 stock 100 - Add new product
+===============
+ CORE COMMANDS
+===============
+• help - Show this guide
+• register "Hello World" 1234
+• login 1234 - Access your account
+• logout - End session
+
+==================
+PRODUCT MANAGEMENT
+==================
+Add/Edit:
+• add bread 2.50 stock 100 - Add product
 • price bread 2.75 - Update price
 • stock bread 80 - Update stock
-• edit bread price 2.60 - Edit product details
+• edit bread price 2.60 - Edit details
 • delete bread - Remove product
-• list - View all products
-• low stock - Check low inventory
 
-*SALES & TRANSACTIONS*
-• sell 2 bread 1 milk - Record sale
-• sell 3 bread 2.25 - Custom pricing
+View:
+• list - All products
+• low stock - Low inventory
+
+====================
+SALES & TRANSACTIONS
+====================
+Record Sales:
+• sell 2 bread 1 milk - Standard sale
+• sell 3 bread 2.25 - Custom price
+
+Reports:
 • daily - Today's report
 • weekly - 7-day analysis
 • monthly - 30-day report
-• best - Top selling products
+• best - Top products
 
-*PDF REPORTS & EXPORT*
-• export daily - Generate daily PDF report
-• export weekly - Generate weekly PDF report  
-• export monthly - Generate monthly PDF report
-• export best - Generate weekly best sellers PDF
-• export best month - Generate monthly best sellers PDF
-• pdf daily - Same as export daily (alternative syntax)
+Cancel Sales:
+• cancel - Recent sales
+• cancel last [reason] - Cancel latest
+• cancel sale 2 [reason] - Cancel specific
+• cancel refunds - Refunds report
 
-*Cancel Sales:*
-• cancel - Show recent sales for cancellation
-• cancel last [reason] - Cancel most recent sale
-• cancel sale 2 [reason] - Cancel specific sale by number
-• cancel refunds - Show refunds report
-
-*Customer Management:*
-• customer add "John Doe" 1234567890 - Add new customer
-• customers - List all customers
-• customers active - Active customers (last 30 days)
-• customer John - View customer profile & history
+===================
+CUSTOMER MANAGEMENT
+===================
+Customers:
+• customer add "John" 1234567890 - Add
+• customers - All customers
+• customers active - Active (30 days)
+• customer John - Profile & history
 • customer 1234567890 - Find by phone
 
-*Customer Sales:*
-• sell to John 2 bread 1 milk - Sell to specific customer
-• sell to 1234567890 3 eggs 1 sugar - Sell by phone
+Customer Sales:
+• sell to John 2 bread 1 milk
+• sell to 1234567890 3 eggs 1 sugar
 
-*Credit & Payments:*
-• credit John 50.00 - Add credit (customer owes you)
-• payment John 50.00 - Record payment received
-• credit history John - View customer's credit history
+=================
+CREDIT & PAYMENTS
+=================
+• credit John 50.00 - Add credit
+• payment John 50.00 - Record payment
+• credit history John - Credit history
 
-*Place Orders:*
-• order John 2 bread 1 milk - Place pickup order
-• order John 2 bread 1 milk delivery - Delivery order
-• order John 2 bread 1 milk reservation - Reservation
-• order 1234567890 3 eggs 1 sugar - Order by phone
+=============
+ORDERS SYSTEM
+=============
+Place Orders:
+• order John 2 bread 1 milk - Pickup
+• order John 2 bread 1 milk delivery
+• order John 2 bread 1 milk reservation
 
-*Manage Orders:*
+Manage Orders:
 • orders - All orders
-• orders pending - Pending orders only
-• orders ready - Ready for pickup
-• order details A1B2 - Order details
-• confirm order A1B2 - Confirm order
-• ready order A1B2 - Mark as ready
-• complete order A1B2 - Complete order
-• cancel order A1B2 "reason" - Cancel order
+• orders pending - Pending
+• orders ready - Ready
+• order details A1B2 - Details
+• confirm order A1B2 - Confirm
+• ready order A1B2 - Mark ready
+• complete order A1B2 - Complete
+• cancel order A1B2 "reason" - Cancel
 
-*Record Expenses:*
-• expense 50.00 "supplier payment" - Basic expense
-• expense 25.50 transport cash - With category & payment
-• expense 1000.00 rent bank "July rent" - Detailed expense
-• expense 150.00 supplies cash INV123 - With receipt number
+=================
+EXPENSES & PROFIT
+=================
+Expenses:
+• expense 50.00 "supplier" - Basic
+• expense 25.50 transport cash
+• expense 1000.00 rent bank "July rent"
 
-*View Expenses:*
-• expenses daily - Today's expenses
-• expenses weekly - This week's expenses
-• expenses monthly - This month's expenses
-• expenses breakdown - Category breakdown
+View Expenses:
+• expenses daily - Today
+• expenses weekly - Week
+• expenses monthly - Month
+• expenses breakdown - Categories
 
-*Profit Calculation:*
-• profit daily - Today's profit (Revenue - Expenses)
-• profit weekly - Weekly profit analysis
-• profit monthly - Monthly profit & loss
+Profit:
+• profit daily - Today's profit
+• profit weekly - Weekly
+• profit monthly - Monthly
 
+===========
+PDF REPORTS
+===========
+• export daily - Daily PDF
+• export weekly - Weekly PDF  
+• export monthly - Monthly PDF
+• export best - Weekly best sellers
+• export best month - Monthly best
+• pdf daily - Alternative syntax
 
+===========
+QUICK START
+===========
+1. add bread 2.50
+2. sell 2 bread
+3. daily - Check sales
+4. profit daily - Calculate profit
 
-
-
-*ACCOUNT MANAGEMENT*
-• login 1234 - Access your account
-• logout - Secure logout
-• help - Show this guide
-
-*Pro Tips:*
-PDF reports include professional charts and insights
-Reports are automatically saved with timestamps
-Use monthly reports for strategic planning
-Best sellers reports help optimize inventory
-
-Type any command to get started!`;
-  }
+For detailed help on any command, type the command alone.`;
+}
 }
 
 export default new CommandService();
