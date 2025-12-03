@@ -1,29 +1,28 @@
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import config from './environment.js';
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect('mongodb+srv://sibandamakhosetive7_db_user:keIZPtBYenrdY9wj@cluster0.0jqd93f.mongodb.net/chartshop?retryWrites=true&w=majority&appName=Cluster0', {
+    console.log(`📊 Connecting to ${config.env} database...`);
+    const conn = await mongoose.connect(config.mongoUri, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
-    
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-    
-    // Handle connection events
-    mongoose.connection.on('error', (err) => {
-      console.error('MongoDB connection error:', err);
-    });
-    
+    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+    console.log(`📁 Database: ${conn.connection.db.databaseName}\n`);
+    if (config.features.enableDebug) mongoose.set('debug', true);
+    mongoose.connection.on('error', (err) => console.error('❌ MongoDB error:', err));
     mongoose.connection.on('disconnected', () => {
-      console.log('MongoDB disconnected');
+      console.log('⚠️  MongoDB disconnected');
+      if (config.env === 'production') setTimeout(connectDB, 5000);
     });
-    
   } catch (error) {
-    console.error('MongoDB connection failed:', error.message);
-    setTimeout(connectDB, 5000); // Retry after 5 seconds
+    console.error('❌ MongoDB connection failed:', error.message);
+    if (config.env === 'production') {
+      setTimeout(connectDB, 5000);
+    } else {
+      process.exit(1);
+    }
   }
 };
 
