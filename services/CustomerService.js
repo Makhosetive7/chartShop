@@ -361,7 +361,7 @@ generateCustomerHistoryMessage(customer, sales) {
   message += `Phone: ${customer.phone}\n`;
   
   if (customer.email) {
-    message += `📧 Email: ${customer.email}\n`;
+    message += `Email: ${customer.email}\n`;
   }
 
   message += `\n*STATISTICS*\n`;
@@ -371,7 +371,7 @@ generateCustomerHistoryMessage(customer, sales) {
 
   // Enhanced balance display
   if (customer.currentBalance !== 0) {
-    message += `\n*ACCOUNT BALANCE* 💳\n`;
+    message += `\n*ACCOUNT BALANCE* \n`;
     if (customer.currentBalance > 0) {
       message += `Currently Owes: $${customer.currentBalance.toFixed(2)}\n`;
       if (customer.creditLimit > 0) {
@@ -495,7 +495,7 @@ generateCustomerHistoryMessage(customer, sales) {
       message += `   ${lastPurchase}\n`;
 
       if (customer.currentBalance > 0) {
-        message += `   💳 Owes: $${customer.currentBalance.toFixed(2)}\n`;
+        message += `  Owes: $${customer.currentBalance.toFixed(2)}\n`;
       }
 
       message += `\n`;

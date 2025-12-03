@@ -50,7 +50,7 @@ class TelegramService {
       return response.data;
 
     } catch (error) {
-      console.error("❌ Error setting webhook:", error.response?.data || error.message);
+      console.error("Error setting webhook:", error.response?.data || error.message);
       throw error;
     }
   }

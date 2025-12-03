@@ -29,7 +29,19 @@ class CommandService {
     // Get shop for authenticated commands
     const shop = await Shop.findOne({ telegramId, isActive: true });
     if (!shop) {
-      return 'Please register or login first.\n\nUse: register [business name] [pin]\nOr: login [pin]\nExample: register "My Shop" 1234';
+      return `*Welcome to Chart Shop!*
+
+Hi there! I don't see an active shop setup for your account.
+
+*To get started:*
+• Register a new shop: \`register "Your Business Name" 1234\`
+• Login to existing shop: \`login 1234\`
+
+*Example:* 
+\`register "Bella's Boutique" 5678\`
+\`login 5678\`
+
+Need help? Just type *help* anytime!`;
     }
 
     if (command.startsWith("sell to")) {
@@ -191,10 +203,10 @@ class CommandService {
     try {
       const match =
         text.match(/register\s+"([^"]+)"\s+(\d{4})/i) ||
-        text.match(/register\s+(\w+)\s+(\d{4})/i);
+        text.match(/register\s+(\S+(?:\s+\S+)*?)\s+(\d{4})/i);
 
       if (!match) {
-        return 'Invalid format.\n\nUse: register [business name] [pin]\nExample: register "My Shop" 1234';
+        return ' *Registration Format*\n\nPlease use:\n• \`register "Business Name" 1234\`\n• \`register BusinessName 1234\`\n\n*Example:*\n\`register "Family Bakery" 5678\`\n\`register QuickMart 4321\`\n\n *Security Tip:* Use a unique 4-digit PIN you will remember.';
       }
 
       const businessName = match[1];
@@ -202,7 +214,7 @@ class CommandService {
 
       const existing = await Shop.findOne({ telegramId });
       if (existing) {
-        return "You are already registered!\n\nUse: login [pin]";
+        return "*Already Registered!*\n\nWelcome back! It looks like you already have an account.\n\n• To login: \`login ${existing.businessName.substring(0, 3)}***\`\n• Forgot PIN? Contact support.\n\nYou can only have one shop per Telegram account.";
       }
 
       const hashedPin = await bcrypt.hash(pin, 10);
@@ -358,30 +370,25 @@ class CommandService {
       });
 
       // Format receipt
-      let receipt = "*SALE RECORDED*\n\n";
+      let receipt = "SALE RECORDED\n\n";
       items.forEach((item) => {
-        const priceIndicator = item.isCustomPrice ? "💲" : "💰";
-        receipt += `${priceIndicator} ${item.quantity}x ${
-          item.productName
-        } @ $${item.price.toFixed(2)}`;
+        receipt += `${item.quantity}x ${item.productName} @ $${item.price.toFixed(2)}`;
 
         if (item.isCustomPrice) {
           receipt += ` (standard: $${item.standardPrice.toFixed(2)})`;
         }
         receipt += "\n";
 
-        // Show remaining stock
         if (item.product.trackStock) {
-          receipt += `   (${item.product.stock} remaining)`;
+          receipt += `   Stock: ${item.product.stock} units`;
 
-          // Low stock warning
           if (item.product.stock <= item.product.lowStockThreshold) {
-            receipt += ` low stock`;
+            receipt += ` [LOW]`;
           }
           receipt += "\n";
         }
       });
-      receipt += `\n*Total: $${total.toFixed(2)}*`;
+      receipt += `\nTOTAL: $${total.toFixed(2)}`;
 
       // Add low stock summary if any
       const lowStockItems = items.filter(
@@ -619,11 +626,10 @@ class CommandService {
       product.price = newPrice;
       await product.save();
 
-      return `*Price Updated Successfully!*\n\n${
-        product.name
-      }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
-        2
-      )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
+      return `*Price Updated Successfully!*\n\n${product.name
+        }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
+          2
+        )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
     } catch (error) {
       console.error("Update price error:", error);
       return "Failed to update price. Please try again.";
@@ -714,9 +720,8 @@ class CommandService {
           }
           oldValue = product.price;
           product.price = newValue;
-          response = `*Price Updated!*\n\n${
-            product.name
-          }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
+          response = `*Price Updated!*\n\n${product.name
+            }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
           break;
 
         case "stock":
@@ -923,15 +928,13 @@ class CommandService {
       report += `Items Sold: ${itemCount}\n`;
       report += `Transactions: ${sales.length}\n`;
       report += `Average per Sale: $${(total / sales.length).toFixed(2)}\n`;
-      report += `Vs Yesterday: ${
-        growth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(growth).toFixed(1)}%\n\n`;
+      report += `Vs Yesterday: ${growth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(growth).toFixed(1)}%\n\n`;
 
       report += `🛍️ *PRODUCT BREAKDOWN*\n`;
       Object.entries(productSales).forEach(([product, data]) => {
-        report += `• ${product}: ${
-          data.quantity
-        } units ($${data.revenue.toFixed(2)})\n`;
+        report += `• ${product}: ${data.quantity
+          } units ($${data.revenue.toFixed(2)})\n`;
       });
 
       // Today's best seller
@@ -1050,16 +1053,14 @@ class CommandService {
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Week: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${
-        revenueGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Week: ${previousItems}\n`;
-      report += `Growth: ${
-        volumeGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*TRANSACTION SUMMARY*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1077,10 +1078,9 @@ class CommandService {
       if (topProducts.length > 0) {
         report += `\n*TOP 5 PRODUCTS THIS WEEK*\n`;
         topProducts.forEach(([product, data], index) => {
-          const medals = ["Gold", "Silver", "Bronze", "4th", "5️th"];
-          report += `${medals[index]} ${product}: ${
-            data.quantity
-          } sold ($${data.revenue.toFixed(2)})\n`;
+          const medals = ["1st", "2nd", "3rd", "4th", "5️th"];
+          report += `${medals[index]} ${product}: ${data.quantity
+            } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1199,16 +1199,14 @@ class CommandService {
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Period: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${
-        revenueGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Period: ${previousItems}\n`;
-      report += `Growth: ${
-        volumeGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*BUSINESS METRICS*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1217,27 +1215,25 @@ class CommandService {
 
       report += `*WEEKLY PERFORMANCE*\n`;
       Object.entries(weeklyBreakdown).forEach(([week, data], index) => {
-        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${
-          data.items
-        } items)\n`;
+        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${data.items
+          } items)\n`;
       });
 
       if (topProducts.length > 0) {
         report += `\n*TOP PRODUCTS THIS MONTH*\n`;
         topProducts.forEach(([product, data], index) => {
           const medals = [
-            "Gold",
-            "Silver",
-            "Bronze",
+            "1st",
+            "2nd",
+            "3rd",
             "4️th",
             "5️th",
             "6️th",
             "7️th",
             "8️th",
           ];
-          report += `${medals[index]} ${product}: ${
-            data.quantity
-          } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${data.quantity
+            } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1317,9 +1313,9 @@ class CommandService {
 
       sortedProducts.forEach(([product, data], index) => {
         const medals = [
-          "Gold",
-          "Silver",
-          "Bronze",
+          "1st",
+          "2nd",
+          "3rd",
           "4️th",
           "5️th",
           "6️th",
@@ -1470,15 +1466,14 @@ class CommandService {
           ? days === 1
             ? "today's"
             : days === 7
-            ? "weekly"
-            : "monthly"
+              ? "weekly"
+              : "monthly"
           : reportType;
 
       const response = {
         type: "pdf_generating",
-        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${
-          sales.length
-        } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
+        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${sales.length
+          } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
       };
 
       // Generate PDF asynchronously and return file info
@@ -1799,7 +1794,7 @@ class CommandService {
       );
 
       if (!customer) {
-        return `*Customer Not Found* ❌\n\nNo customer found matching "${customerIdentifier}".\n\n*Add them first:*\ncustomer add "${customerIdentifier}" [phone]`;
+        return `*Customer Not Found* \n\nNo customer found matching "${customerIdentifier}".\n\n*Add them first:*\ncustomer add "${customerIdentifier}" [phone]`;
       }
 
       console.log("[CommandService] Found customer:", customer.name);
@@ -1865,7 +1860,7 @@ class CommandService {
         }
 
         if (product.trackStock && product.stock < quantity) {
-          return `*Insufficient Stock* ❌\n\n${product.name}\nRequested: ${quantity}\nAvailable: ${product.stock}`;
+          return `*Insufficient Stock* \n\n${product.name}\nRequested: ${quantity}\nAvailable: ${product.stock}`;
         }
 
         const finalPrice = price !== null ? price : product.price;
@@ -1934,9 +1929,8 @@ class CommandService {
 
       items.forEach((item) => {
         const priceIndicator = item.isCustomPrice ? "💲" : "💰";
-        receipt += `${priceIndicator} ${item.quantity}x ${
-          item.productName
-        } @ $${item.price.toFixed(2)}`;
+        receipt += `${priceIndicator} ${item.quantity}x ${item.productName
+          } @ $${item.price.toFixed(2)}`;
 
         if (item.isCustomPrice) {
           receipt += ` (reg: $${item.standardPrice.toFixed(2)})`;
@@ -1946,17 +1940,17 @@ class CommandService {
         if (item.product.trackStock) {
           receipt += `   (${item.product.stock} remaining)`;
           if (item.product.stock <= item.product.lowStockThreshold) {
-            receipt += ` ⚠️ LOW`;
+            receipt += ` LOW`;
           }
           receipt += "\n";
         }
       });
 
-      receipt += `\n💰 *Total: $${total.toFixed(2)}*\n\n`;
+      receipt += `\n *Total: $${total.toFixed(2)}*\n\n`;
       receipt += `*CUSTOMER STATS*\n`;
-      receipt += `📊 Total Spent: $${customer.totalSpent.toFixed(2)}\n`;
-      receipt += `🛒 Total Visits: ${customer.totalVisits}\n`;
-      receipt += `⭐ Loyalty Points: ${customer.loyaltyPoints}`;
+      receipt += `Total Spent: $${customer.totalSpent.toFixed(2)}\n`;
+      receipt += `Total Visits: ${customer.totalVisits}\n`;
+      receipt += `Loyalty Points: ${customer.loyaltyPoints}`;
 
       return receipt;
     } catch (error) {
@@ -2058,9 +2052,8 @@ class CommandService {
 
       receipt += `*ITEMS ON CREDIT*\n`;
       items.forEach((item) => {
-        receipt += `• ${item.quantity}x ${
-          item.productName
-        } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
+        receipt += `• ${item.quantity}x ${item.productName
+          } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
       });
 
       receipt += `\n*Total Credit: $${totalAmount.toFixed(2)}*\n\n`;
@@ -2125,13 +2118,12 @@ class CommandService {
       }
 
       if (amount > customer.currentBalance) {
-        return `*Payment Exceeds Debt*\n\n${
-          customer.name
-        } owes: $${customer.currentBalance.toFixed(
-          2
-        )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
-          amount - customer.currentBalance
-        ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
+        return `*Payment Exceeds Debt*\n\n${customer.name
+          } owes: $${customer.currentBalance.toFixed(
+            2
+          )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
+            amount - customer.currentBalance
+          ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
       }
 
       const previousBalance = customer.currentBalance;
@@ -2183,18 +2175,17 @@ class CommandService {
       );
 
       if (!customer) {
-        return `*Customer Not Found* ❌\n\nNo customer found matching "${customerIdentifier}".`;
+        return `*Customer Not Found* \n\nNo customer found matching "${customerIdentifier}".`;
       }
 
       if (
         !customer.creditTransactions ||
         customer.creditTransactions.length === 0
       ) {
-        return `*No Credit History*\n\n${
-          customer.name
-        } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
-          2
-        )}`;
+        return `*No Credit History*\n\n${customer.name
+          } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
+            2
+          )}`;
       }
 
       let history = `*CREDIT HISTORY*\n\n`;
@@ -2230,9 +2221,8 @@ class CommandService {
       });
 
       if (customer.creditTransactions.length > 10) {
-        history += `... and ${
-          customer.creditTransactions.length - 10
-        } more transactions`;
+        history += `... and ${customer.creditTransactions.length - 10
+          } more transactions`;
       }
 
       return history;
