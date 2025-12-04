@@ -7,15 +7,11 @@ import commandService from './services/commandService.js';
 import fs from 'fs';
 import path from 'path';
 
-// Load environment-specific config
+
+dotenv.config();
+
 const environment = process.env.NODE_ENV || 'development';
 console.log(`Starting server in ${environment} mode...`);
-
-if (environment === 'production') {
-  dotenv.config({ path: '.env.production' });
-} else {
-  dotenv.config({ path: '.env.development' });
-}
 
 const app = express();
 
@@ -96,7 +92,7 @@ async function startPolling() {
   if (isPolling) return;
   
   isPolling = true;
-  console.log('Starting polling mode...');
+  console.log('📡 Starting polling mode...');
   
   // Delete webhook first
   try {
@@ -152,7 +148,6 @@ function stopPolling() {
 
 // Start server
 app.listen(PORT, HOST, async () => {
-  console.log('═══════════════════════════════════════════════════════');
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Host: ${HOST}`);
@@ -164,20 +159,35 @@ app.listen(PORT, HOST, async () => {
     startPolling();
   } else {
     console.log(`Mode: WEBHOOK (Production)`);
-    if (process.env.WEBHOOK_URL) {
-      console.log(`Webhook: ${process.env.WEBHOOK_URL}`);
+    
+    // Construct webhook URL
+    let webhookUrl = process.env.WEBHOOK_URL;
+    
+    if (!webhookUrl && process.env.RAILWAY_STATIC_URL) {
+      webhookUrl = `https://${process.env.RAILWAY_STATIC_URL}/webhook/telegram`;
+    }
+    
+    if (webhookUrl) {
+      console.log(`Setting webhook to: ${webhookUrl}`);
       
       // Set webhook in production
       try {
-        await telegramService.setWebhook(process.env.WEBHOOK_URL);
-        console.log('Webhook set successfully');
+        const result = await telegramService.setWebhook(webhookUrl);
+        if (result.ok) {
+          console.log('Webhook set successfully');
+          console.log(`Webhook details:`, result);
+        } else {
+          console.error('Failed to set webhook:', result);
+        }
       } catch (error) {
-        console.error('Failed to set webhook:', error.message);
+        console.error('Webhook setup error:', error.message);
+        console.error('Full error:', error);
       }
+    } else {
+      console.error('No webhook URL configured!');
+      console.error('Set WEBHOOK_URL or RAILWAY_STATIC_URL environment variable');
     }
   }
-  
-  console.log('═══════════════════════════════════════════════════════');
 });
 
 // Graceful shutdown

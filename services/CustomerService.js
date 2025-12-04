@@ -2,9 +2,7 @@ import Customer from "../models/Customer.js";
 import Sale from "../models/Sale.js";
 
 class CustomerService {
-  /**
-   * Add a new customer with comprehensive validation
-   */
+  // Add a new customer with comprehensive validation
   async addCustomer(shopId, name, phone, email = "") {
     try {
       console.log('[CustomerService] Adding customer:', { shopId, name, phone, email });

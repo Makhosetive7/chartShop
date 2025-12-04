@@ -223,10 +223,10 @@ Need help? Just type *help* anytime!`;
         telegramId,
         businessName,
         pin: hashedPin,
-        isActive: true, // NEW: Auto-login after registration
+        isActive: true,
       });
 
-      return `*Registration successful!*\n\n Welcome, ${businessName}!\n\nUse: login [pin] to access your account.`;
+      return `*Registration successful!*\n\nWelcome, ${businessName}!\n\nYou have been automatically logged in.\n\nUse: login [pin] for future access to your account.`;
     } catch (error) {
       console.error("Register error:", error);
       return "Registration failed. Please try again.";
@@ -322,7 +322,6 @@ Need help? Just type *help* anytime!`;
           return `Product "${productName}" not found.\n\nType "list" to see available products.`;
         }
 
-        // Use custom price if provided, otherwise use product price
         const finalPrice = price !== null ? price : product.price;
 
         // Stock check
@@ -336,8 +335,8 @@ Need help? Just type *help* anytime!`;
           product: product,
           productName: product.name,
           quantity,
-          price: finalPrice, // Use the actual selling price
-          standardPrice: product.price, // Keep reference to standard price
+          price: finalPrice, 
+          standardPrice: product.price,
           isCustomPrice: price !== null,
           total: itemTotal,
         });
@@ -361,8 +360,8 @@ Need help? Just type *help* anytime!`;
           productId: item.productId,
           productName: item.productName,
           quantity: item.quantity,
-          price: item.price, // Actual selling price
-          standardPrice: item.standardPrice, // Standard price for reference
+          price: item.price, 
+          standardPrice: item.standardPrice,
           isCustomPrice: item.isCustomPrice,
           total: item.total,
         })),
@@ -2112,7 +2111,7 @@ async processSaleWithCustomer(shopId, itemsText, customer) {
         2
       )}\n`;
       receipt += `Added: $${totalAmount.toFixed(2)}\n`;
-      receipt += `Current Owes: $${customer.currentBalance.toFixed(2)} 🔴\n\n`;
+      receipt += `Current Owes: $${customer.currentBalance.toFixed(2)}\n\n`;
 
       if (customer.creditLimit > 0) {
         const remaining = customer.creditLimit - customer.currentBalance;
@@ -2399,10 +2398,9 @@ async processSaleWithCustomer(shopId, itemsText, customer) {
    */
   async handleOrderStatusUpdate(shopId, text) {
     try {
-      // Format: confirm order A1B2, ready order A1B2, complete order A1B2, cancel order A1B2 "reason"
       const parts = text.trim().split(" ");
-      const action = parts[0].toLowerCase(); // confirm, ready, complete, cancel
-      const command = parts[1]?.toLowerCase(); // order
+      const action = parts[0].toLowerCase(); 
+      const command = parts[1]?.toLowerCase();
       const orderIdentifier = parts[2];
       const notes = parts.slice(3).join(" ");
 
