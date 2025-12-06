@@ -1,6 +1,6 @@
-# 🛍️ ChatShop Business Bot
+# ChatShop Business Bot
 
-> **Complete Business Management System for Telegram**  
+> **Complete Business Management System for SMEs**  
 > Manage your entire business - from sales and inventory to customer relationships and financial reporting - directly from Telegram and whatsapp.
 
 ---
@@ -83,7 +83,7 @@ Visit: [@CHART_SHOP_bot](https://t.me/CHART_SHOP_Bot) or click [here](https://t.
 #### Register Your Business
 
 ```
-register "My Shop Name" 1234
+register "My Shop Name" password(****)
 ```
 
 #### Add Products & Start Selling
@@ -339,7 +339,6 @@ NET PROFIT: $1,075.00
 - **PIN-based Authentication**: Secure business access with 4-digit PIN
 - **Session Management**: Automatic logout after inactivity
 - **Data Encryption**: All data transmitted securely
-- **Backup Systems**: Regular automated backups
 
 ### Privacy Features
 
@@ -347,94 +346,6 @@ NET PROFIT: $1,075.00
 - Business information privacy
 - GDPR compliance ready
 - No third-party data sharing
-
----
-
-## Deployment
-
-### Deploy on Railway (Recommended)
-
-#### Step 1: Prerequisites
-
-- [Railway account](https://railway.app) (free tier available)
-- [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) account (free tier available)
-- Telegram Bot Token from [@BotFather](https://t.me/BotFather)
-
-#### Step 2: Setup MongoDB
-
-```bash
-1. Create MongoDB Atlas cluster
-2. Get connection string (MONGODB_URI)
-3. Whitelist all IPs (0.0.0.0/0) for Railway
-```
-
-#### Step 3: Create Telegram Bot
-
-```bash
-1. Message @BotFather on Telegram
-2. Send: /newbot
-3. Follow prompts to create bot
-4. Save the bot token
-```
-
-#### Step 4: Deploy to Railway
-
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new)
-
-```bash
-# Set environment variables in Railway:
-BOT_TOKEN=your_telegram_bot_token
-MONGODB_URI=your_mongodb_connection_string
-PORT=3000
-```
-
-#### Step 5: Set Webhook
-
-```bash
-# Railway will provide a URL like: https://your-app.railway.app
-# Bot automatically sets webhook on startup
-```
-
-#### Step 6: Verify Deployment
-
-```bash
-# Check health endpoint
-curl https://your-app.railway.app/health
-
-# Expected response:
-{"status":"ok","timestamp":"2025-12-03T..."}
-```
-
-### Local Development
-
-```bash
-# Clone repository
-git clone https://github.com/yourusername/chatshop-bot.git
-cd chatshop-bot
-
-# Install dependencies
-npm install
-
-# Create .env file
-BOT_TOKEN=your_bot_token
-MONGODB_URI=your_mongodb_uri
-PORT=3000
-
-# Run bot
-npm start
-
-# For development with auto-reload
-npm run dev
-```
-
-### Environment Variables
-
-| Variable      | Description                          | Required    |
-| ------------- | ------------------------------------ | ----------- |
-| `BOT_TOKEN`   | Telegram bot token from @BotFather   | ✅ Yes      |
-| `MONGODB_URI` | MongoDB connection string            | ✅ Yes      |
-| `PORT`        | Server port (default: 3000)          | ❌ Optional |
-| `NODE_ENV`    | Environment (production/development) | ❌ Optional |
 
 ---
 
@@ -512,86 +423,6 @@ profit monthly            # Strategic planning
 - **Error Reduction**: Fewer calculation mistakes
 - **Reporting Speed**: Instant vs hours/days
 - **Customer Satisfaction**: Faster service
-
----
-
-## Troubleshooting
-
-### Common Issues & Solutions
-
-| Issue                      | Solution                                  |
-| -------------------------- | ----------------------------------------- |
-| Bot not responding         | Check `/health` endpoint                  |
-| Webhook errors             | Review Railway logs: `railway logs`       |
-| Database connection failed | Verify `MONGODB_URI` in Railway variables |
-| PDF generation failed      | Check `reports/` directory permissions    |
-| Command not recognized     | Type `help` for correct syntax            |
-
-### Debug Commands
-
-```bash
-# Check bot health
-curl https://your-app.railway.app/health
-
-# View Railway logs
-railway logs
-
-# Test database connection
-# (Add to your bot code)
-mongoose.connection.on('connected', () => {
-  console.log('MongoDB connected successfully');
-});
-```
-
----
-
-## Implementation Roadmap
-
-### Phase 1: Core Setup (Week 1)
-
-- [ ] Register business and set PIN
-- [ ] Add all products with stock levels
-- [ ] Train staff on basic commands
-- [ ] Record first week of sales
-- [ ] Generate first daily reports
-
-### Phase 2: Advanced Features (Week 2-3)
-
-- [ ] Implement customer tracking
-- [ ] Set up expense tracking system
-- [ ] Create PDF report workflow
-- [ ] Establish order management process
-
-### Phase 3: Optimization (Month 2+)
-
-- [ ] Analyze sales patterns
-- [ ] Optimize inventory levels
-- [ ] Build customer loyalty programs
-- [ ] Integrate with accounting software
-
----
-
-## Support & Resources
-
-### Get Help
-
-- **Telegram Bot**: [@CHART_SHOP_bot](https://t.me/CHART_SHOP_bot)
-- **Command Guide**: Type `help` in bot
-- **Health Check**: `https://your-app.railway.app/health`
-
-### Documentation
-
-- [Complete Command Reference](#-complete-command-reference)
-- [Business Scenarios](#-real-world-business-scenarios)
-- [Deployment Guide](#-deployment)
-- [Troubleshooting](#-troubleshooting)
-
-### Training Materials
-
-- Staff Quick Guide (one-page reference)
-- Video Tutorials (step-by-step setup)
-- Business Case Studies
-- Troubleshooting Guide
 
 ---
 
@@ -695,35 +526,6 @@ git push origin feature/amazing-feature
 1. **Access**: Visit [@CHART_SHOP_bot](https://t.me/CHART_SHOP_bot)
 2. **Register**: `register "Your Business" 1234`
 3. **Start Selling**: `sell 2 bread 1 milk`
-
-### Quick Links
-
-- [Telegram Bot](https://t.me/CHART_SHOP_bot)
-- [Documentation](#-complete-command-reference)
-- [Deploy on Railway](https://railway.app/new)
-- [Get Support](#-support--resources)
-
----
-
-## Changelog
-
-### Version 1.0.0 (Current)
-
-- ✅ Core sales tracking
-- ✅ Inventory management
-- ✅ Customer management
-- ✅ Order system
-- ✅ Expense tracking
-- ✅ PDF reports
-- ✅ Profit calculation
-
-### Upcoming Features
-
-- 🔜 Multi-language support
-- 🔜 Mobile app
-- 🔜 Barcode scanning
-- 🔜 Payment processing
-- 🔜 Advanced analytics
 
 ---
 
