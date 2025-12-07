@@ -496,79 +496,81 @@ Need help? Just type *help* anytime!`;
     }
   }
 
-  async handleUpdateStock(shopId, text) {
-    try {
-      const parts = text.replace("stock ", "").trim().split(" ");
+async handleUpdateStock(shopId, text) {
+  try {
+    const parts = text.replace("stock ", "").trim().split(" ");
 
-      if (parts.length < 2) {
-        return "Invalid format.\n\nUse:\n• stock [product] [quantity]\n• stock +[product] [quantity] (add)\n• stock -[product] [quantity] (remove)\n\nExample: stock bread 50";
-      }
-
-      let productName = parts[0];
-      let quantity = parseInt(parts[1]);
-      let operation = "set";
-
-      // Check for +/- prefix
-      if (productName.startsWith("+")) {
-        operation = "add";
-        productName = productName.slice(1);
-      } else if (productName.startsWith("-")) {
-        operation = "remove";
-        productName = productName.slice(1);
-      }
-
-      if (isNaN(quantity) || quantity < 0) {
-        return "Invalid quantity. Please use a positive number.";
-      }
-
-      // Find product
-      const product = await Product.findOne({
-        shopId,
-        name: new RegExp(`^${productName}$`, "i"),
-        isActive: true,
-      });
-
-      if (!product) {
-        return `Product "${productName}" not found.\n\nType "list" to see available products.`;
-      }
-
-      // Update stock based on operation
-      let newStock;
-      let message;
-
-      switch (operation) {
-        case "add":
-          newStock = product.stock + quantity;
-          message = `Added ${quantity} units`;
-          break;
-        case "remove":
-          newStock = product.stock - quantity;
-          if (newStock < 0) {
-            return `Cannot remove ${quantity} units. Current stock: ${product.stock}`;
-          }
-          message = `Removed ${quantity} units`;
-          break;
-        case "set":
-        default:
-          newStock = quantity;
-          message = `Set to ${quantity} units`;
-          break;
-      }
-
-      product.stock = newStock;
-      await product.save();
-
-      // Check if stock is low
-      const isLowStock =
-        product.trackStock && newStock <= product.lowStockThreshold;
-      const lowStockWarning = isLowStock ? `\n\n*LOW STOCK WARNING!*` : "";
-
-      return `*Stock updated!*\n\n${product.name}\n${message}\nCurrent stock: ${newStock}${lowStockWarning}`;
-    } catch (error) {
-      console.error("Stock update error:", error);
-      return "Failed to update stock. Please try again.";
+    if (parts.length < 2) {
+      return "Invalid format.\n\nUse:\n• stock [product] [quantity] - Add to stock\n• stock =[product] [quantity] - Set exact stock\n• stock -[product] [quantity] - Remove from stock\n\nExamples:\n• stock bread 50 - Add 50 units\n• stock =bread 50 - Set to exactly 50\n• stock -bread 10 - Remove 10 units";
     }
+
+    let productName = parts[0];
+    let quantity = parseInt(parts[1]);
+    let operation = "add";
+
+    if (productName.startsWith("=")) {
+      operation = "set";
+      productName = productName.slice(1);
+    } else if (productName.startsWith("-")) {
+      operation = "remove";
+      productName = productName.slice(1);
+    } else if (productName.startsWith("+")) {
+      operation = "add";
+      productName = productName.slice(1);
+    }
+
+    if (isNaN(quantity) || quantity < 0) {
+      return "Invalid quantity. Please use a positive number.";
+    }
+
+    // Find product
+    const product = await Product.findOne({
+      shopId,
+      name: new RegExp(`^${productName}$`, "i"),
+      isActive: true,
+    });
+
+    if (!product) {
+      return `Product "${productName}" not found.\n\nType "list" to see available products.`;
+    }
+
+    // Update stock based on operation
+    let newStock;
+    let message;
+    const oldStock = product.stock;
+
+    switch (operation) {
+      case "add":
+        newStock = product.stock + quantity;
+        message = `Added ${quantity} units (was ${oldStock})`;
+        break;
+      case "remove":
+        newStock = product.stock - quantity;
+        if (newStock < 0) {
+          return `Cannot remove ${quantity} units. Current stock: ${product.stock}`;
+        }
+        message = `Removed ${quantity} units (was ${oldStock})`;
+        break;
+      case "set":
+        newStock = quantity;
+        message = `Set to exactly ${quantity} units (was ${oldStock})`;
+        break;
+    }
+
+    product.stock = newStock;
+    await product.save();
+
+    // Check if stock is low
+    const isLowStock =
+      product.trackStock && newStock <= product.lowStockThreshold;
+    const lowStockWarning = isLowStock ? `\n\n*LOW STOCK WARNING!*` : "";
+
+    return `*Stock Updated!*\n\n${product.name}\n${message}\nNew stock: ${newStock}${lowStockWarning}`;
+  } catch (error) {
+    console.error("Stock update error:", error);
+    return "Failed to update stock. Please try again.";
   }
+}
 
   async handleLowStock(shopId) {
     try {
@@ -2634,7 +2636,8 @@ PRODUCT MANAGEMENT
 Add/Edit:
 • add bread 2.50 stock 100 - Add product
 • price bread 2.75 - Update price
-• stock bread 80 - Update stock
+• stock +bread 80 - Update stock
+• stock -bread 20 - Reduce stock
 • edit bread price 2.60 - Edit details
 • delete bread - Remove product
 
