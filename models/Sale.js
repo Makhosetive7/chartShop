@@ -6,6 +6,37 @@ const saleSchema = new mongoose.Schema({
     ref: "Shop",
     required: true,
   },
+  type: {
+    type: String,
+    enum: ["cash", "credit", "laybye", "completed_laybye"],
+    default: "cash",
+  },
+  status: {
+    type: String,
+    enum: ["pending", "completed", "cancelled"],
+    default: "completed",
+  },
+  // for credit sales
+  amountPaid: {
+    type: Number,
+    default: 0,
+  },
+  balanceDue: {
+    type: Number,
+    default: 0,
+  },
+    profit: { 
+    type: Number, 
+    default: 0 
+  },
+  // for laybye
+  installments: [
+    {
+      amount: Number,
+      date: Date,
+      paymentMethod: String,
+    },
+  ],
   items: [
     {
       productId: {

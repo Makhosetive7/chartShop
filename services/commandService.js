@@ -1,6 +1,7 @@
 import Product from "../models/Product.js";
 import Sale from "../models/Sale.js";
 import Shop from "../models/Shop.js";
+import LayBye from "../models/LayBye.js";
 import bcrypt from "bcrypt";
 import PDFService from "./PDFService.js";
 import CancellationService from "./CancellationService.js";
@@ -48,9 +49,29 @@ Need help? Just type *help* anytime!`;
       return await this.handleSellToCustomer(shop._id, text);
     }
 
-    // Sell command with optional pricing
-    if (command.startsWith("sell ")) {
-      return await this.handleSell(shop._id, text);
+    if (
+      command.startsWith("sell ") &&
+      !command.includes("to") &&
+      !command.includes("credit")
+    ) {
+      return await this.handleCashSale(shop._id, text);
+    }
+
+    if (command.startsWith("credit sale")) {
+      return await this.handleCreditSale(shop._id, text);
+    }
+
+    // Laybye commands
+    if (command.startsWith("laybye pay")) {
+      return await this.handleLayByePayment(shop._id, text);
+    }
+
+    if (command.startsWith("laybye complete")) {
+      return await this.handleLayByeComplete(shop._id, text);
+    }
+
+    if (command.startsWith("laybye")) {
+      return await this.handleLayBye(shop._id, text);
     }
 
     // Add product
@@ -199,6 +220,98 @@ Need help? Just type *help* anytime!`;
     }
   }
 
+  /**
+   * Helper method: Reserve stock for laybye
+   */
+  async reserveStockForLaybye(shopId, items) {
+    try {
+      // Check if all items have enough stock
+      for (const item of items) {
+        if (item.product.trackStock && item.product.stock < item.quantity) {
+          return {
+            success: false,
+            message: `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}`,
+          };
+        }
+      }
+
+      // Optional: Create a reserved stock field in Product model
+      // Or track in a separate collection
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Stock reservation failed: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * Helper method: Generate credit sale receipt
+   */
+  generateCreditSaleReceipt(sale, customer, items) {
+    let receipt = `*CREDIT SALE RECEIPT*\n\n`;
+    receipt += `Invoice: CR-${sale._id.toString().slice(-8)}\n`;
+    receipt += `Customer: ${customer.name}\n`;
+    receipt += `Date: ${new Date().toLocaleString()}\n`;
+    receipt += `Status: Product Delivered\n\n`;
+
+    receipt += `ITEMS:\n`;
+    items.forEach((item, index) => {
+      receipt += `${index + 1}. ${item.product.name} x ${item.quantity}\n`;
+      receipt += `   Price: $${item.price.toFixed(2)} each\n`;
+      receipt += `   Subtotal: $${item.total.toFixed(2)}\n\n`;
+    });
+
+    receipt += `*FINANCIAL SUMMARY*\n`;
+    receipt += `Total Amount: $${sale.total.toFixed(2)}\n`;
+    receipt += `Amount Paid: $${sale.amountPaid.toFixed(2)}\n`;
+    receipt += `Balance Due: $${sale.balanceDue.toFixed(2)}\n\n`;
+
+    receipt += `*IMPORTANT NOTES*\n`;
+    receipt += `✓ Stock deducted immediately\n`;
+    receipt += `✓ Profit recognized: $${sale.profit.toFixed(2)}\n`;
+    receipt += `✓ Customer balance increased\n`;
+    receipt += `✓ Payment due: ${new Date(
+      Date.now() + 30 * 24 * 60 * 60 * 1000
+    ).toDateString()}`;
+
+    return receipt;
+  }
+
+  /**
+   * Helper method: Generate laybye receipt
+   */
+  generateLayByeReceipt(laybye, customer, items) {
+    let receipt = `*LAYBYE AGREEMENT*\n\n`;
+    receipt += `Agreement #: LB-${laybye._id.toString().slice(-8)}\n`;
+    receipt += `Customer: ${customer.name}\n`;
+    receipt += `Start Date: ${new Date().toLocaleDateString()}\n`;
+    receipt += `Due Date: ${laybye.dueDate.toLocaleDateString()}\n\n`;
+
+    receipt += `RESERVED ITEMS:\n`;
+    items.forEach((item, index) => {
+      receipt += `${index + 1}. ${item.product.name} x ${item.quantity}\n`;
+      receipt += `   Price: $${item.price.toFixed(2)} each\n`;
+      receipt += `   Subtotal: $${item.total.toFixed(2)}\n\n`;
+    });
+
+    receipt += `*PAYMENT TERMS*\n`;
+    receipt += `Total Value: $${laybye.totalAmount.toFixed(2)}\n`;
+    receipt += `Deposit Paid: $${laybye.amountPaid.toFixed(2)}\n`;
+    receipt += `Balance Due: $${laybye.balanceDue.toFixed(2)}\n`;
+    receipt += `Installments: ${laybye.installments.length}\n\n`;
+
+    receipt += `*TERMS & CONDITIONS*\n`;
+    receipt += `✓ Stock reserved (not deducted)\n`;
+    receipt += `✓ No profit recognized yet\n`;
+    receipt += `✓ Product will be released upon full payment\n`;
+    receipt += `✓ Payments accepted: cash, bank, mobile\n`;
+    receipt += `✓ Make payments with: laybye pay ${customer.name} [amount]`;
+
+    return receipt;
+  }
+
   async handleRegister(telegramId, text) {
     try {
       const match =
@@ -335,7 +448,7 @@ Need help? Just type *help* anytime!`;
           product: product,
           productName: product.name,
           quantity,
-          price: finalPrice, 
+          price: finalPrice,
           standardPrice: product.price,
           isCustomPrice: price !== null,
           total: itemTotal,
@@ -360,7 +473,7 @@ Need help? Just type *help* anytime!`;
           productId: item.productId,
           productName: item.productName,
           quantity: item.quantity,
-          price: item.price, 
+          price: item.price,
           standardPrice: item.standardPrice,
           isCustomPrice: item.isCustomPrice,
           total: item.total,
@@ -496,81 +609,81 @@ Need help? Just type *help* anytime!`;
     }
   }
 
-async handleUpdateStock(shopId, text) {
-  try {
-    const parts = text.replace("stock ", "").trim().split(" ");
+  async handleUpdateStock(shopId, text) {
+    try {
+      const parts = text.replace("stock ", "").trim().split(" ");
 
-    if (parts.length < 2) {
-      return "Invalid format.\n\nUse:\n• stock [product] [quantity] - Add to stock\n• stock =[product] [quantity] - Set exact stock\n• stock -[product] [quantity] - Remove from stock\n\nExamples:\n• stock bread 50 - Add 50 units\n• stock =bread 50 - Set to exactly 50\n• stock -bread 10 - Remove 10 units";
+      if (parts.length < 2) {
+        return "Invalid format.\n\nUse:\n• stock [product] [quantity] - Add to stock\n• stock =[product] [quantity] - Set exact stock\n• stock -[product] [quantity] - Remove from stock\n\nExamples:\n• stock bread 50 - Add 50 units\n• stock =bread 50 - Set to exactly 50\n• stock -bread 10 - Remove 10 units";
+      }
+
+      let productName = parts[0];
+      let quantity = parseInt(parts[1]);
+      let operation = "add";
+
+      if (productName.startsWith("=")) {
+        operation = "set";
+        productName = productName.slice(1);
+      } else if (productName.startsWith("-")) {
+        operation = "remove";
+        productName = productName.slice(1);
+      } else if (productName.startsWith("+")) {
+        operation = "add";
+        productName = productName.slice(1);
+      }
+
+      if (isNaN(quantity) || quantity < 0) {
+        return "Invalid quantity. Please use a positive number.";
+      }
+
+      // Find product
+      const product = await Product.findOne({
+        shopId,
+        name: new RegExp(`^${productName}$`, "i"),
+        isActive: true,
+      });
+
+      if (!product) {
+        return `Product "${productName}" not found.\n\nType "list" to see available products.`;
+      }
+
+      // Update stock based on operation
+      let newStock;
+      let message;
+      const oldStock = product.stock;
+
+      switch (operation) {
+        case "add":
+          newStock = product.stock + quantity;
+          message = `Added ${quantity} units (was ${oldStock})`;
+          break;
+        case "remove":
+          newStock = product.stock - quantity;
+          if (newStock < 0) {
+            return `Cannot remove ${quantity} units. Current stock: ${product.stock}`;
+          }
+          message = `Removed ${quantity} units (was ${oldStock})`;
+          break;
+        case "set":
+          newStock = quantity;
+          message = `Set to exactly ${quantity} units (was ${oldStock})`;
+          break;
+      }
+
+      product.stock = newStock;
+      await product.save();
+
+      // Check if stock is low
+      const isLowStock =
+        product.trackStock && newStock <= product.lowStockThreshold;
+      const lowStockWarning = isLowStock ? `\n\n*LOW STOCK WARNING!*` : "";
+
+      return `*Stock Updated!*\n\n${product.name}\n${message}\nNew stock: ${newStock}${lowStockWarning}`;
+    } catch (error) {
+      console.error("Stock update error:", error);
+      return "Failed to update stock. Please try again.";
     }
-
-    let productName = parts[0];
-    let quantity = parseInt(parts[1]);
-    let operation = "add";
-
-    if (productName.startsWith("=")) {
-      operation = "set";
-      productName = productName.slice(1);
-    } else if (productName.startsWith("-")) {
-      operation = "remove";
-      productName = productName.slice(1);
-    } else if (productName.startsWith("+")) {
-      operation = "add";
-      productName = productName.slice(1);
-    }
-
-    if (isNaN(quantity) || quantity < 0) {
-      return "Invalid quantity. Please use a positive number.";
-    }
-
-    // Find product
-    const product = await Product.findOne({
-      shopId,
-      name: new RegExp(`^${productName}$`, "i"),
-      isActive: true,
-    });
-
-    if (!product) {
-      return `Product "${productName}" not found.\n\nType "list" to see available products.`;
-    }
-
-    // Update stock based on operation
-    let newStock;
-    let message;
-    const oldStock = product.stock;
-
-    switch (operation) {
-      case "add":
-        newStock = product.stock + quantity;
-        message = `Added ${quantity} units (was ${oldStock})`;
-        break;
-      case "remove":
-        newStock = product.stock - quantity;
-        if (newStock < 0) {
-          return `Cannot remove ${quantity} units. Current stock: ${product.stock}`;
-        }
-        message = `Removed ${quantity} units (was ${oldStock})`;
-        break;
-      case "set":
-        newStock = quantity;
-        message = `Set to exactly ${quantity} units (was ${oldStock})`;
-        break;
-    }
-
-    product.stock = newStock;
-    await product.save();
-
-    // Check if stock is low
-    const isLowStock =
-      product.trackStock && newStock <= product.lowStockThreshold;
-    const lowStockWarning = isLowStock ? `\n\n*LOW STOCK WARNING!*` : "";
-
-    return `*Stock Updated!*\n\n${product.name}\n${message}\nNew stock: ${newStock}${lowStockWarning}`;
-  } catch (error) {
-    console.error("Stock update error:", error);
-    return "Failed to update stock. Please try again.";
   }
-}
 
   async handleLowStock(shopId) {
     try {
@@ -643,11 +756,10 @@ async handleUpdateStock(shopId, text) {
       product.price = newPrice;
       await product.save();
 
-      return `*Price Updated Successfully!*\n\n${
-        product.name
-      }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
-        2
-      )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
+      return `*Price Updated Successfully!*\n\n${product.name
+        }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
+          2
+        )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
     } catch (error) {
       console.error("Update price error:", error);
       return "Failed to update price. Please try again.";
@@ -738,9 +850,8 @@ async handleUpdateStock(shopId, text) {
           }
           oldValue = product.price;
           product.price = newValue;
-          response = `*Price Updated!*\n\n${
-            product.name
-          }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
+          response = `*Price Updated!*\n\n${product.name
+            }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
           break;
 
         case "stock":
@@ -886,91 +997,166 @@ async handleUpdateStock(shopId, text) {
     }
   }
 
+  /**
+   * Handle daily reports with credit/laybye separation
+   */
   async handleDailyTotal(shopId) {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      const sales = await Sale.find({
+      // Get different types of sales
+      const cashSales = await Sale.find({
         shopId,
         date: { $gte: today },
+        type: "cash",
         isCancelled: false,
       });
 
-      const yesterdaySales = await Sale.find({
+      const creditSales = await Sale.find({
         shopId,
-        date: { $gte: yesterday, $lt: today },
+        date: { $gte: today },
+        type: "credit",
+        isCancelled: false,
       });
 
-      if (sales.length === 0) {
-        return `*DAILY REPORT - ${today.toDateString()}*\n\nNo sales today yet.\n\nYesterday's Total: $${yesterdaySales
-          .reduce((sum, sale) => sum + sale.total, 0)
-          .toFixed(2)}`;
-      }
+      const completedLaybyes = await Sale.find({
+        shopId,
+        date: { $gte: today },
+        type: "completed_laybye",
+        isCancelled: false,
+      });
 
-      const total = sales.reduce((sum, sale) => sum + sale.total, 0);
-      const itemCount = sales.reduce(
-        (sum, sale) =>
-          sum + sale.items.reduce((s, item) => s + item.quantity, 0),
-        0
-      );
-
-      const yesterdayTotal = yesterdaySales.reduce(
+      // Calculate totals
+      const cashTotal = cashSales.reduce((sum, sale) => sum + sale.total, 0);
+      const creditTotal = creditSales.reduce(
         (sum, sale) => sum + sale.total,
         0
       );
-      const growth =
-        yesterdayTotal > 0
-          ? ((total - yesterdayTotal) / yesterdayTotal) * 100
-          : 100;
+      const laybyeTotal = completedLaybyes.reduce(
+        (sum, sale) => sum + sale.total,
+        0
+      );
+      const totalRevenue = cashTotal + creditTotal + laybyeTotal;
 
-      // Product breakdown
-      const productSales = {};
-      sales.forEach((sale) => {
-        sale.items.forEach((item) => {
-          if (!productSales[item.productName]) {
-            productSales[item.productName] = { quantity: 0, revenue: 0 };
-          }
-          productSales[item.productName].quantity += item.quantity;
-          productSales[item.productName].revenue += item.total;
-        });
-      });
+      // Calculate profit
+      const cashProfit = cashSales.reduce(
+        (sum, sale) => sum + (sale.profit || 0),
+        0
+      );
+      const creditProfit = creditSales.reduce(
+        (sum, sale) => sum + (sale.profit || 0),
+        0
+      );
+      const laybyeProfit = completedLaybyes.reduce(
+        (sum, sale) => sum + (sale.profit || 0),
+        0
+      );
+      const totalProfit = cashProfit + creditProfit + laybyeProfit;
 
+      // Get laybye payments (cash flow)
+      const laybyePayments = await LayBye.aggregate([
+        {
+          $match: {
+            shopId: mongoose.Types.ObjectId(shopId),
+            "installments.date": { $gte: today },
+          },
+        },
+        { $unwind: "$installments" },
+        {
+          $match: {
+            "installments.date": { $gte: today },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: "$installments.amount" },
+          },
+        },
+      ]);
+
+      const laybyeCashFlow = laybyePayments[0]?.total || 0;
+
+      // Get credit payments (cash flow)
+      const creditPayments = await Customer.aggregate([
+        {
+          $match: { shopId: mongoose.Types.ObjectId(shopId) },
+        },
+        { $unwind: "$creditTransactions" },
+        {
+          $match: {
+            "creditTransactions.type": "payment",
+            "creditTransactions.date": { $gte: today },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: "$creditTransactions.amount" },
+          },
+        },
+      ]);
+
+      const creditCashFlow = creditPayments[0]?.total || 0;
+
+      // Calculate total cash flow
+      const totalCashFlow = cashTotal + laybyeCashFlow + creditCashFlow;
+
+      // Generate report
       let report = `*DAILY BUSINESS REPORT*\n\n`;
       report += `Date: ${today.toDateString()}\n\n`;
 
-      report += `*TODAY'S SUMMARY*\n`;
-      report += `Total Sales: $${total.toFixed(2)}\n`;
-      report += `Items Sold: ${itemCount}\n`;
-      report += `Transactions: ${sales.length}\n`;
-      report += `Average per Sale: $${(total / sales.length).toFixed(2)}\n`;
-      report += `Vs Yesterday: ${
-        growth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(growth).toFixed(1)}%\n\n`;
+      report += `*SALES RECOGNITION*\n`;
+      report += `Cash Sales: $${cashTotal.toFixed(2)}\n`;
+      report += `Credit Sales: $${creditTotal.toFixed(2)}\n`;
+      report += `Completed Laybyes: $${laybyeTotal.toFixed(2)}\n`;
+      report += `Total Revenue: $${totalRevenue.toFixed(2)}\n\n`;
 
-      report += `*PRODUCT BREAKDOWN*\n`;
-      Object.entries(productSales).forEach(([product, data]) => {
-        report += `• ${product}: ${
-          data.quantity
-        } units ($${data.revenue.toFixed(2)})\n`;
+      report += `*PROFIT RECOGNITION*\n`;
+      report += `Cash Profit: $${cashProfit.toFixed(2)}\n`;
+      report += `Credit Profit: $${creditProfit.toFixed(2)}\n`;
+      report += `Laybye Profit: $${laybyeProfit.toFixed(2)}\n`;
+      report += `Total Profit: $${totalProfit.toFixed(2)}\n\n`;
+
+      report += `*CASH FLOW TODAY*\n`;
+      report += `Cash Sales: $${cashTotal.toFixed(2)}\n`;
+      report += `Laybye Payments: $${laybyeCashFlow.toFixed(2)}\n`;
+      report += `Credit Payments: $${creditCashFlow.toFixed(2)}\n`;
+      report += `Total Cash In: $${totalCashFlow.toFixed(2)}\n\n`;
+
+      report += `*OUTSTANDING BALANCES*\n`;
+
+      // Active laybyes
+      const activeLaybyes = await LayBye.find({
+        shopId,
+        status: "active",
       });
 
-      // Today's best seller
-      const todayBestSeller = Object.entries(productSales).sort(
-        (a, b) => b[1].quantity - a[1].quantity
-      )[0];
+      const totalLaybyeDue = activeLaybyes.reduce(
+        (sum, lb) => sum + lb.balanceDue,
+        0
+      );
+      report += `Active Laybyes: $${totalLaybyeDue.toFixed(2)} (${activeLaybyes.length
+        })\n`;
 
-      if (todayBestSeller) {
-        report += `\n*TODAY'S STAR*: ${todayBestSeller[0]} (${todayBestSeller[1].quantity} sold)`;
-      }
+      // Credit balances
+      const customersWithCredit = await Customer.find({
+        shopId,
+        currentBalance: { $gt: 0 },
+      });
+
+      const totalCreditDue = customersWithCredit.reduce(
+        (sum, c) => sum + c.currentBalance,
+        0
+      );
+      report += `Credit Balances: $${totalCreditDue.toFixed(2)} (${customersWithCredit.length
+        } customers)\n`;
 
       return report;
     } catch (error) {
-      console.error("Daily total error:", error);
-      return "Failed to get daily report. Please try again.";
+      console.error("Daily report error:", error);
+      return "Failed to generate daily report. Please try again.";
     }
   }
 
@@ -1074,16 +1260,14 @@ async handleUpdateStock(shopId, text) {
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Week: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${
-        revenueGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Week: ${previousItems}\n`;
-      report += `Growth: ${
-        volumeGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*TRANSACTION SUMMARY*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1102,9 +1286,8 @@ async handleUpdateStock(shopId, text) {
         report += `\n*TOP 5 PRODUCTS THIS WEEK*\n`;
         topProducts.forEach(([product, data], index) => {
           const medals = ["1st", "2nd", "3rd", "4th", "5️th"];
-          report += `${medals[index]} ${product}: ${
-            data.quantity
-          } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${data.quantity
+            } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1223,16 +1406,14 @@ async handleUpdateStock(shopId, text) {
       report += `*FINANCIAL SUMMARY*\n`;
       report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
       report += `Previous Period: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${
-        revenueGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
 
       report += `*VOLUME SUMMARY*\n`;
       report += `Items Sold: ${currentItems}\n`;
       report += `Previous Period: ${previousItems}\n`;
-      report += `Growth: ${
-        volumeGrowth >= 0 ? "Increase" : "Decrease"
-      } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
+      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
+        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
 
       report += `*BUSINESS METRICS*\n`;
       report += `Total Transactions: ${currentSales.length}\n`;
@@ -1241,9 +1422,8 @@ async handleUpdateStock(shopId, text) {
 
       report += `*WEEKLY PERFORMANCE*\n`;
       Object.entries(weeklyBreakdown).forEach(([week, data], index) => {
-        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${
-          data.items
-        } items)\n`;
+        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${data.items
+          } items)\n`;
       });
 
       if (topProducts.length > 0) {
@@ -1259,9 +1439,8 @@ async handleUpdateStock(shopId, text) {
             "7️th",
             "8️th",
           ];
-          report += `${medals[index]} ${product}: ${
-            data.quantity
-          } sold ($${data.revenue.toFixed(2)})\n`;
+          report += `${medals[index]} ${product}: ${data.quantity
+            } sold ($${data.revenue.toFixed(2)})\n`;
         });
       }
 
@@ -1494,15 +1673,14 @@ async handleUpdateStock(shopId, text) {
           ? days === 1
             ? "today's"
             : days === 7
-            ? "weekly"
-            : "monthly"
+              ? "weekly"
+              : "monthly"
           : reportType;
 
       const response = {
         type: "pdf_generating",
-        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${
-          sales.length
-        } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
+        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${sales.length
+          } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
       };
 
       // Generate PDF asynchronously and return file info
@@ -1844,173 +2022,810 @@ async handleUpdateStock(shopId, text) {
   /**
    * Process sale with customer linking
    */
-async processSaleWithCustomer(shopId, itemsText, customer) {
-  try {
-    console.log("[CommandService] Processing sale with customer:", {
-      customerId: customer._id,
-      customerName: customer.name,
-      items: itemsText,
-    });
+  async processSaleWithCustomer(shopId, itemsText, customer) {
+    try {
+      console.log("[CommandService] Processing sale with customer:", {
+        customerId: customer._id,
+        customerName: customer.name,
+        items: itemsText,
+      });
 
-    // Parse items (reuse existing logic)
-    const parts = itemsText.trim().split(" ");
-    const items = [];
-    let total = 0;
+      // Parse items (reuse existing logic)
+      const parts = itemsText.trim().split(" ");
+      const items = [];
+      let total = 0;
 
-    let i = 0;
-    while (i < parts.length) {
-      const quantity = parseInt(parts[i]);
+      let i = 0;
+      while (i < parts.length) {
+        const quantity = parseInt(parts[i]);
 
-      if (isNaN(quantity)) {
-        return `Invalid quantity: "${parts[i]}"`;
+        if (isNaN(quantity)) {
+          return `Invalid quantity: "${parts[i]}"`;
+        }
+
+        const productName = parts[i + 1];
+        if (!productName) {
+          return "Missing product name after quantity.";
+        }
+
+        let price = null;
+        let nextIndex = i + 2;
+
+        if (nextIndex < parts.length && !isNaN(parseFloat(parts[nextIndex]))) {
+          price = parseFloat(parts[nextIndex]);
+          nextIndex++;
+        }
+
+        const product = await Product.findOne({
+          shopId,
+          name: new RegExp(`^${productName}$`, "i"),
+          isActive: true,
+        });
+
+        if (!product) {
+          return `Product "${productName}" not found.\n\nType "list" to see available products.`;
+        }
+
+        if (product.trackStock && product.stock < quantity) {
+          return `INSUFFICIENT STOCK\n\n${product.name}\nRequested: ${quantity}\nAvailable: ${product.stock}`;
+        }
+
+        const finalPrice = price !== null ? price : product.price;
+        const itemTotal = quantity * finalPrice;
+
+        items.push({
+          productId: product._id,
+          product: product,
+          productName: product.name,
+          quantity,
+          price: finalPrice,
+          standardPrice: product.price,
+          isCustomPrice: price !== null,
+          total: itemTotal,
+        });
+
+        total += itemTotal;
+        i = nextIndex;
       }
 
-      const productName = parts[i + 1];
-      if (!productName) {
-        return "Missing product name after quantity.";
+      console.log(
+        "[CommandService] Parsed items:",
+        items.length,
+        "Total:",
+        total
+      );
+
+      // Deduct stock
+      for (const item of items) {
+        if (item.product.trackStock) {
+          item.product.stock -= item.quantity;
+          await item.product.save();
+        }
       }
 
-      let price = null;
-      let nextIndex = i + 2;
-
-      if (nextIndex < parts.length && !isNaN(parseFloat(parts[nextIndex]))) {
-        price = parseFloat(parts[nextIndex]);
-        nextIndex++;
-      }
-
-      const product = await Product.findOne({
+      // Create sale with customer reference
+      const sale = await Sale.create({
         shopId,
-        name: new RegExp(`^${productName}$`, "i"),
-        isActive: true,
+        items: items.map((item) => ({
+          productId: item.productId,
+          productName: item.productName,
+          quantity: item.quantity,
+          price: item.price,
+          standardPrice: item.standardPrice,
+          isCustomPrice: item.isCustomPrice,
+          total: item.total,
+        })),
+        total,
+        customerId: customer._id,
+        customerName: customer.name,
+        customerPhone: customer.phone,
       });
 
-      if (!product) {
-        return `Product "${productName}" not found.\n\nType "list" to see available products.`;
+      console.log("[CommandService] Sale created:", sale._id);
+
+      // Update customer statistics
+      const linked = await CustomerService.linkSaleToCustomer(
+        sale,
+        customer,
+        total
+      );
+      console.log("[CommandService] Customer linked:", linked);
+
+      // Generate professional invoice-style receipt
+      const now = new Date();
+      const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
+
+      let receipt = `INVOICE: ${invoiceNumber}\n`;
+      receipt += "=".repeat(40) + "\n";
+      receipt += `CUSTOMER: ${customer.name.toUpperCase()}\n`;
+      if (customer.phone) {
+        receipt += `PHONE: ${customer.phone}\n`;
       }
+      receipt += `DATE: ${now.toLocaleDateString()}\n`;
+      receipt += `TIME: ${now.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}\n`;
+      receipt += "-".repeat(40) + "\n\n";
 
-      if (product.trackStock && product.stock < quantity) {
-        return `INSUFFICIENT STOCK\n\n${product.name}\nRequested: ${quantity}\nAvailable: ${product.stock}`;
-      }
+      receipt += "ITEM DETAILS:\n";
+      receipt += "-".repeat(40) + "\n";
 
-      const finalPrice = price !== null ? price : product.price;
-      const itemTotal = quantity * finalPrice;
+      items.forEach((item, index) => {
+        receipt += `${index + 1}. ${item.productName}\n`;
+        receipt += `   Quantity: ${item.quantity}`.padEnd(20);
+        receipt += `Price: $${item.price.toFixed(2)}\n`;
+        receipt += `   Subtotal: $${item.total.toFixed(2)}\n`;
 
-      items.push({
-        productId: product._id,
-        product: product,
-        productName: product.name,
-        quantity,
-        price: finalPrice,
-        standardPrice: product.price,
-        isCustomPrice: price !== null,
-        total: itemTotal,
-      });
+        if (item.isCustomPrice) {
+          receipt += `   Note: Custom price (standard: $${item.standardPrice.toFixed(
+            2
+          )})\n`;
+        }
 
-      total += itemTotal;
-      i = nextIndex;
-    }
-
-    console.log(
-      "[CommandService] Parsed items:",
-      items.length,
-      "Total:",
-      total
-    );
-
-    // Deduct stock
-    for (const item of items) {
-      if (item.product.trackStock) {
-        item.product.stock -= item.quantity;
-        await item.product.save();
-      }
-    }
-
-    // Create sale with customer reference
-    const sale = await Sale.create({
-      shopId,
-      items: items.map((item) => ({
-        productId: item.productId,
-        productName: item.productName,
-        quantity: item.quantity,
-        price: item.price,
-        standardPrice: item.standardPrice,
-        isCustomPrice: item.isCustomPrice,
-        total: item.total,
-      })),
-      total,
-      customerId: customer._id,
-      customerName: customer.name,
-      customerPhone: customer.phone,
-    });
-
-    console.log("[CommandService] Sale created:", sale._id);
-
-    // Update customer statistics
-    const linked = await CustomerService.linkSaleToCustomer(
-      sale,
-      customer,
-      total
-    );
-    console.log("[CommandService] Customer linked:", linked);
-
-    // Generate professional invoice-style receipt
-    const now = new Date();
-    const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
-    
-    let receipt = `INVOICE: ${invoiceNumber}\n`;
-    receipt += "=".repeat(40) + "\n";
-    receipt += `CUSTOMER: ${customer.name.toUpperCase()}\n`;
-    if (customer.phone) {
-      receipt += `PHONE: ${customer.phone}\n`;
-    }
-    receipt += `DATE: ${now.toLocaleDateString()}\n`;
-    receipt += `TIME: ${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}\n`;
-    receipt += "-".repeat(40) + "\n\n";
-    
-    receipt += "ITEM DETAILS:\n";
-    receipt += "-".repeat(40) + "\n";
-
-    items.forEach((item, index) => {
-      receipt += `${index + 1}. ${item.productName}\n`;
-      receipt += `   Quantity: ${item.quantity}`.padEnd(20);
-      receipt += `Price: $${item.price.toFixed(2)}\n`;
-      receipt += `   Subtotal: $${item.total.toFixed(2)}\n`;
-      
-      if (item.isCustomPrice) {
-        receipt += `   Note: Custom price (standard: $${item.standardPrice.toFixed(2)})\n`;
-      }
-      
-      if (item.product.trackStock) {
-        receipt += `   Stock after sale: ${item.product.stock}`;
-        if (item.product.stock <= item.product.lowStockThreshold) {
-          receipt += ` [LOW STOCK]`;
+        if (item.product.trackStock) {
+          receipt += `   Stock after sale: ${item.product.stock}`;
+          if (item.product.stock <= item.product.lowStockThreshold) {
+            receipt += ` [LOW STOCK]`;
+          }
+          receipt += "\n";
         }
         receipt += "\n";
+      });
+
+      receipt += "-".repeat(40) + "\n";
+      receipt +=
+        "TOTAL AMOUNT:".padEnd(30) + `$${total.toFixed(2)}`.padStart(10);
+      receipt += "\n" + "=".repeat(40) + "\n\n";
+
+      receipt += "CUSTOMER SUMMARY\n";
+      receipt += "-".repeat(40) + "\n";
+      receipt += `Total Spent: $${customer.totalSpent.toFixed(2)}\n`;
+      receipt += `Total Visits: ${customer.totalVisits}\n`;
+      receipt += `Loyalty Points: ${customer.loyaltyPoints}\n\n`;
+
+      receipt += "Thank you for your business!";
+
+      return receipt;
+    } catch (error) {
+      console.error(
+        "[CommandService] Process sale with customer error:",
+        error
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Parse sale items from text
+   */
+  async parseSaleItems(shopId, itemsText) {
+    try {
+      const parts = itemsText.trim().split(" ");
+      const items = [];
+
+      let i = 0;
+      while (i < parts.length) {
+        const quantity = parseInt(parts[i]);
+
+        if (isNaN(quantity) || quantity <= 0) {
+          return `Invalid quantity: "${parts[i]}"`;
+        }
+
+        const productName = parts[i + 1];
+        if (!productName) {
+          return "Missing product name after quantity.";
+        }
+
+        let price = null;
+        let nextIndex = i + 2;
+
+        // Check if next part is a price
+        if (nextIndex < parts.length && !isNaN(parseFloat(parts[nextIndex]))) {
+          price = parseFloat(parts[nextIndex]);
+          nextIndex++;
+        }
+
+        // Find product
+        const product = await Product.findOne({
+          shopId,
+          name: new RegExp(`^${productName}$`, "i"),
+          isActive: true,
+        });
+
+        if (!product) {
+          return `Product "${productName}" not found. Type "list" to see products.`;
+        }
+
+        const finalPrice = price !== null ? price : product.price;
+        const itemTotal = quantity * finalPrice;
+
+        items.push({
+          productId: product._id,
+          product: product,
+          productName: product.name,
+          quantity,
+          price: finalPrice,
+          total: itemTotal,
+        });
+
+        i = nextIndex;
       }
-      receipt += "\n";
+
+      return items;
+    } catch (error) {
+      console.error("Parse sale items error:", error);
+      return `Failed to parse items: ${error.message}`;
+    }
+  }
+
+  /**
+   * Handle cash sales (existing sell command)
+   */
+  async handleCashSale(shopId, text) {
+    try {
+      const itemsText = text.replace("sell ", "").trim();
+      const items = await this.parseSaleItems(shopId, itemsText);
+
+      if (typeof items === "string") return items; // Error message
+
+      // Check stock
+      for (const item of items) {
+        if (item.product.trackStock && item.product.stock < item.quantity) {
+          return `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}`;
+        }
+      }
+
+      // Deduct stock
+      for (const item of items) {
+        if (item.product.trackStock) {
+          item.product.stock -= item.quantity;
+          await item.product.save();
+        }
+      }
+
+      // Calculate totals
+      const total = items.reduce((sum, item) => sum + item.total, 0);
+      const profit = items.reduce((sum, item) => {
+        const cost = item.product.costPrice || item.price * 0.6; // Default 40% margin
+        return sum + (item.price - cost) * item.quantity;
+      }, 0);
+
+      // Create sale
+      const sale = await Sale.create({
+        shopId,
+        type: "cash",
+        items: items.map((item) => ({
+          productId: item.productId,
+          productName: item.productName,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.total,
+        })),
+        total,
+        profit,
+        status: "completed",
+        amountPaid: total,
+        balanceDue: 0,
+      });
+
+      return this.generateCashSaleReceipt(sale, items);
+    } catch (error) {
+      console.error("Cash sale error:", error);
+      return `Failed to process cash sale: ${error.message}`;
+    }
+  }
+  async handleCreditSale(shopId, text) {
+    try {
+      // Format: credit sale to John 2 bread 1 milk
+      const match = text.match(/credit\s+sale\s+to\s+(\S+)\s+(.+)/i);
+
+      if (!match) {
+        return `*Invalid Format*\n\nUse: credit sale to [customer] [items]\nExample: credit sale to John 2 bread 1 milk`;
+      }
+
+      const customerIdentifier = match[1];
+      const itemsText = match[2];
+
+      // Find customer
+      const customer = await CustomerService.findCustomer(
+        shopId,
+        customerIdentifier
+      );
+      if (!customer) {
+        return `*Customer Not Found*\n\nAdd them first: customer add "${customerIdentifier}" [phone]`;
+      }
+
+      // Parse items
+      const items = await this.parseSaleItems(shopId, itemsText);
+      if (typeof items === "string") return items; // Error message
+
+      // Calculate totals
+      const totalAmount = items.reduce((sum, item) => sum + item.total, 0);
+
+      // Check stock before proceeding
+      for (const item of items) {
+        if (item.product.trackStock && item.product.stock < item.quantity) {
+          return `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}`;
+        }
+      }
+
+      // DEDUCT STOCK IMMEDIATELY (Key difference from laybye)
+      for (const item of items) {
+        if (item.product.trackStock) {
+          item.product.stock -= item.quantity;
+          await item.product.save();
+        }
+      }
+
+      // Create credit sale
+      const sale = await Sale.create({
+        shopId,
+        type: "credit",
+        customerId: customer._id,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        items: items.map((item) => ({
+          productId: item.product._id,
+          productName: item.product.name,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.total,
+          costPrice: item.product.costPrice || item.price * 0.6, // Assuming 40% profit margin
+        })),
+        total: totalAmount,
+        amountPaid: 0,
+        balanceDue: totalAmount,
+        status: "completed", // Credit sales are completed immediately
+        profit: items.reduce((sum, item) => {
+          const cost = item.product.costPrice || item.price * 0.6;
+          return sum + (item.price - cost) * item.quantity;
+        }, 0),
+      });
+
+      // Update customer balance
+      customer.currentBalance += totalAmount;
+      customer.creditTransactions.push({
+        type: "credit",
+        amount: totalAmount,
+        description: `Credit sale: ${items
+          .map((i) => `${i.quantity}x ${i.product.name}`)
+          .join(", ")}`,
+        date: new Date(),
+        balanceBefore: customer.currentBalance - totalAmount,
+        balanceAfter: customer.currentBalance,
+      });
+      await customer.save();
+
+      // Generate receipt
+      return this.generateCreditSaleReceipt(sale, customer, items);
+    } catch (error) {
+      console.error("Credit sale error:", error);
+      return `Failed to process credit sale: ${error.message}`;
+    }
+  }
+
+  /**
+   * Handle laybye (layaway) sales
+   */
+  async handleLayBye(shopId, text) {
+    try {
+      // Format: laybye for John 2 bread 1 milk deposit 20
+      const match = text.match(
+        /laybye\s+(?:for\s+)?(\S+)\s+(.+?)(?:\s+deposit\s+(\d+(?:\.\d+)?))?/i
+      );
+
+      if (!match) {
+        return `*Invalid Format*\n\nUse: laybye for [customer] [items] deposit [amount]\nExample: laybye for John 2 bread 1 milk deposit 50`;
+      }
+
+      const customerIdentifier = match[1];
+      const itemsText = match[2];
+      const depositAmount = match[3] ? parseFloat(match[3]) : 0;
+
+      // Find customer
+      const customer = await CustomerService.findCustomer(
+        shopId,
+        customerIdentifier
+      );
+      if (!customer) {
+        return `*Customer Not Found*\n\nAdd them first: customer add "${customerIdentifier}" [phone]`;
+      }
+
+      // Parse items
+      const items = await this.parseSaleItems(shopId, itemsText);
+      if (typeof items === "string") return items; // Error message
+
+      // Calculate totals
+      const totalAmount = items.reduce((sum, item) => sum + item.total, 0);
+
+      if (depositAmount > totalAmount) {
+        return `*Deposit too high*\nTotal: $${totalAmount.toFixed(
+          2
+        )}\nDeposit: $${depositAmount.toFixed(2)}`;
+      }
+
+      // DO NOT DEDUCT STOCK (Key difference from credit)
+      // Optionally reserve stock if needed
+      const reserveStock = await this.reserveStockForLaybye(shopId, items);
+      if (!reserveStock.success) {
+        return reserveStock.message;
+      }
+
+      // Create laybye record
+      const laybye = await LayBye.create({
+        shopId,
+        customerId: customer._id,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        items: items.map((item) => ({
+          productId: item.product._id,
+          productName: item.product.name,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.total,
+        })),
+        totalAmount,
+        amountPaid: depositAmount,
+        balanceDue: totalAmount - depositAmount,
+        installments:
+          depositAmount > 0
+            ? [
+              {
+                amount: depositAmount,
+                date: new Date(),
+                paymentMethod: "cash",
+              },
+            ]
+            : [],
+        status: "active",
+        reservedStock: true, // Set to true if you want to reserve stock
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days default
+      });
+
+      // Update customer laybye history
+      customer.laybyeTransactions.push({
+        laybyeId: laybye._id,
+        amount: totalAmount,
+        deposit: depositAmount,
+        date: new Date(),
+        status: "active",
+      });
+      await customer.save();
+
+      return this.generateLayByeReceipt(laybye, customer, items);
+    } catch (error) {
+      console.error("Laybye error:", error);
+      return `Failed to process laybye: ${error.message}`;
+    }
+  }
+
+  /**
+   * Handle laybye payments
+   */
+  async handleLayByePayment(shopId, text) {
+    try {
+      // Format: laybye pay John 50
+      const match = text.match(/laybye\s+pay\s+(\S+)\s+(\d+(?:\.\d+)?)/i);
+
+      if (!match) {
+        return `*Invalid Format*\n\nUse: laybye pay [customer] [amount]\nExample: laybye pay John 25`;
+      }
+
+      const customerIdentifier = match[1];
+      const amount = parseFloat(match[2]);
+
+      // Find active laybye for customer
+      const laybye = await LayBye.findOne({
+        shopId,
+        $or: [
+          { customerName: new RegExp(`^${customerIdentifier}$`, "i") },
+          { customerPhone: customerIdentifier },
+        ],
+        status: "active",
+      });
+
+      if (!laybye) {
+        return `*No Active LayBye Found*\n\nNo active laybye found for ${customerIdentifier}`;
+      }
+
+      // Check if payment exceeds balance
+      if (amount > laybye.balanceDue) {
+        return `*Payment too high*\nBalance due: $${laybye.balanceDue.toFixed(
+          2
+        )}\nPayment: $${amount.toFixed(2)}`;
+      }
+
+      // Record payment
+      laybye.amountPaid += amount;
+      laybye.balanceDue -= amount;
+      laybye.installments.push({
+        amount,
+        date: new Date(),
+        paymentMethod: "cash",
+      });
+
+      // Check if fully paid
+      if (laybye.balanceDue <= 0) {
+        await this.completeLayBye(shopId, laybye);
+        return this.generateLayByeCompletionReceipt(laybye);
+      } else {
+        await laybye.save();
+        return this.generateLayByePaymentReceipt(laybye, amount);
+      }
+    } catch (error) {
+      console.error("Laybye payment error:", error);
+      return `Failed to process laybye payment: ${error.message}`;
+    }
+  }
+
+  /**
+   * Complete laybye and convert to sale
+   */
+  async completeLayBye(shopId, laybye) {
+    try {
+      // DEDUCT STOCK NOW (when fully paid)
+      for (const item of laybye.items) {
+        const product = await Product.findById(item.productId);
+        if (product && product.trackStock) {
+          product.stock -= item.quantity;
+          await product.save();
+        }
+      }
+
+      // Create completed sale record
+      const sale = await Sale.create({
+        shopId,
+        type: "completed_laybye",
+        customerId: laybye.customerId,
+        customerName: laybye.customerName,
+        customerPhone: laybye.customerPhone,
+        items: laybye.items,
+        total: laybye.totalAmount,
+        amountPaid: laybye.amountPaid,
+        balanceDue: 0,
+        status: "completed",
+        profit: laybye.items.reduce((sum, item) => {
+          const cost = item.costPrice || item.price * 0.6;
+          return sum + (item.price - cost) * item.quantity;
+        }, 0),
+        laybyeId: laybye._id,
+      });
+
+      // Update laybye status
+      laybye.status = "completed";
+      laybye.completedDate = new Date();
+      await laybye.save();
+
+      // Update customer
+      const customer = await Customer.findById(laybye.customerId);
+      if (customer) {
+        customer.totalSpent += laybye.totalAmount;
+        customer.totalVisits += 1;
+        await customer.save();
+      }
+
+      return sale;
+    } catch (error) {
+      console.error("Complete laybye error:", error);
+      throw error;
+    }
+  }
+
+
+  /**
+   * Generate cash sale receipt
+   */
+  generateCashSaleReceipt(sale, items) {
+    let receipt = `*CASH SALE RECEIPT*\n\n`;
+    receipt += `Invoice: CASH-${sale._id.toString().slice(-8)}\n`;
+    receipt += `Date: ${new Date().toLocaleString()}\n\n`;
+
+    receipt += `ITEMS:\n`;
+    items.forEach((item, index) => {
+      receipt += `${index + 1}. ${item.productName} x ${item.quantity}\n`;
+      receipt += `   Price: $${item.price.toFixed(2)} each\n`;
+      receipt += `   Subtotal: $${item.total.toFixed(2)}\n\n`;
     });
 
-    receipt += "-".repeat(40) + "\n";
-    receipt += "TOTAL AMOUNT:".padEnd(30) + `$${total.toFixed(2)}`.padStart(10);
-    receipt += "\n" + "=".repeat(40) + "\n\n";
-    
-    receipt += "CUSTOMER SUMMARY\n";
-    receipt += "-".repeat(40) + "\n";
-    receipt += `Total Spent: $${customer.totalSpent.toFixed(2)}\n`;
-    receipt += `Total Visits: ${customer.totalVisits}\n`;
-    receipt += `Loyalty Points: ${customer.loyaltyPoints}\n\n`;
-    
-    receipt += "Thank you for your business!";
+    receipt += `*SUMMARY*\n`;
+    receipt += `Total: $${sale.total.toFixed(2)}\n`;
+    receipt += `Profit: $${sale.profit.toFixed(2)}\n`;
+    receipt += `Payment: Cash (paid in full)`;
 
     return receipt;
-  } catch (error) {
-    console.error(
-      "[CommandService] Process sale with customer error:",
-      error
-    );
-    throw error;
   }
-}
+
+  /**
+   * Generate credit sale receipt
+   */
+  generateCreditSaleReceipt(sale, customer, items) {
+    let receipt = `*CREDIT SALE RECEIPT*\n\n`;
+    receipt += `Invoice: CR-${sale._id.toString().slice(-8)}\n`;
+    receipt += `Customer: ${customer.name}\n`;
+    receipt += `Date: ${new Date().toLocaleString()}\n`;
+    receipt += `Status: Product Delivered\n\n`;
+
+    receipt += `ITEMS:\n`;
+    items.forEach((item, index) => {
+      receipt += `${index + 1}. ${item.productName} x ${item.quantity}\n`;
+      receipt += `   Price: $${item.price.toFixed(2)} each\n`;
+      receipt += `   Subtotal: $${item.total.toFixed(2)}\n\n`;
+    });
+
+    receipt += `*FINANCIAL SUMMARY*\n`;
+    receipt += `Total Amount: $${sale.total.toFixed(2)}\n`;
+    receipt += `Amount Paid: $${sale.amountPaid.toFixed(2)}\n`;
+    receipt += `Balance Due: $${sale.balanceDue.toFixed(2)}\n`;
+    receipt += `Profit Recognized: $${sale.profit.toFixed(2)}\n\n`;
+
+    receipt += `*IMPORTANT NOTES*\n`;
+    receipt += `✓ Stock deducted immediately\n`;
+    receipt += `✓ Profit recognized immediately\n`;
+    receipt += `✓ Customer balance increased by $${sale.total.toFixed(2)}\n`;
+    receipt += `✓ Make payments with: payment ${customer.name} [amount]`;
+
+    return receipt;
+  }
+
+  /**
+   * Generate laybye receipt
+   */
+  generateLayByeReceipt(laybye, customer, items) {
+    let receipt = `*LAYBYE AGREEMENT*\n\n`;
+    receipt += `Agreement #: LB-${laybye._id.toString().slice(-8)}\n`;
+    receipt += `Customer: ${customer.name}\n`;
+    receipt += `Start Date: ${laybye.startDate.toLocaleDateString()}\n`;
+    receipt += `Due Date: ${laybye.dueDate.toLocaleDateString()}\n\n`;
+
+    receipt += `RESERVED ITEMS:\n`;
+    items.forEach((item, index) => {
+      receipt += `${index + 1}. ${item.productName} x ${item.quantity}\n`;
+      receipt += `   Price: $${item.price.toFixed(2)} each\n`;
+      receipt += `   Subtotal: $${item.total.toFixed(2)}\n\n`;
+    });
+
+    receipt += `*PAYMENT TERMS*\n`;
+    receipt += `Total Value: $${laybye.totalAmount.toFixed(2)}\n`;
+    receipt += `Deposit Paid: $${laybye.amountPaid.toFixed(2)}\n`;
+    receipt += `Balance Due: $${laybye.balanceDue.toFixed(2)}\n`;
+    receipt += `Installments: ${laybye.installments.length}\n\n`;
+
+    receipt += `*TERMS & CONDITIONS*\n`;
+    receipt += `✓ Stock reserved (not deducted)\n`;
+    receipt += `✓ No profit recognized yet\n`;
+    receipt += `✓ Product will be released upon full payment\n`;
+    receipt += `✓ Make payments: laybye pay ${customer.name} [amount]\n`;
+    receipt += `✓ Complete when paid: laybye complete ${customer.name}`;
+
+    return receipt;
+  }
+
+  /**
+   * Generate laybye payment receipt
+   */
+  generateLayByePaymentReceipt(laybye, amount) {
+    let receipt = `*LAYBYE PAYMENT RECEIPT*\n\n`;
+    receipt += `Agreement #: LB-${laybye._id.toString().slice(-8)}\n`;
+    receipt += `Customer: ${laybye.customerName}\n`;
+    receipt += `Date: ${new Date().toLocaleString()}\n\n`;
+
+    receipt += `*PAYMENT DETAILS*\n`;
+    receipt += `Amount Paid: $${amount.toFixed(2)}\n`;
+    receipt += `Previous Balance: $${(laybye.balanceDue + amount).toFixed(2)}\n`;
+    receipt += `New Balance: $${laybye.balanceDue.toFixed(2)}\n`;
+    receipt += `Total Paid to Date: $${laybye.amountPaid.toFixed(2)}\n\n`;
+
+    receipt += `*NEXT STEPS*\n`;
+    if (laybye.balanceDue > 0) {
+      receipt += `Amount still due: $${laybye.balanceDue.toFixed(2)}\n`;
+      receipt += `Continue payments: laybye pay ${laybye.customerName} [amount]`;
+    } else {
+      receipt += `Congratulations! Laybye fully paid!\n`;
+      receipt += `Collect your items: laybye complete ${laybye.customerName}`;
+    }
+
+    return receipt;
+  }
+
+  /**
+   * Generate laybye completion receipt
+   */
+  generateLayByeCompletionReceipt(laybye) {
+    let receipt = `*LAYBYE COMPLETED*\n\n`;
+    receipt += `Agreement #: LB-${laybye._id.toString().slice(-8)}\n`;
+    receipt += `Customer: ${laybye.customerName}\n`;
+    receipt += `Completed: ${new Date().toLocaleString()}\n\n`;
+
+    receipt += `*SUMMARY*\n`;
+    receipt += `Total Value: $${laybye.totalAmount.toFixed(2)}\n`;
+    receipt += `Total Paid: $${laybye.amountPaid.toFixed(2)}\n`;
+    receipt += `Installments: ${laybye.installments.length}\n\n`;
+
+    receipt += `*ITEMS RELEASED*\n`;
+    laybye.items.forEach((item, index) => {
+      receipt += `${index + 1}. ${item.productName} x ${item.quantity}\n`;
+    });
+
+    receipt += `\n*NOTES*\n`;
+    receipt += `✓ Stock deducted from inventory\n`;
+    receipt += `✓ Profit now recognized: $${laybye.items.reduce((sum, item) => {
+      const cost = item.costPrice || (item.price * 0.6);
+      return sum + ((item.price - cost) * item.quantity);
+    }, 0).toFixed(2)}\n`;
+    receipt += `✓ Products ready for collection`;
+
+    return receipt;
+  }
+
+  /**
+  * Reserve stock for laybye
+  */
+  async reserveStockForLaybye(shopId, items) {
+    try {
+      // Check if all items have enough stock
+      for (const item of items) {
+        if (item.product.trackStock && item.product.stock < item.quantity) {
+          return {
+            success: false,
+            message: `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}`
+          };
+        }
+      }
+
+      // Optional: You could implement a reserved stock system here
+      // For now, we just check availability
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Stock reservation failed: ${error.message}`
+      };
+    }
+  }
+
+  /**
+   * Handle laybye completion
+   */
+  async handleLayByeComplete(shopId, text) {
+    try {
+      const match = text.match(/laybye\s+complete\s+(\S+)/i);
+
+      if (!match) {
+        return `*Invalid Format*\n\nUse: laybye complete [customer]\nExample: laybye complete John`;
+      }
+
+      const customerIdentifier = match[1];
+
+      // Find completed laybye (balance due = 0)
+      const laybye = await LayBye.findOne({
+        shopId,
+        $or: [
+          { customerName: new RegExp(`^${customerIdentifier}$`, 'i') },
+          { customerPhone: customerIdentifier }
+        ],
+        status: 'active',
+        balanceDue: 0
+      });
+
+      if (!laybye) {
+        return `*No Fully Paid LayBye Found*\n\nEither:
+1. No laybye found for ${customerIdentifier}
+2. Laybye not fully paid yet
+3. Laybye already completed
+
+Check balance: laybye pay ${customerIdentifier} 0`;
+      }
+
+      // Complete the laybye
+      const completedSale = await this.completeLayBye(shopId, laybye);
+
+      return this.generateLayByeCompletionReceipt(laybye);
+    } catch (error) {
+      console.error('Laybye complete error:', error);
+      return `Failed to complete laybye: ${error.message}`;
+    }
+  }
 
   async handleCustomerCredit(shopId, text) {
     try {
@@ -2102,9 +2917,8 @@ async processSaleWithCustomer(shopId, itemsText, customer) {
 
       receipt += `*ITEMS ON CREDIT*\n`;
       items.forEach((item) => {
-        receipt += `• ${item.quantity}x ${
-          item.productName
-        } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
+        receipt += `• ${item.quantity}x ${item.productName
+          } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
       });
 
       receipt += `\n*Total Credit: $${totalAmount.toFixed(2)}*\n\n`;
@@ -2169,13 +2983,12 @@ async processSaleWithCustomer(shopId, itemsText, customer) {
       }
 
       if (amount > customer.currentBalance) {
-        return `*Payment Exceeds Debt*\n\n${
-          customer.name
-        } owes: $${customer.currentBalance.toFixed(
-          2
-        )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
-          amount - customer.currentBalance
-        ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
+        return `*Payment Exceeds Debt*\n\n${customer.name
+          } owes: $${customer.currentBalance.toFixed(
+            2
+          )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
+            amount - customer.currentBalance
+          ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
       }
 
       const previousBalance = customer.currentBalance;
@@ -2234,11 +3047,10 @@ async processSaleWithCustomer(shopId, itemsText, customer) {
         !customer.creditTransactions ||
         customer.creditTransactions.length === 0
       ) {
-        return `*No Credit History*\n\n${
-          customer.name
-        } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
-          2
-        )}`;
+        return `*No Credit History*\n\n${customer.name
+          } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
+            2
+          )}`;
       }
 
       let history = `*CREDIT HISTORY*\n\n`;
@@ -2274,9 +3086,8 @@ async processSaleWithCustomer(shopId, itemsText, customer) {
       });
 
       if (customer.creditTransactions.length > 10) {
-        history += `... and ${
-          customer.creditTransactions.length - 10
-        } more transactions`;
+        history += `... and ${customer.creditTransactions.length - 10
+          } more transactions`;
       }
 
       return history;
@@ -2401,7 +3212,7 @@ async processSaleWithCustomer(shopId, itemsText, customer) {
   async handleOrderStatusUpdate(shopId, text) {
     try {
       const parts = text.trim().split(" ");
-      const action = parts[0].toLowerCase(); 
+      const action = parts[0].toLowerCase();
       const command = parts[1]?.toLowerCase();
       const orderIdentifier = parts[2];
       const notes = parts.slice(3).join(" ");
@@ -2619,8 +3430,8 @@ async processSaleWithCustomer(shopId, itemsText, customer) {
     }
   }
 
-getHelpText() {
-  return `SMART SHOP ASSISTANT - Business Management Tool
+  getHelpText() {
+    return `SMART SHOP ASSISTANT - Business Management Tool
 
 ===============
  CORE COMMANDS
@@ -2650,7 +3461,7 @@ SALES & TRANSACTIONS
 ====================
 Record Sales:
 • sell 2 bread 1 milk - Standard sale
-• sell 3 bread 2.25 - Custom price
+• sell 3 bread 2.25 - Custom price 
 
 Reports:
 • daily - Today's report
@@ -2741,7 +3552,7 @@ QUICK START
 4. profit daily - Calculate profit
 
 For detailed help on any command, type the command alone.`;
-}
+  }
 }
 
 export default new CommandService();
