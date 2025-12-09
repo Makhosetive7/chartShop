@@ -4,12 +4,6 @@ import Expense from '../models/Expense.js';
 import LayBye from '../models/LayBye.js';
 import mongoose from 'mongoose';
 
-/**
- * Unified Financial Service
- * Eliminates credit code redundancy and provides comprehensive financial tracking
- * 
- * FIXED: ObjectId instantiation issues - now uses 'new mongoose.Types.ObjectId()'
- */
 class FinancialService {
   /**
    * Helper to ensure shopId is an ObjectId
@@ -21,17 +15,11 @@ class FinancialService {
     return new mongoose.Types.ObjectId(id);
   }
 
-  /**
-   * Calculate comprehensive cash flow for any period
-   * This is the single source of truth for all financial calculations
-   */
+
   async calculateCashFlow(shopId, startDate, endDate) {
     try {
-      // Ensure shopId is ObjectId for aggregations
       const shopObjectId = this.toObjectId(shopId);
 
-      // CASH INFLOWS
-      // 1. Cash sales (immediate payment)
       const cashSales = await Sale.find({
         shopId,
         date: { $gte: startDate, $lte: endDate },
@@ -41,7 +29,6 @@ class FinancialService {
 
       const cashSalesTotal = cashSales.reduce((sum, sale) => sum + sale.total, 0);
 
-      // 2. Customer debt payments (not sales, just payments received)
       const customerPayments = await Customer.aggregate([
         { $match: { shopId: shopObjectId } },
         { $unwind: '$creditTransactions' },
@@ -63,7 +50,6 @@ class FinancialService {
       const debtPaymentsTotal = customerPayments[0]?.total || 0;
       const debtPaymentsCount = customerPayments[0]?.count || 0;
 
-      // 3. Laybye installment payments (cash received for laybyes)
       const laybyePayments = await LayBye.aggregate([
         {
           $match: {
@@ -89,11 +75,8 @@ class FinancialService {
       const laybyePaymentsTotal = laybyePayments[0]?.total || 0;
       const laybyePaymentsCount = laybyePayments[0]?.count || 0;
 
-      // TOTAL CASH IN
       const totalCashIn = cashSalesTotal + debtPaymentsTotal + laybyePaymentsTotal;
 
-      // CASH OUTFLOWS
-      // 1. Business expenses
       const expenses = await Expense.find({
         shopId,
         date: { $gte: startDate, $lte: endDate },
@@ -101,7 +84,6 @@ class FinancialService {
 
       const expensesTotal = expenses.reduce((sum, exp) => sum + exp.amount, 0);
 
-      // 2. Refunds (cancelled sales)
       const refunds = await Sale.find({
         shopId,
         cancelledAt: { $gte: startDate, $lte: endDate },
@@ -110,14 +92,10 @@ class FinancialService {
 
       const refundsTotal = refunds.reduce((sum, sale) => sum + sale.total, 0);
 
-      // TOTAL CASH OUT
       const totalCashOut = expensesTotal + refundsTotal;
 
-      // NET CASH FLOW
       const netCashFlow = totalCashIn - totalCashOut;
 
-      // REVENUE RECOGNITION (Accrual basis)
-      // 1. Credit sales (revenue recognized but not cash received)
       const creditSales = await Sale.find({
         shopId,
         date: { $gte: startDate, $lte: endDate },
@@ -127,7 +105,6 @@ class FinancialService {
 
       const creditSalesTotal = creditSales.reduce((sum, sale) => sum + sale.total, 0);
 
-      // 2. Completed laybyes (revenue recognized when fully paid)
       const completedLaybyes = await Sale.find({
         shopId,
         date: { $gte: startDate, $lte: endDate },
@@ -140,10 +117,8 @@ class FinancialService {
         0
       );
 
-      // TOTAL REVENUE (all sales recognized)
       const totalRevenue = cashSalesTotal + creditSalesTotal + completedLaybyesTotal;
 
-      // PROFITABILITY
       const grossProfit = 
         cashSales.reduce((sum, sale) => sum + (sale.profit || 0), 0) +
         creditSales.reduce((sum, sale) => sum + (sale.profit || 0), 0) +
@@ -152,7 +127,6 @@ class FinancialService {
       const netProfit = grossProfit - expensesTotal;
       const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
-      // OUTSTANDING BALANCES
       const activeLaybyes = await LayBye.find({ shopId, status: 'active' });
       const totalLaybyeDue = activeLaybyes.reduce((sum, lb) => sum + lb.balanceDue, 0);
 
@@ -286,167 +260,136 @@ class FinancialService {
       };
     }
   }
+async generateCashFlowReport(shopId, startDate, endDate, period = 'daily') {
+  try {
+    const cashFlow = await this.calculateCashFlow(shopId, startDate, endDate);
+    if (!cashFlow.success) return cashFlow;
 
-  /**
-   * Generate comprehensive cash flow report with insights
-   */
-  async generateCashFlowReport(shopId, startDate, endDate, period = 'daily') {
-    try {
-      const cashFlow = await this.calculateCashFlow(shopId, startDate, endDate);
+    const expenseBreakdown = await this.categorizeExpenses(shopId, startDate, endDate);
 
-      if (!cashFlow.success) {
-        return cashFlow;
+    const periodText =
+      period === 'daily' ? 'TODAY' :
+      period === 'weekly' ? 'THIS WEEK' :
+      'THIS MONTH';
+
+    let report = `FINANCIAL REPORT - ${periodText}\n\n`;
+    report += `Period: ${startDate.toDateString()} to ${endDate.toDateString()}\n\n`;
+
+    // CASH FLOW
+    report += `CASH FLOW (Real Money In and Out)\n`;
+    report += `----------------------------------------\n\n`;
+
+    report += `MONEY IN:\n`;
+    report += `- Cash Sales: $${cashFlow.cashFlow.inflows.cashSales.amount.toFixed(2)} (${cashFlow.cashFlow.inflows.cashSales.count} sales)\n`;
+    report += `- Debt Payments Received: $${cashFlow.cashFlow.inflows.debtPayments.amount.toFixed(2)} (${cashFlow.cashFlow.inflows.debtPayments.count} payments)\n`;
+    report += `- Laybye Payments Received: $${cashFlow.cashFlow.inflows.laybyePayments.amount.toFixed(2)} (${cashFlow.cashFlow.inflows.laybyePayments.count} payments)\n`;
+    report += `Total Money In: $${cashFlow.cashFlow.inflows.total.toFixed(2)}\n\n`;
+
+    report += `MONEY OUT:\n`;
+    report += `- Expenses Paid: $${cashFlow.cashFlow.outflows.expenses.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.expenses.count} items)\n`;
+    report += `- Refunds Given: $${cashFlow.cashFlow.outflows.refunds.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.refunds.count} refunds)\n`;
+    report += `Total Money Out: $${cashFlow.cashFlow.outflows.total.toFixed(2)}\n\n`;
+
+    const netText =
+      cashFlow.cashFlow.net >= 0
+        ? `Net Cash Flow (Money Left Over): $${cashFlow.cashFlow.net.toFixed(2)}\n\n`
+        : `Net Cash Flow (Money Lost): -$${Math.abs(cashFlow.cashFlow.net).toFixed(2)}\n\n`;
+
+    report += netText;
+
+    // REVENUE (Accrual)
+    report += `REVENUE (Recorded Sales)\n`;
+    report += `----------------------------------------\n\n`;
+    report += `- Cash Sales: $${cashFlow.revenue.cash.amount.toFixed(2)} (${cashFlow.revenue.cash.count})\n`;
+    report += `- Credit Sales: $${cashFlow.revenue.credit.amount.toFixed(2)} (${cashFlow.revenue.credit.count})\n`;
+    report += `- Completed Laybyes: $${cashFlow.revenue.completedLaybyes.amount.toFixed(2)} (${cashFlow.revenue.completedLaybyes.count})\n`;
+    report += `Total Revenue: $${cashFlow.revenue.total.toFixed(2)}\n\n`;
+
+    // PROFITABILITY
+    report += `PROFIT\n`;
+    report += `----------------------------------------\n\n`;
+    report += `- Gross Profit: $${cashFlow.profitability.grossProfit.toFixed(2)}\n`;
+    report += `- Total Expenses: $${cashFlow.profitability.expenses.toFixed(2)}\n`;
+    report += `- Net Profit: $${cashFlow.profitability.netProfit.toFixed(2)}\n`;
+    report += `- Profit Margin: ${cashFlow.profitability.profitMargin.toFixed(1)}%\n\n`;
+
+    // EXPENSE BREAKDOWN
+    if (expenseBreakdown.success && expenseBreakdown.categories.length > 0) {
+      report += `EXPENSE BREAKDOWN\n`;
+      report += `----------------------------------------\n\n`;
+
+      expenseBreakdown.categories.slice(0, 5).forEach((cat) => {
+        const categoryName = cat.category.charAt(0).toUpperCase() + cat.category.slice(1);
+        report += `- ${categoryName}: $${cat.total.toFixed(2)} (${cat.percentage.toFixed(1)}%)\n`;
+      });
+
+      if (expenseBreakdown.categories.length > 5) {
+        report += `... plus ${expenseBreakdown.categories.length - 5} more categories\n`;
       }
 
-      const expenseBreakdown = await this.categorizeExpenses(shopId, startDate, endDate);
-
-      const periodText =
-        period === 'daily' ? 'TODAY' : period === 'weekly' ? 'THIS WEEK' : 'THIS MONTH';
-
-      let report = `*COMPREHENSIVE FINANCIAL REPORT - ${periodText}*\n\n`;
-      report += `Period: ${startDate.toDateString()} - ${endDate.toDateString()}\n\n`;
-
-      // CASH FLOW SECTION
-      report += `*💵 CASH FLOW (Actual Money Movement)*\n`;
-      report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-      report += `CASH IN:\n`;
-      report += `• Cash Sales: $${cashFlow.cashFlow.inflows.cashSales.amount.toFixed(2)} (${
-        cashFlow.cashFlow.inflows.cashSales.count
-      } sales)\n`;
-      report += `• Debt Payments: $${cashFlow.cashFlow.inflows.debtPayments.amount.toFixed(
-        2
-      )} (${cashFlow.cashFlow.inflows.debtPayments.count} payments)\n`;
-      report += `• Laybye Payments: $${cashFlow.cashFlow.inflows.laybyePayments.amount.toFixed(
-        2
-      )} (${cashFlow.cashFlow.inflows.laybyePayments.count} payments)\n`;
-      report += `*Total Cash In: $${cashFlow.cashFlow.inflows.total.toFixed(2)}*\n\n`;
-
-      report += `CASH OUT:\n`;
-      report += `• Expenses: $${cashFlow.cashFlow.outflows.expenses.amount.toFixed(2)} (${
-        cashFlow.cashFlow.outflows.expenses.count
-      } items)\n`;
-      report += `• Refunds: $${cashFlow.cashFlow.outflows.refunds.amount.toFixed(2)} (${
-        cashFlow.cashFlow.outflows.refunds.count
-      } refunds)\n`;
-      report += `*Total Cash Out: $${cashFlow.cashFlow.outflows.total.toFixed(2)}*\n\n`;
-
-      const netIcon = cashFlow.cashFlow.net >= 0 ? '🟢' : '🔴';
-      report += `${netIcon} *NET CASH FLOW: $${cashFlow.cashFlow.net.toFixed(2)}*\n\n`;
-
-      // REVENUE RECOGNITION SECTION
-      report += `*📊 REVENUE RECOGNITION (Accrual Basis)*\n`;
-      report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-      report += `• Cash Sales: $${cashFlow.revenue.cash.amount.toFixed(2)} (${
-        cashFlow.revenue.cash.count
-      })\n`;
-      report += `• Credit Sales: $${cashFlow.revenue.credit.amount.toFixed(2)} (${
-        cashFlow.revenue.credit.count
-      })\n`;
-      report += `• Completed Laybyes: $${cashFlow.revenue.completedLaybyes.amount.toFixed(
-        2
-      )} (${cashFlow.revenue.completedLaybyes.count})\n`;
-      report += `*Total Revenue: $${cashFlow.revenue.total.toFixed(2)}*\n\n`;
-
-      // PROFITABILITY SECTION
-      report += `*💰 PROFITABILITY*\n`;
-      report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-      report += `• Gross Profit: $${cashFlow.profitability.grossProfit.toFixed(2)}\n`;
-      report += `• Total Expenses: $${cashFlow.profitability.expenses.toFixed(2)}\n`;
-      report += `• Net Profit: $${cashFlow.profitability.netProfit.toFixed(2)}\n`;
-      report += `• Profit Margin: ${cashFlow.profitability.profitMargin.toFixed(1)}%\n\n`;
-
-      // EXPENSE BREAKDOWN
-      if (expenseBreakdown.success && expenseBreakdown.categories.length > 0) {
-        report += `*📋 EXPENSE BREAKDOWN*\n`;
-        report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-        expenseBreakdown.categories.slice(0, 5).forEach((cat) => {
-          const categoryName =
-            cat.category.charAt(0).toUpperCase() + cat.category.slice(1);
-          report += `• ${categoryName}: $${cat.total.toFixed(
-            2
-          )} (${cat.percentage.toFixed(1)}%)\n`;
-        });
-
-        if (expenseBreakdown.categories.length > 5) {
-          report += `... and ${expenseBreakdown.categories.length - 5} more categories\n`;
-        }
-        report += `\nUse "expense breakdown" for detailed view\n\n`;
-      }
-
-      // OUTSTANDING BALANCES
-      report += `*⏰ OUTSTANDING BALANCES*\n`;
-      report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-      report += `• Customer Credit: $${cashFlow.outstanding.creditDue.amount.toFixed(2)} (${
-        cashFlow.outstanding.creditDue.customers
-      } customers)\n`;
-      report += `• Active Laybyes: $${cashFlow.outstanding.laybyeDue.amount.toFixed(2)} (${
-        cashFlow.outstanding.laybyeDue.count
-      } laybyes)\n`;
-      report += `*Total Outstanding: $${cashFlow.outstanding.total.toFixed(2)}*\n\n`;
-
-      // INSIGHTS
-      report += `*💡 KEY INSIGHTS*\n`;
-      report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-      // Cash flow insight
-      if (cashFlow.cashFlow.net > 0) {
-        report += `✓ Positive cash flow of $${cashFlow.cashFlow.net.toFixed(2)}\n`;
-      } else if (cashFlow.cashFlow.net < 0) {
-        report += `⚠️ Negative cash flow of $${Math.abs(cashFlow.cashFlow.net).toFixed(
-          2
-        )}\n`;
-        report += `  Consider reviewing expenses or collecting outstanding debts\n`;
-      }
-
-      // Credit sales insight
-      const creditPercentage =
-        cashFlow.revenue.total > 0
-          ? (cashFlow.revenue.credit.amount / cashFlow.revenue.total) * 100
-          : 0;
-      if (creditPercentage > 30) {
-        report += `⚠️ Credit sales are ${creditPercentage.toFixed(
-          1
-        )}% of revenue - high credit risk\n`;
-      }
-
-      // Outstanding debt insight
-      if (cashFlow.outstanding.total > cashFlow.revenue.total * 0.5) {
-        report += `⚠️ Outstanding debts ($${cashFlow.outstanding.total.toFixed(
-          2
-        )}) exceed 50% of revenue\n`;
-      }
-
-      // Expense ratio insight
-      const expenseRatio =
-        cashFlow.revenue.total > 0
-          ? (cashFlow.profitability.expenses / cashFlow.revenue.total) * 100
-          : 0;
-      if (expenseRatio > 40) {
-        report += `⚠️ Expenses are ${expenseRatio.toFixed(
-          1
-        )}% of revenue - consider cost reduction\n`;
-      } else {
-        report += `✓ Healthy expense ratio at ${expenseRatio.toFixed(1)}%\n`;
-      }
-
-      return {
-        success: true,
-        report,
-        data: cashFlow,
-      };
-    } catch (error) {
-      console.error('[FinancialService] Cash flow report error:', error);
-      return {
-        success: false,
-        message: `Failed to generate cash flow report: ${error.message}`,
-      };
+      report += `\nUse "expense breakdown" for full details.\n\n`;
     }
+
+    // OUTSTANDING BALANCES
+    report += `OUTSTANDING BALANCES (Money Owed)\n`;
+    report += `----------------------------------------\n\n`;
+    report += `- Customer Credit Owed: $${cashFlow.outstanding.creditDue.amount.toFixed(2)} (${cashFlow.outstanding.creditDue.customers} customers)\n`;
+    report += `- Active Laybyes Owed: $${cashFlow.outstanding.laybyeDue.amount.toFixed(2)} (${cashFlow.outstanding.laybyeDue.count} laybyes)\n`;
+    report += `Total Money Owed to Shop: $${cashFlow.outstanding.total.toFixed(2)}\n\n`;
+
+    // SIMPLE INSIGHTS
+    report += `INSIGHTS (Simple Notes)\n`;
+    report += `----------------------------------------\n\n`;
+
+    // Cash flow insight
+    if (cashFlow.cashFlow.net > 0) {
+      report += `- You have more money coming in than going out.\n`;
+    } else if (cashFlow.cashFlow.net < 0) {
+      report += `- You spent more money than you received. Consider reducing expenses or collecting money owed.\n`;
+    }
+
+    // Credit sales insight
+    const creditPercent =
+      cashFlow.revenue.total > 0
+        ? (cashFlow.revenue.credit.amount / cashFlow.revenue.total) * 100
+        : 0;
+
+    if (creditPercent > 30) {
+      report += `- Credit sales are high. Too many people buying on credit can be risky.\n`;
+    }
+
+    // Outstanding debt insight
+    if (cashFlow.outstanding.total > cashFlow.revenue.total * 0.5) {
+      report += `- Money owed to you is more than half of total revenue. This is dangerous.\n`;
+    }
+
+    // Expense ratio insight
+    const expenseRatio =
+      cashFlow.revenue.total > 0
+        ? (cashFlow.profitability.expenses / cashFlow.revenue.total) * 100
+        : 0;
+
+    if (expenseRatio > 40) {
+      report += `- Your expenses are too high. Try to reduce spending.\n`;
+    } else {
+      report += `- Your expenses are reasonable.\n`;
+    }
+
+    return {
+      success: true,
+      report,
+      data: cashFlow,
+    };
+
+  } catch (error) {
+    console.error('[FinancialService] Report error:', error);
+    return {
+      success: false,
+      message: `Could not generate report: ${error.message}`,
+    };
   }
+}
+
 
   /**
    * Quick helper methods for common periods

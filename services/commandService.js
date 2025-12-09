@@ -203,7 +203,7 @@ Need help? Just type *help* anytime!`;
   if (command.startsWith('monthly') || command.startsWith('month')) {
     return await this.handleMonthlyReport(shop._id);
   }
-  
+
     if (command.startsWith("profit")) {
       return await this.handleProfitCalculation(shop._id, text);
     }
@@ -291,10 +291,10 @@ Need help? Just type *help* anytime!`;
     receipt += `Balance Due: $${sale.balanceDue.toFixed(2)}\n\n`;
 
     receipt += `*IMPORTANT NOTES*\n`;
-    receipt += `✓ Stock deducted immediately\n`;
-    receipt += `✓ Profit recognized: $${sale.profit.toFixed(2)}\n`;
-    receipt += `✓ Customer balance increased\n`;
-    receipt += `✓ Payment due: ${new Date(
+    receipt += `Stock deducted immediately\n`;
+    receipt += `Profit recognized: $${sale.profit.toFixed(2)}\n`;
+    receipt += `Customer balance increased\n`;
+    receipt += `Payment due: ${new Date(
       Date.now() + 30 * 24 * 60 * 60 * 1000
     ).toDateString()}`;
 
@@ -325,11 +325,11 @@ Need help? Just type *help* anytime!`;
     receipt += `Installments: ${laybye.installments.length}\n\n`;
 
     receipt += `*TERMS & CONDITIONS*\n`;
-    receipt += `✓ Stock reserved (not deducted)\n`;
-    receipt += `✓ No profit recognized yet\n`;
-    receipt += `✓ Product will be released upon full payment\n`;
-    receipt += `✓ Payments accepted: cash, bank, mobile\n`;
-    receipt += `✓ Make payments with: laybye pay ${customer.name} [amount]`;
+    receipt += `Stock reserved (not deducted)\n`;
+    receipt += `No profit recognized yet\n`;
+    receipt += `Product will be released upon full payment\n`;
+    receipt += `Payments accepted: cash, bank, mobile\n`;
+    receipt += `Make payments with: laybye pay ${customer.name} [amount]`;
 
     return receipt;
   }
@@ -1247,7 +1247,7 @@ async handleExportReport(shop, text) {
         } else {
           resolve({
             type: 'pdf',
-            message: `*${periodName} Financial Report Generated!*\n\nYour comprehensive financial report is ready with:\n\n✓ Cash flow analysis\n✓ Revenue breakdown\n✓ Expense details by category\n✓ Profitability metrics\n✓ Outstanding balances\n\nComplete financial transparency at your fingertips.`,
+            message: `*${periodName} Financial Report Generated!*\n\nYour comprehensive financial report is ready with:\n\nCash flow analysis\nRevenue breakdown\nExpense details by category\nProfitability metrics\nOutstanding balances\n\nComplete financial transparency at your fingertips.`,
             filePath: result.filePath,
             fileName: result.filename,
           });
@@ -1759,11 +1759,6 @@ async handleExportReport(shop, text) {
 
       // Calculate totals
       const total = items.reduce((sum, item) => sum + item.total, 0);
-      const profit = items.reduce((sum, item) => {
-        const cost = item.product.costPrice || item.price * 0.6; // Default 40% margin
-        return sum + (item.price - cost) * item.quantity;
-      }, 0);
-
       // Create sale
       const sale = await Sale.create({
         shopId,
@@ -1776,7 +1771,6 @@ async handleExportReport(shop, text) {
           total: item.total,
         })),
         total,
-        profit,
         status: "completed",
         amountPaid: total,
         balanceDue: 0,
@@ -1850,10 +1844,6 @@ async handleExportReport(shop, text) {
         amountPaid: 0,
         balanceDue: totalAmount,
         status: "completed", // Credit sales are completed immediately
-        profit: items.reduce((sum, item) => {
-          const cost = item.product.costPrice || item.price * 0.6;
-          return sum + (item.price - cost) * item.quantity;
-        }, 0),
       });
 
       // Update customer balance
@@ -2086,153 +2076,152 @@ async handleExportReport(shop, text) {
   }
 
   /**
-   * Generate cash sale receipt
+   * Generate cash sale receipt (simple version)
    */
   generateCashSaleReceipt(sale, items) {
-    let receipt = `*CASH SALE RECEIPT*\n\n`;
+    let receipt = `CASH SALE RECEIPT\n\n`;
     receipt += `Invoice: CASH-${sale._id.toString().slice(-8)}\n`;
     receipt += `Date: ${new Date().toLocaleString()}\n\n`;
 
-    receipt += `ITEMS:\n`;
+    receipt += `ITEMS\n`;
     items.forEach((item, index) => {
       receipt += `${index + 1}. ${item.productName} x ${item.quantity}\n`;
       receipt += `   Price: $${item.price.toFixed(2)} each\n`;
       receipt += `   Subtotal: $${item.total.toFixed(2)}\n\n`;
     });
 
-    receipt += `*SUMMARY*\n`;
+    receipt += `SUMMARY\n`;
     receipt += `Total: $${sale.total.toFixed(2)}\n`;
-    receipt += `Profit: $${sale.profit.toFixed(2)}\n`;
-    receipt += `Payment: Cash (paid in full)`;
+    receipt += `Payment Method: Cash (paid in full)\n`;
 
     return receipt;
   }
 
+
+
   /**
-   * Generate credit sale receipt
+   * Generate credit sale receipt (simple version)
    */
   generateCreditSaleReceipt(sale, customer, items) {
-    let receipt = `*CREDIT SALE RECEIPT*\n\n`;
+    let receipt = `CREDIT SALE RECEIPT\n\n`;
     receipt += `Invoice: CR-${sale._id.toString().slice(-8)}\n`;
     receipt += `Customer: ${customer.name}\n`;
     receipt += `Date: ${new Date().toLocaleString()}\n`;
     receipt += `Status: Product Delivered\n\n`;
 
-    receipt += `ITEMS:\n`;
+    receipt += `ITEMS\n`;
     items.forEach((item, index) => {
       receipt += `${index + 1}. ${item.productName} x ${item.quantity}\n`;
       receipt += `   Price: $${item.price.toFixed(2)} each\n`;
       receipt += `   Subtotal: $${item.total.toFixed(2)}\n\n`;
     });
 
-    receipt += `*FINANCIAL SUMMARY*\n`;
+    receipt += `FINANCIAL SUMMARY\n`;
     receipt += `Total Amount: $${sale.total.toFixed(2)}\n`;
     receipt += `Amount Paid: $${sale.amountPaid.toFixed(2)}\n`;
-    receipt += `Balance Due: $${sale.balanceDue.toFixed(2)}\n`;
-    receipt += `Profit Recognized: $${sale.profit.toFixed(2)}\n\n`;
+    receipt += `Balance Due: $${sale.balanceDue.toFixed(2)}\n\n`;
 
-    receipt += `*IMPORTANT NOTES*\n`;
-    receipt += `✓ Stock deducted immediately\n`;
-    receipt += `✓ Profit recognized immediately\n`;
-    receipt += `✓ Customer balance increased by $${sale.total.toFixed(2)}\n`;
-    receipt += `✓ Make payments with: payment ${customer.name} [amount]`;
+    receipt += `NOTES\n`;
+    receipt += `Stock has been deducted.\n`;
+    receipt += `Customer owes the balance shown above.\n`;
+    receipt += `Make payments using: payment ${customer.name} [amount]\n`;
 
     return receipt;
   }
 
+
+
   /**
-   * Generate laybye receipt
+   * Generate laybye agreement receipt
    */
   generateLayByeReceipt(laybye, customer, items) {
-    let receipt = `*LAYBYE AGREEMENT*\n\n`;
-    receipt += `Agreement #: LB-${laybye._id.toString().slice(-8)}\n`;
+    let receipt = `LAYBYE AGREEMENT\n\n`;
+    receipt += `Agreement Number: LB-${laybye._id.toString().slice(-8)}\n`;
     receipt += `Customer: ${customer.name}\n`;
     receipt += `Start Date: ${laybye.startDate.toLocaleDateString()}\n`;
     receipt += `Due Date: ${laybye.dueDate.toLocaleDateString()}\n\n`;
 
-    receipt += `RESERVED ITEMS:\n`;
+    receipt += `ITEMS RESERVED\n`;
     items.forEach((item, index) => {
       receipt += `${index + 1}. ${item.productName} x ${item.quantity}\n`;
       receipt += `   Price: $${item.price.toFixed(2)} each\n`;
       receipt += `   Subtotal: $${item.total.toFixed(2)}\n\n`;
     });
 
-    receipt += `*PAYMENT TERMS*\n`;
+    receipt += `PAYMENT DETAILS\n`;
     receipt += `Total Value: $${laybye.totalAmount.toFixed(2)}\n`;
     receipt += `Deposit Paid: $${laybye.amountPaid.toFixed(2)}\n`;
     receipt += `Balance Due: $${laybye.balanceDue.toFixed(2)}\n`;
-    receipt += `Installments: ${laybye.installments.length}\n\n`;
+    receipt += `Number of Installments: ${laybye.installments.length}\n\n`;
 
-    receipt += `*TERMS & CONDITIONS*\n`;
-    receipt += `✓ Stock reserved (not deducted)\n`;
-    receipt += `✓ No profit recognized yet\n`;
-    receipt += `✓ Product will be released upon full payment\n`;
-    receipt += `✓ Make payments: laybye pay ${customer.name} [amount]\n`;
-    receipt += `✓ Complete when paid: laybye complete ${customer.name}`;
+    receipt += `TERMS\n`;
+    receipt += `Items are reserved (stock not removed yet).\n`;
+    receipt += `Items will be collected after full payment.\n`;
+    receipt += `Make payments using: laybye pay ${customer.name} [amount]\n`;
+    receipt += `Complete when fully paid: laybye complete ${customer.name}\n`;
 
     return receipt;
   }
+
+
 
   /**
    * Generate laybye payment receipt
    */
   generateLayByePaymentReceipt(laybye, amount) {
-    let receipt = `*LAYBYE PAYMENT RECEIPT*\n\n`;
-    receipt += `Agreement #: LB-${laybye._id.toString().slice(-8)}\n`;
+    let receipt = `LAYBYE PAYMENT RECEIPT\n\n`;
+    receipt += `Agreement Number: LB-${laybye._id.toString().slice(-8)}\n`;
     receipt += `Customer: ${laybye.customerName}\n`;
     receipt += `Date: ${new Date().toLocaleString()}\n\n`;
 
-    receipt += `*PAYMENT DETAILS*\n`;
+    receipt += `PAYMENT DETAILS\n`;
     receipt += `Amount Paid: $${amount.toFixed(2)}\n`;
-    receipt += `Previous Balance: $${(laybye.balanceDue + amount).toFixed(
+    receipt += `Previous Balance: $${(laybye.balanceDue + amount).notfixed (
       2
     )}\n`;
     receipt += `New Balance: $${laybye.balanceDue.toFixed(2)}\n`;
-    receipt += `Total Paid to Date: $${laybye.amountPaid.toFixed(2)}\n\n`;
+    receipt += `Total Paid So Far: $${laybye.amountPaid.toFixed(2)}\n\n`;
 
-    receipt += `*NEXT STEPS*\n`;
+    receipt += `NEXT STEPS\n`;
     if (laybye.balanceDue > 0) {
-      receipt += `Amount still due: $${laybye.balanceDue.toFixed(2)}\n`;
-      receipt += `Continue payments: laybye pay ${laybye.customerName} [amount]`;
+      receipt += `Remaining Balance: $${laybye.balanceDue.toFixed(2)}\n`;
+      receipt += `Continue paying using: laybye pay ${laybye.customerName} [amount]\n`;
     } else {
-      receipt += `Congratulations! Laybye fully paid!\n`;
-      receipt += `Collect your items: laybye complete ${laybye.customerName}`;
+      receipt += `Laybye is fully paid.\n`;
+      receipt += `Collect items using: laybye complete ${laybye.customerName}\n`;
     }
 
     return receipt;
   }
 
+
+
   /**
    * Generate laybye completion receipt
    */
   generateLayByeCompletionReceipt(laybye) {
-    let receipt = `*LAYBYE COMPLETED*\n\n`;
-    receipt += `Agreement #: LB-${laybye._id.toString().slice(-8)}\n`;
+    let receipt = `LAYBYE COMPLETION RECEIPT\n\n`;
+    receipt += `Agreement Number: LB-${laybye._id.toString().slice(-8)}\n`;
     receipt += `Customer: ${laybye.customerName}\n`;
-    receipt += `Completed: ${new Date().toLocaleString()}\n\n`;
+    receipt += `Completed On: ${new Date().toLocaleString()}\n\n`;
 
-    receipt += `*SUMMARY*\n`;
+    receipt += `SUMMARY\n`;
     receipt += `Total Value: $${laybye.totalAmount.toFixed(2)}\n`;
     receipt += `Total Paid: $${laybye.amountPaid.toFixed(2)}\n`;
-    receipt += `Installments: ${laybye.installments.length}\n\n`;
+    receipt += `Installments Made: ${laybye.installments.length}\n\n`;
 
-    receipt += `*ITEMS RELEASED*\n`;
+    receipt += `ITEMS RELEASED\n`;
     laybye.items.forEach((item, index) => {
       receipt += `${index + 1}. ${item.productName} x ${item.quantity}\n`;
     });
 
-    receipt += `\n*NOTES*\n`;
-    receipt += `✓ Stock deducted from inventory\n`;
-    receipt += `✓ Profit now recognized: $${laybye.items
-      .reduce((sum, item) => {
-        const cost = item.costPrice || item.price * 0.6;
-        return sum + (item.price - cost) * item.quantity;
-      }, 0)
-      .toFixed(2)}\n`;
-    receipt += `✓ Products ready for collection`;
+    receipt += `\nNOTES\n`;
+    receipt += `Stock has now been removed from inventory.\n`;
+    receipt += `Items are ready for collection.\n`;
 
     return receipt;
   }
+
 
   /**
    * Reserve stock for laybye
