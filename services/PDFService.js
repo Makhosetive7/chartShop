@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
+import FinancialService from './FinancialService.js';
 
 class PDFService {
   constructor() {
@@ -12,7 +13,11 @@ class PDFService {
       warning: '#f39c12',
       dark: '#34495e',
       light: '#ecf0f1',
-      text: '#2c3e50'
+      text: '#2c3e50',
+      cashIn: '#d4edda',
+      cashInBorder: '#28a745',
+      cashOut: '#f8d7da',
+      cashOutBorder: '#dc3545',
     };
   }
 
@@ -31,33 +36,29 @@ class PDFService {
    * Helper method to add header to document
    */
   addHeader(doc, shop, title, subtitle = '') {
-    // Business name
     doc.fontSize(22)
        .fillColor(this.colors.primary)
        .font('Helvetica-Bold')
        .text(shop.businessName, 50, 50, { align: 'center' });
 
-    // Report title
     doc.fontSize(16)
        .fillColor(this.colors.dark)
        .font('Helvetica')
        .text(title, 50, 80, { align: 'center' });
 
-    // Subtitle (date range)
     if (subtitle) {
       doc.fontSize(11)
          .fillColor(this.colors.text)
          .text(subtitle, 50, 105, { align: 'center' });
     }
 
-    // Horizontal line
     doc.strokeColor(this.colors.primary)
        .lineWidth(2)
        .moveTo(50, 130)
        .lineTo(550, 130)
        .stroke();
 
-    return 150; // Return starting Y position for content
+    return 150;
   }
 
   /**
@@ -69,14 +70,12 @@ class PDFService {
     for (let i = 0; i < pageCount; i++) {
       doc.switchToPage(i);
       
-      // Footer line
       doc.strokeColor(this.colors.light)
          .lineWidth(1)
          .moveTo(50, 750)
          .lineTo(550, 750)
          .stroke();
 
-      // Footer text
       doc.fontSize(8)
          .fillColor(this.colors.text)
          .font('Helvetica')
@@ -87,7 +86,6 @@ class PDFService {
            { align: 'center', width: 500 }
          );
 
-      // Page number
       doc.text(
         `Page ${i + 1} of ${pageCount}`,
         0,
@@ -98,614 +96,487 @@ class PDFService {
   }
 
   /**
-   * Helper method to add summary box
+   * Helper method to draw tables with alternating row colors
    */
-  addSummaryBox(doc, yPos, items) {
-    const boxWidth = 500;
-    const boxHeight = 20 + (items.length * 25);
-    
-    // Box background
-    doc.rect(50, yPos, boxWidth, boxHeight)
-       .fillAndStroke(this.colors.light, this.colors.primary);
+  drawTable(doc, data, x, y, columnWidths, compact = false) {
+    const rowHeight = compact ? 18 : 22;
+    const startY = y;
 
-    // Add items
-    let itemY = yPos + 15;
-    items.forEach(item => {
-      doc.fontSize(11)
-         .fillColor(this.colors.dark)
-         .font('Helvetica-Bold')
-         .text(item.label + ':', 70, itemY, { width: 200, continued: false });
+    data.forEach((row, rowIndex) => {
+      if (rowIndex > 0 && rowIndex % 2 === 0) {
+        doc.rect(x, y, columnWidths.reduce((a, b) => a + b, 0), rowHeight)
+           .fill('#f5f5f5')
+           .fillColor('#000');
+      }
+
+      const font = rowIndex === 0 || rowIndex === data.length - 1 ? 'Helvetica-Bold' : 'Helvetica';
+      const fontSize = compact ? 8 : 9;
       
-      doc.font('Helvetica')
-         .fillColor(item.color || this.colors.text)
-         .text(item.value, 250, itemY, { width: 280 });
-      
-      itemY += 25;
+      doc.fontSize(fontSize).font(font);
+
+      let cellX = x;
+      row.forEach((cell, colIndex) => {
+        doc.text(
+          String(cell),
+          cellX + 5,
+          y + (rowHeight - fontSize) / 2,
+          {
+            width: columnWidths[colIndex] - 10,
+            align: colIndex === 0 ? 'left' : 'right'
+          }
+        );
+        cellX += columnWidths[colIndex];
+      });
+
+      y += rowHeight;
     });
 
-    return yPos + boxHeight + 20;
+    doc.rect(x, startY, columnWidths.reduce((a, b) => a + b, 0), y - startY)
+       .stroke('#ddd');
+
+    let lineX = x;
+    columnWidths.forEach(width => {
+      doc.moveTo(lineX, startY).lineTo(lineX, y).stroke('#ddd');
+      lineX += width;
+    });
+    doc.moveTo(lineX, startY).lineTo(lineX, y).stroke('#ddd');
+
+    doc.moveTo(x, startY).lineTo(x + columnWidths.reduce((a, b) => a + b, 0), startY).stroke('#ddd');
+    doc.moveTo(x, y).lineTo(x + columnWidths.reduce((a, b) => a + b, 0), y).stroke('#ddd');
+
+    return y;
   }
 
   /**
-   * Helper method to add growth indicator
+   * Add financial summary section with visual cash flow boxes
    */
-  addGrowthIndicator(doc, yPos, label, current, previous) {
-    const growth = previous > 0 ? ((current - previous) / previous) * 100 : 100;
-    const growthColor = growth >= 0 ? this.colors.success : this.colors.danger;
-    const arrow = growth >= 0 ? '↑' : '↓';
+  addFinancialSummarySection(doc, cashFlowData, y) {
+    const { cashFlow, revenue, profitability } = cashFlowData;
+    
+    doc.fontSize(14).font('Helvetica-Bold').text('Financial Summary', 50, y);
+    y += 25;
 
-    doc.fontSize(10)
-       .fillColor(this.colors.text)
-       .font('Helvetica')
-       .text(label, 70, yPos, { width: 200 });
+    const boxWidth = 150;
+    const boxHeight = 60;
+    const spacing = 20;
+    
+    // Cash IN box (Green)
+    doc.rect(50, y, boxWidth, boxHeight)
+       .fillAndStroke(this.colors.cashIn, this.colors.cashInBorder)
+       .fillColor('#000');
+    
+    doc.fontSize(10).font('Helvetica-Bold')
+       .text('CASH IN', 60, y + 10, { width: boxWidth - 20 });
+    doc.fontSize(16).font('Helvetica-Bold')
+       .text(`$${cashFlow.inflows.total.toFixed(2)}`, 60, y + 25, { width: boxWidth - 20 });
+    doc.fontSize(8).font('Helvetica')
+       .text(`From ${cashFlow.inflows.cashSales.count + cashFlow.inflows.debtPayments.count + cashFlow.inflows.laybyePayments.count} transactions`, 60, y + 43, { width: boxWidth - 20 });
 
-    doc.fillColor(growthColor)
-       .font('Helvetica-Bold')
-       .text(
-         `${arrow} ${Math.abs(growth).toFixed(1)}%`,
-         300,
-         yPos,
-         { width: 250 }
-       );
+    // Cash OUT box (Red)
+    doc.rect(50 + boxWidth + spacing, y, boxWidth, boxHeight)
+       .fillAndStroke(this.colors.cashOut, this.colors.cashOutBorder)
+       .fillColor('#000');
+    
+    doc.fontSize(10).font('Helvetica-Bold')
+       .text('CASH OUT', 60 + boxWidth + spacing, y + 10, { width: boxWidth - 20 });
+    doc.fontSize(16).font('Helvetica-Bold')
+       .text(`$${cashFlow.outflows.total.toFixed(2)}`, 60 + boxWidth + spacing, y + 25, { width: boxWidth - 20 });
+    doc.fontSize(8).font('Helvetica')
+       .text(`${cashFlow.outflows.expenses.count + cashFlow.outflows.refunds.count} items`, 60 + boxWidth + spacing, y + 43, { width: boxWidth - 20 });
 
-    return yPos + 20;
+    // Net Cash Flow box
+    const netColor = cashFlow.net >= 0 ? this.colors.cashIn : this.colors.cashOut;
+    const netBorder = cashFlow.net >= 0 ? this.colors.cashInBorder : this.colors.cashOutBorder;
+    
+    doc.rect(50 + (boxWidth + spacing) * 2, y, boxWidth, boxHeight)
+       .fillAndStroke(netColor, netBorder)
+       .fillColor('#000');
+    
+    doc.fontSize(10).font('Helvetica-Bold')
+       .text('NET CASH FLOW', 60 + (boxWidth + spacing) * 2, y + 10, { width: boxWidth - 20 });
+    doc.fontSize(16).font('Helvetica-Bold')
+       .text(`$${cashFlow.net.toFixed(2)}`, 60 + (boxWidth + spacing) * 2, y + 25, { width: boxWidth - 20 });
+    doc.fontSize(8).font('Helvetica')
+       .text(cashFlow.net >= 0 ? 'Positive Flow' : 'Negative Flow', 60 + (boxWidth + spacing) * 2, y + 43, { width: boxWidth - 20 });
+
+    y += boxHeight + 30;
+
+    // Detailed Cash Flow breakdown
+    doc.fontSize(12).font('Helvetica-Bold').text('Cash Flow Details', 50, y);
+    y += 20;
+
+    const tableData = [
+      ['Source', 'Amount', 'Count'],
+      ['Cash Sales', `$${cashFlow.inflows.cashSales.amount.toFixed(2)}`, cashFlow.inflows.cashSales.count],
+      ['Debt Payments', `$${cashFlow.inflows.debtPayments.amount.toFixed(2)}`, cashFlow.inflows.debtPayments.count],
+      ['Laybye Payments', `$${cashFlow.inflows.laybyePayments.amount.toFixed(2)}`, cashFlow.inflows.laybyePayments.count],
+      ['', '', ''],
+      ['Expenses', `($${cashFlow.outflows.expenses.amount.toFixed(2)})`, cashFlow.outflows.expenses.count],
+      ['Refunds', `($${cashFlow.outflows.refunds.amount.toFixed(2)})`, cashFlow.outflows.refunds.count],
+    ];
+
+    y = this.drawTable(doc, tableData, 50, y, [200, 150, 100]);
+
+    return y + 20;
   }
 
   /**
-   * Generate Daily Report PDF
+   * Add revenue and profit section
    */
+  addRevenueProfitSection(doc, cashFlowData, y) {
+    const { revenue, profitability } = cashFlowData;
+
+    doc.fontSize(12).font('Helvetica-Bold').text('Revenue & Profitability', 50, y);
+    y += 20;
+
+    const revenueData = [
+      ['Revenue Type', 'Amount', 'Count'],
+      ['Cash Sales', `$${revenue.cash.amount.toFixed(2)}`, revenue.cash.count],
+      ['Credit Sales', `$${revenue.credit.amount.toFixed(2)}`, revenue.credit.count],
+      ['Completed Laybyes', `$${revenue.completedLaybyes.amount.toFixed(2)}`, revenue.completedLaybyes.count],
+      ['TOTAL REVENUE', `$${revenue.total.toFixed(2)}`, ''],
+    ];
+
+    y = this.drawTable(doc, revenueData, 50, y, [200, 150, 100]);
+    y += 10;
+
+    const profitData = [
+      ['Metric', 'Amount'],
+      ['Gross Profit', `$${profitability.grossProfit.toFixed(2)}`],
+      ['Total Expenses', `($${profitability.expenses.toFixed(2)})`],
+      ['Net Profit', `$${profitability.netProfit.toFixed(2)}`],
+      ['Profit Margin', `${profitability.profitMargin.toFixed(1)}%`],
+    ];
+
+    y = this.drawTable(doc, profitData, 50, y, [250, 200]);
+
+    return y + 20;
+  }
+
+  /**
+   * Add expense breakdown section with categories
+   */
+  addExpenseBreakdownSection(doc, expenses, y) {
+    if (!expenses || expenses.length === 0) {
+      return y;
+    }
+
+    if (y > 650) {
+      doc.addPage();
+      y = 50;
+    }
+
+    doc.fontSize(12).font('Helvetica-Bold').text('Expense Breakdown by Category', 50, y);
+    y += 20;
+
+    const categories = {};
+    let total = 0;
+
+    expenses.forEach(exp => {
+      if (!categories[exp.category]) {
+        categories[exp.category] = {
+          total: 0,
+          count: 0,
+          items: []
+        };
+      }
+      categories[exp.category].total += exp.amount;
+      categories[exp.category].count++;
+      categories[exp.category].items.push(exp);
+      total += exp.amount;
+    });
+
+    const sortedCategories = Object.entries(categories)
+      .sort((a, b) => b[1].total - a[1].total);
+
+    const summaryData = [['Category', 'Amount', 'Count', '% of Total']];
+    
+    sortedCategories.forEach(([category, data]) => {
+      const percentage = total > 0 ? (data.total / total * 100).toFixed(1) : 0;
+      const categoryName = category.charAt(0).toUpperCase() + category.slice(1);
+      summaryData.push([
+        categoryName,
+        `$${data.total.toFixed(2)}`,
+        data.count,
+        `${percentage}%`
+      ]);
+    });
+
+    summaryData.push([
+      'TOTAL',
+      `$${total.toFixed(2)}`,
+      expenses.length,
+      '100%'
+    ]);
+
+    y = this.drawTable(doc, summaryData, 50, y, [150, 120, 80, 100]);
+    y += 20;
+
+    doc.fontSize(11).font('Helvetica-Bold').text('Detailed Expenses', 50, y);
+    y += 15;
+
+    sortedCategories.forEach(([category, data]) => {
+      if (y > 700) {
+        doc.addPage();
+        y = 50;
+      }
+
+      const categoryName = category.charAt(0).toUpperCase() + category.slice(1);
+      doc.fontSize(10).font('Helvetica-Bold')
+         .text(`${categoryName} (${data.count} items)`, 60, y);
+      y += 15;
+
+      const categoryItems = [['Description', 'Amount', 'Date']];
+      
+      data.items.forEach(item => {
+        const date = new Date(item.date).toLocaleDateString();
+        categoryItems.push([
+          item.description || 'No description',
+          `$${item.amount.toFixed(2)}`,
+          date
+        ]);
+      });
+
+      y = this.drawTable(doc, categoryItems, 70, y, [250, 100, 100], true);
+      y += 10;
+    });
+
+    return y;
+  }
+
+  /**
+   * Generate Enhanced Daily Report PDF with FinancialService
+   */
+  async generateEnhancedDailyReportPDF(shop, callback) {
+    try {
+      // Get financial data from FinancialService
+      const financialReport = await FinancialService.getDailyCashFlow(shop._id);
+      
+      if (!financialReport.success) {
+        return callback(new Error(financialReport.message), null);
+      }
+
+      const { data } = financialReport;
+
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const filename = `${shop.businessName.replace(/\s+/g, '_')}_Daily_Enhanced_${new Date().toISOString().split('T')[0]}.pdf`;
+      const filePath = path.join(this.ensureReportsDirectory(), filename);
+
+      const stream = fs.createWriteStream(filePath);
+      doc.pipe(stream);
+
+      // Header
+      let yPos = this.addHeader(
+        doc,
+        shop,
+        'DAILY FINANCIAL REPORT',
+        `Date: ${new Date().toDateString()}`
+      );
+
+      // Financial Summary Section with visual boxes
+      yPos = this.addFinancialSummarySection(doc, data, yPos);
+
+      // Revenue & Profit Section
+      yPos = this.addRevenueProfitSection(doc, data, yPos);
+
+      // Expense Breakdown Section
+      if (data.details.expenses && data.details.expenses.length > 0) {
+        yPos = this.addExpenseBreakdownSection(doc, data.details.expenses, yPos);
+      }
+
+      // Outstanding Receivables Warning
+      if (data.outstanding.total > 0) {
+        if (yPos > 650) {
+          doc.addPage();
+          yPos = 50;
+        }
+
+        doc.fontSize(12).font('Helvetica-Bold')
+           .fillColor('#856404')
+           .text('⚠️ Outstanding Receivables', 50, yPos);
+        
+        doc.fontSize(10).font('Helvetica')
+           .fillColor('#000')
+           .text(`Customer Credit Due: $${data.outstanding.creditDue.amount.toFixed(2)} (${data.outstanding.creditDue.customers} customers)`, 50, yPos + 20)
+           .text(`Active Laybyes Due: $${data.outstanding.laybyeDue.amount.toFixed(2)} (${data.outstanding.laybyeDue.count} laybyes)`, 50, yPos + 35)
+           .font('Helvetica-Bold')
+           .text(`Total Outstanding: $${data.outstanding.total.toFixed(2)}`, 50, yPos + 50);
+      }
+
+      this.addFooter(doc);
+      doc.end();
+
+      stream.on('finish', () => {
+        callback(null, { filePath, filename });
+      });
+
+      stream.on('error', (error) => {
+        callback(error, null);
+      });
+
+    } catch (error) {
+      console.error('[PDFService] Enhanced daily report error:', error);
+      callback(error, null);
+    }
+  }
+
+  /**
+   * Generate Enhanced Weekly Report PDF
+   */
+  async generateEnhancedWeeklyReportPDF(shop, callback) {
+    try {
+      const financialReport = await FinancialService.getWeeklyCashFlow(shop._id);
+      
+      if (!financialReport.success) {
+        return callback(new Error(financialReport.message), null);
+      }
+
+      const { data } = financialReport;
+
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const filename = `${shop.businessName.replace(/\s+/g, '_')}_Weekly_Enhanced_${new Date().toISOString().split('T')[0]}.pdf`;
+      const filePath = path.join(this.ensureReportsDirectory(), filename);
+
+      const stream = fs.createWriteStream(filePath);
+      doc.pipe(stream);
+
+      let yPos = this.addHeader(
+        doc,
+        shop,
+        'WEEKLY FINANCIAL REPORT',
+        `Period: ${data.period.startDate.toDateString()} - ${data.period.endDate.toDateString()}`
+      );
+
+      yPos = this.addFinancialSummarySection(doc, data, yPos);
+      yPos = this.addRevenueProfitSection(doc, data, yPos);
+
+      if (data.details.expenses && data.details.expenses.length > 0) {
+        yPos = this.addExpenseBreakdownSection(doc, data.details.expenses, yPos);
+      }
+
+      if (data.outstanding.total > 0) {
+        if (yPos > 650) {
+          doc.addPage();
+          yPos = 50;
+        }
+
+        doc.fontSize(12).font('Helvetica-Bold')
+           .fillColor('#856404')
+           .text('⚠️ Outstanding Receivables', 50, yPos);
+        
+        doc.fontSize(10).font('Helvetica')
+           .fillColor('#000')
+           .text(`Total Outstanding: $${data.outstanding.total.toFixed(2)}`, 50, yPos + 20);
+      }
+
+      this.addFooter(doc);
+      doc.end();
+
+      stream.on('finish', () => {
+        callback(null, { filePath, filename });
+      });
+
+      stream.on('error', (error) => {
+        callback(error, null);
+      });
+
+    } catch (error) {
+      console.error('[PDFService] Enhanced weekly report error:', error);
+      callback(error, null);
+    }
+  }
+
+  /**
+   * Generate Enhanced Monthly Report PDF
+   */
+  async generateEnhancedMonthlyReportPDF(shop, callback) {
+    try {
+      const financialReport = await FinancialService.getMonthlyCashFlow(shop._id);
+      
+      if (!financialReport.success) {
+        return callback(new Error(financialReport.message), null);
+      }
+
+      const { data } = financialReport;
+
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const filename = `${shop.businessName.replace(/\s+/g, '_')}_Monthly_Enhanced_${new Date().toISOString().split('T')[0]}.pdf`;
+      const filePath = path.join(this.ensureReportsDirectory(), filename);
+
+      const stream = fs.createWriteStream(filePath);
+      doc.pipe(stream);
+
+      let yPos = this.addHeader(
+        doc,
+        shop,
+        'MONTHLY FINANCIAL REPORT',
+        `Period: ${data.period.startDate.toDateString()} - ${data.period.endDate.toDateString()}`
+      );
+
+      yPos = this.addFinancialSummarySection(doc, data, yPos);
+      yPos = this.addRevenueProfitSection(doc, data, yPos);
+
+      if (data.details.expenses && data.details.expenses.length > 0) {
+        yPos = this.addExpenseBreakdownSection(doc, data.details.expenses, yPos);
+      }
+
+      if (data.outstanding.total > 0) {
+        if (yPos > 650) {
+          doc.addPage();
+          yPos = 50;
+        }
+
+        doc.fontSize(12).font('Helvetica-Bold')
+           .fillColor('#856404')
+           .text('⚠️ Outstanding Receivables', 50, yPos);
+        
+        doc.fontSize(10).font('Helvetica')
+           .fillColor('#000')
+           .text(`Total Outstanding: $${data.outstanding.total.toFixed(2)}`, 50, yPos + 20);
+      }
+
+      this.addFooter(doc);
+      doc.end();
+
+      stream.on('finish', () => {
+        callback(null, { filePath, filename });
+      });
+
+      stream.on('error', (error) => {
+        callback(error, null);
+      });
+
+    } catch (error) {
+      console.error('[PDFService] Enhanced monthly report error:', error);
+      callback(error, null);
+    }
+  }
+
+  /**
+   * Legacy methods maintained for backward compatibility
+   * These now use FinancialService under the hood where applicable
+   */
+
   generateDailyReportPDF(shop, sales, date, callback) {
-    const doc = new PDFDocument({ margin: 50 });
-    const filename = `${shop.businessName.replace(/\s+/g, '_')}_Daily_${date.toISOString().split('T')[0]}.pdf`;
-    const filePath = path.join(this.ensureReportsDirectory(), filename);
-
-    const stream = fs.createWriteStream(filePath);
-    doc.pipe(stream);
-
-    try {
-      // Header
-      let yPos = this.addHeader(
-        doc,
-        shop,
-        'DAILY BUSINESS REPORT',
-        `Date: ${date.toDateString()}`
-      );
-
-      // Calculate metrics
-      const total = sales.reduce((sum, sale) => sum + sale.total, 0);
-      const itemCount = sales.reduce(
-        (sum, sale) => sum + sale.items.reduce((s, item) => s + item.quantity, 0),
-        0
-      );
-      const avgPerTransaction = sales.length > 0 ? total / sales.length : 0;
-
-      // Summary section
-      doc.fontSize(14)
-         .fillColor(this.colors.primary)
-         .font('Helvetica-Bold')
-         .text('SALES SUMMARY', 50, yPos);
-      
-      yPos += 30;
-
-      yPos = this.addSummaryBox(doc, yPos, [
-        { label: 'Total Revenue', value: `$${total.toFixed(2)}`, color: this.colors.primary },
-        { label: 'Items Sold', value: itemCount.toString(), color: this.colors.success },
-        { label: 'Transactions', value: sales.length.toString(), color: this.colors.warning },
-        { label: 'Average per Transaction', value: `$${avgPerTransaction.toFixed(2)}`, color: this.colors.dark }
-      ]);
-
-      // Product breakdown
-      doc.fontSize(14)
-         .fillColor(this.colors.primary)
-         .font('Helvetica-Bold')
-         .text('PRODUCT BREAKDOWN', 50, yPos);
-      
-      yPos += 30;
-
-      const productSales = {};
-      sales.forEach(sale => {
-        sale.items.forEach(item => {
-          if (!productSales[item.productName]) {
-            productSales[item.productName] = { quantity: 0, revenue: 0 };
-          }
-          productSales[item.productName].quantity += item.quantity;
-          productSales[item.productName].revenue += item.total;
-        });
-      });
-
-      // Table header
-      doc.fontSize(10)
-         .fillColor('white')
-         .font('Helvetica-Bold');
-      
-      doc.rect(50, yPos, 500, 25)
-         .fill(this.colors.primary);
-      
-      doc.text('Product', 70, yPos + 8, { width: 200 });
-      doc.text('Qty Sold', 270, yPos + 8, { width: 80, align: 'center' });
-      doc.text('Revenue', 350, yPos + 8, { width: 100, align: 'right' });
-      doc.text('Avg Price', 450, yPos + 8, { width: 80, align: 'right' });
-
-      yPos += 25;
-
-      // Table rows
-      let rowIndex = 0;
-      Object.entries(productSales)
-        .sort((a, b) => b[1].quantity - a[1].quantity)
-        .forEach(([product, data]) => {
-          if (yPos > 700) {
-            doc.addPage();
-            yPos = 50;
-          }
-
-          const avgPrice = data.revenue / data.quantity;
-          const bgColor = rowIndex % 2 === 0 ? '#ffffff' : this.colors.light;
-
-          doc.rect(50, yPos, 500, 25).fill(bgColor);
-
-          doc.fontSize(9)
-             .fillColor(this.colors.text)
-             .font('Helvetica')
-             .text(product, 70, yPos + 8, { width: 180 });
-          
-          doc.text(data.quantity.toString(), 270, yPos + 8, { width: 80, align: 'center' });
-          doc.text(`$${data.revenue.toFixed(2)}`, 350, yPos + 8, { width: 100, align: 'right' });
-          doc.text(`$${avgPrice.toFixed(2)}`, 450, yPos + 8, { width: 80, align: 'right' });
-
-          yPos += 25;
-          rowIndex++;
-        });
-
-      // Best seller highlight
-      const bestSeller = Object.entries(productSales)
-        .sort((a, b) => b[1].quantity - a[1].quantity)[0];
-
-      if (bestSeller) {
-        yPos += 20;
-        if (yPos > 700) {
-          doc.addPage();
-          yPos = 50;
-        }
-
-        doc.rect(50, yPos, 500, 40)
-           .fill('#fff3cd')
-           .stroke(this.colors.warning);
-
-        doc.fontSize(11)
-           .fillColor(this.colors.dark)
-           .font('Helvetica-Bold')
-           .text('Today\'s Star Product', 70, yPos + 10);
-
-        doc.fontSize(10)
-           .font('Helvetica')
-           .text(
-             `${bestSeller[0]} - ${bestSeller[1].quantity} units sold`,
-             70,
-             yPos + 25,
-             { width: 460 }
-           );
-      }
-
-      // Footer
-      this.addFooter(doc);
-      doc.end();
-
-      stream.on('finish', () => {
-        callback(null, { filePath, filename });
-      });
-
-      stream.on('error', (error) => {
-        callback(error, null);
-      });
-
-    } catch (error) {
-      callback(error, null);
-    }
+    // Redirect to enhanced version
+    this.generateEnhancedDailyReportPDF(shop, callback);
   }
 
-  /**
-   * Generate Weekly Report PDF
-   */
   generateWeeklyReportPDF(shop, sales, startDate, endDate, callback) {
-    const doc = new PDFDocument({ margin: 50 });
-    const filename = `${shop.businessName.replace(/\s+/g, '_')}_Weekly_${startDate.toISOString().split('T')[0]}.pdf`;
-    const filePath = path.join(this.ensureReportsDirectory(), filename);
-
-    const stream = fs.createWriteStream(filePath);
-    doc.pipe(stream);
-
-    try {
-      // Header
-      let yPos = this.addHeader(
-        doc,
-        shop,
-        'WEEKLY BUSINESS REPORT',
-        `Period: ${startDate.toDateString()} - ${endDate.toDateString()}`
-      );
-
-      // Calculate metrics
-      const total = sales.reduce((sum, sale) => sum + sale.total, 0);
-      const itemCount = sales.reduce(
-        (sum, sale) => sum + sale.items.reduce((s, item) => s + item.quantity, 0),
-        0
-      );
-
-      // Summary section
-      doc.fontSize(14)
-         .fillColor(this.colors.primary)
-         .font('Helvetica-Bold')
-         .text('WEEKLY SUMMARY', 50, yPos);
-      
-      yPos += 30;
-
-      yPos = this.addSummaryBox(doc, yPos, [
-        { label: 'Total Revenue', value: `$${total.toFixed(2)}`, color: this.colors.primary },
-        { label: 'Items Sold', value: itemCount.toString(), color: this.colors.success },
-        { label: 'Transactions', value: sales.length.toString(), color: this.colors.warning },
-        { label: 'Daily Average', value: `$${(total / 7).toFixed(2)}`, color: this.colors.dark }
-      ]);
-
-      // Daily breakdown
-      doc.fontSize(14)
-         .fillColor(this.colors.primary)
-         .font('Helvetica-Bold')
-         .text('DAILY PERFORMANCE', 50, yPos);
-      
-      yPos += 30;
-
-      const dailyBreakdown = {};
-      sales.forEach(sale => {
-        const day = sale.date.toDateString();
-        if (!dailyBreakdown[day]) {
-          dailyBreakdown[day] = { sales: 0, items: 0, transactions: 0 };
-        }
-        dailyBreakdown[day].sales += sale.total;
-        dailyBreakdown[day].items += sale.items.reduce((sum, item) => sum + item.quantity, 0);
-        dailyBreakdown[day].transactions += 1;
-      });
-
-      // Table header
-      doc.fontSize(10)
-         .fillColor('white')
-         .font('Helvetica-Bold');
-      
-      doc.rect(50, yPos, 500, 25)
-         .fill(this.colors.primary);
-      
-      doc.text('Day', 70, yPos + 8, { width: 180 });
-      doc.text('Sales', 250, yPos + 8, { width: 100, align: 'right' });
-      doc.text('Items', 350, yPos + 8, { width: 80, align: 'center' });
-      doc.text('Transactions', 430, yPos + 8, { width: 100, align: 'center' });
-
-      yPos += 25;
-
-      // Table rows
-      let rowIndex = 0;
-      Object.entries(dailyBreakdown).forEach(([day, data]) => {
-        if (yPos > 700) {
-          doc.addPage();
-          yPos = 50;
-        }
-
-        const bgColor = rowIndex % 2 === 0 ? '#ffffff' : this.colors.light;
-        const dayDate = new Date(day);
-        const dayName = dayDate.toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' });
-
-        doc.rect(50, yPos, 500, 25).fill(bgColor);
-
-        doc.fontSize(9)
-           .fillColor(this.colors.text)
-           .font('Helvetica')
-           .text(dayName, 70, yPos + 8, { width: 180 });
-        
-        doc.text(`$${data.sales.toFixed(2)}`, 250, yPos + 8, { width: 100, align: 'right' });
-        doc.text(data.items.toString(), 350, yPos + 8, { width: 80, align: 'center' });
-        doc.text(data.transactions.toString(), 430, yPos + 8, { width: 100, align: 'center' });
-
-        yPos += 25;
-        rowIndex++;
-      });
-
-      // Top products section
-      yPos += 20;
-      if (yPos > 650) {
-        doc.addPage();
-        yPos = 50;
-      }
-
-      doc.fontSize(14)
-         .fillColor(this.colors.primary)
-         .font('Helvetica-Bold')
-         .text('TOP 5 PRODUCTS', 50, yPos);
-      
-      yPos += 30;
-
-      const productSales = {};
-      sales.forEach(sale => {
-        sale.items.forEach(item => {
-          if (!productSales[item.productName]) {
-            productSales[item.productName] = { quantity: 0, revenue: 0 };
-          }
-          productSales[item.productName].quantity += item.quantity;
-          productSales[item.productName].revenue += item.total;
-        });
-      });
-
-      const topProducts = Object.entries(productSales)
-        .sort((a, b) => b[1].quantity - a[1].quantity)
-        .slice(0, 5);
-
-      const medals = ['Gold', 'Silver', 'Bronze', '4th', '5th'];
-      
-      topProducts.forEach(([product, data], index) => {
-        if (yPos > 700) {
-          doc.addPage();
-          yPos = 50;
-        }
-
-        doc.rect(50, yPos, 500, 50)
-           .fill(index < 3 ? '#fff3cd' : this.colors.light);
-
-        doc.fontSize(11)
-           .fillColor(this.colors.dark)
-           .font('Helvetica-Bold')
-           .text(`${medals[index]} ${product}`, 70, yPos + 10, { width: 300 });
-
-        doc.fontSize(9)
-           .font('Helvetica')
-           .text(`Units: ${data.quantity}  •  Revenue: $${data.revenue.toFixed(2)}`, 70, yPos + 30, { width: 460 });
-
-        yPos += 55;
-      });
-
-      // Footer
-      this.addFooter(doc);
-      doc.end();
-
-      stream.on('finish', () => {
-        callback(null, { filePath, filename });
-      });
-
-      stream.on('error', (error) => {
-        callback(error, null);
-      });
-
-    } catch (error) {
-      callback(error, null);
-    }
+    // Redirect to enhanced version
+    this.generateEnhancedWeeklyReportPDF(shop, callback);
   }
 
-  /**
-   * Generate Monthly Report PDF
-   */
   generateMonthlyReportPDF(shop, sales, startDate, endDate, callback) {
-    const doc = new PDFDocument({ margin: 50 });
-    const filename = `${shop.businessName.replace(/\s+/g, '_')}_Monthly_${startDate.toISOString().split('T')[0]}.pdf`;
-    const filePath = path.join(this.ensureReportsDirectory(), filename);
-
-    const stream = fs.createWriteStream(filePath);
-    doc.pipe(stream);
-
-    try {
-      // Header
-      let yPos = this.addHeader(
-        doc,
-        shop,
-        'MONTHLY BUSINESS REPORT',
-        `Period: ${startDate.toDateString()} - ${endDate.toDateString()}`
-      );
-
-      // Calculate metrics
-      const total = sales.reduce((sum, sale) => sum + sale.total, 0);
-      const itemCount = sales.reduce(
-        (sum, sale) => sum + sale.items.reduce((s, item) => s + item.quantity, 0),
-        0
-      );
-
-      // Summary section
-      doc.fontSize(14)
-         .fillColor(this.colors.primary)
-         .font('Helvetica-Bold')
-         .text('MONTHLY SUMMARY', 50, yPos);
-      
-      yPos += 30;
-
-      yPos = this.addSummaryBox(doc, yPos, [
-        { label: 'Total Revenue', value: `$${total.toFixed(2)}`, color: this.colors.primary },
-        { label: 'Items Sold', value: itemCount.toString(), color: this.colors.success },
-        { label: 'Transactions', value: sales.length.toString(), color: this.colors.warning },
-        { label: 'Daily Average', value: `$${(total / 30).toFixed(2)}`, color: this.colors.dark },
-        { label: 'Items per Day', value: (itemCount / 30).toFixed(1), color: this.colors.text }
-      ]);
-
-      // Weekly breakdown
-      doc.fontSize(14)
-         .fillColor(this.colors.primary)
-         .font('Helvetica-Bold')
-         .text('WEEKLY PERFORMANCE', 50, yPos);
-      
-      yPos += 30;
-
-      const weeklyBreakdown = {};
-      sales.forEach(sale => {
-        const weekStart = new Date(sale.date);
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-        const weekKey = weekStart.toDateString();
-
-        if (!weeklyBreakdown[weekKey]) {
-          weeklyBreakdown[weekKey] = { sales: 0, items: 0, transactions: 0 };
-        }
-        weeklyBreakdown[weekKey].sales += sale.total;
-        weeklyBreakdown[weekKey].items += sale.items.reduce((sum, item) => sum + item.quantity, 0);
-        weeklyBreakdown[weekKey].transactions += 1;
-      });
-
-      // Table header
-      doc.fontSize(10)
-         .fillColor('white')
-         .font('Helvetica-Bold');
-      
-      doc.rect(50, yPos, 500, 25)
-         .fill(this.colors.primary);
-      
-      doc.text('Week', 70, yPos + 8, { width: 180 });
-      doc.text('Sales', 250, yPos + 8, { width: 100, align: 'right' });
-      doc.text('Items', 350, yPos + 8, { width: 80, align: 'center' });
-      doc.text('Transactions', 430, yPos + 8, { width: 100, align: 'center' });
-
-      yPos += 25;
-
-      // Table rows
-      let rowIndex = 0;
-      Object.entries(weeklyBreakdown).forEach(([week, data], index) => {
-        if (yPos > 700) {
-          doc.addPage();
-          yPos = 50;
-        }
-
-        const bgColor = rowIndex % 2 === 0 ? '#ffffff' : this.colors.light;
-
-        doc.rect(50, yPos, 500, 25).fill(bgColor);
-
-        doc.fontSize(9)
-           .fillColor(this.colors.text)
-           .font('Helvetica')
-           .text(`Week ${index + 1}`, 70, yPos + 8, { width: 180 });
-        
-        doc.text(`$${data.sales.toFixed(2)}`, 250, yPos + 8, { width: 100, align: 'right' });
-        doc.text(data.items.toString(), 350, yPos + 8, { width: 80, align: 'center' });
-        doc.text(data.transactions.toString(), 430, yPos + 8, { width: 100, align: 'center' });
-
-        yPos += 25;
-        rowIndex++;
-      });
-
-      // Top products section
-      yPos += 20;
-      if (yPos > 600) {
-        doc.addPage();
-        yPos = 50;
-      }
-
-      doc.fontSize(14)
-         .fillColor(this.colors.primary)
-         .font('Helvetica-Bold')
-         .text('TOP 8 PRODUCTS', 50, yPos);
-      
-      yPos += 30;
-
-      const productSales = {};
-      sales.forEach(sale => {
-        sale.items.forEach(item => {
-          if (!productSales[item.productName]) {
-            productSales[item.productName] = { quantity: 0, revenue: 0 };
-          }
-          productSales[item.productName].quantity += item.quantity;
-          productSales[item.productName].revenue += item.total;
-        });
-      });
-
-      const topProducts = Object.entries(productSales)
-        .sort((a, b) => b[1].quantity - a[1].quantity)
-        .slice(0, 8);
-
-      // Table header
-      doc.fontSize(10)
-         .fillColor('white')
-         .font('Helvetica-Bold');
-      
-      doc.rect(50, yPos, 500, 25)
-         .fill(this.colors.success);
-      
-      doc.text('Rank', 70, yPos + 8, { width: 50 });
-      doc.text('Product', 120, yPos + 8, { width: 180 });
-      doc.text('Units', 300, yPos + 8, { width: 80, align: 'center' });
-      doc.text('Revenue', 380, yPos + 8, { width: 90, align: 'right' });
-      doc.text('Avg Price', 470, yPos + 8, { width: 60, align: 'right' });
-
-      yPos += 25;
-
-      // Table rows
-      const medals = ['Gold', 'Silver', 'Bronze', '4th', '5th', '6️th', '7️th', '8️th'];
-      rowIndex = 0;
-      
-      topProducts.forEach(([product, data], index) => {
-        if (yPos > 700) {
-          doc.addPage();
-          yPos = 50;
-        }
-
-        const bgColor = rowIndex % 2 === 0 ? '#ffffff' : this.colors.light;
-        const avgPrice = data.revenue / data.quantity;
-
-        doc.rect(50, yPos, 500, 25).fill(bgColor);
-
-        doc.fontSize(9)
-           .fillColor(this.colors.text)
-           .font('Helvetica')
-           .text(medals[index], 70, yPos + 8, { width: 50 });
-        
-        doc.text(product, 120, yPos + 8, { width: 180 });
-        doc.text(data.quantity.toString(), 300, yPos + 8, { width: 80, align: 'center' });
-        doc.text(`$${data.revenue.toFixed(2)}`, 380, yPos + 8, { width: 90, align: 'right' });
-        doc.text(`$${avgPrice.toFixed(2)}`, 470, yPos + 8, { width: 60, align: 'right' });
-
-        yPos += 25;
-        rowIndex++;
-      });
-
-      // Insights box
-      yPos += 20;
-      if (yPos > 680) {
-        doc.addPage();
-        yPos = 50;
-      }
-
-      const topRevenue = topProducts.slice(0, 3).reduce((sum, [_, data]) => sum + data.revenue, 0);
-      const topPercentage = ((topRevenue / total) * 100).toFixed(0);
-
-      doc.rect(50, yPos, 500, 60)
-         .fill('#d1ecf1')
-         .stroke(this.colors.primary);
-
-      doc.fontSize(11)
-         .fillColor(this.colors.dark)
-         .font('Helvetica-Bold')
-         .text('📈 Monthly Insights', 70, yPos + 10);
-
-      doc.fontSize(9)
-         .font('Helvetica')
-         .text(
-           `• Top 3 products generate ${topPercentage}% of total revenue\n` +
-           `• Best seller: ${topProducts[0][0]} with ${topProducts[0][1].quantity} units\n` +
-           `• Average transaction value: $${(total / sales.length).toFixed(2)}`,
-           70,
-           yPos + 30,
-           { width: 460, lineGap: 3 }
-         );
-
-      // Footer
-      this.addFooter(doc);
-      doc.end();
-
-      stream.on('finish', () => {
-        callback(null, { filePath, filename });
-      });
-
-      stream.on('error', (error) => {
-        callback(error, null);
-      });
-
-    } catch (error) {
-      callback(error, null);
-    }
+    // Redirect to enhanced version
+    this.generateEnhancedMonthlyReportPDF(shop, callback);
   }
 
   /**
-   * Generate Best Sellers Report PDF
+   * Generate Best Sellers Report PDF (uses existing sales data)
    */
   generateBestSellersReportPDF(shop, sales, startDate, endDate, days, callback) {
-    const doc = new PDFDocument({ margin: 50 });
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const periodText = days === 1 ? 'Today' : days === 7 ? 'Weekly' : 'Monthly';
     const filename = `${shop.businessName.replace(/\s+/g, '_')}_BestSellers_${periodText}_${startDate.toISOString().split('T')[0]}.pdf`;
     const filePath = path.join(this.ensureReportsDirectory(), filename);
@@ -714,7 +585,6 @@ class PDFService {
     doc.pipe(stream);
 
     try {
-      // Header
       const reportTitle = days === 1 ? 'BEST SELLERS - TODAY' : 
                          days === 7 ? 'BEST SELLERS - THIS WEEK' : 
                          'BEST SELLERS - THIS MONTH';
@@ -726,7 +596,6 @@ class PDFService {
         `Analysis Period: ${startDate.toDateString()} - ${endDate.toDateString()}`
       );
 
-      // Aggregate product sales
       const productSales = {};
       sales.forEach(sale => {
         sale.items.forEach(item => {
@@ -746,7 +615,6 @@ class PDFService {
       const totalItems = Object.values(productSales).reduce((sum, p) => sum + p.quantity, 0);
       const totalRevenue = Object.values(productSales).reduce((sum, p) => sum + p.revenue, 0);
 
-      // Summary section
       doc.fontSize(14)
          .fillColor(this.colors.primary)
          .font('Helvetica-Bold')
@@ -754,14 +622,35 @@ class PDFService {
       
       yPos += 30;
 
-      yPos = this.addSummaryBox(doc, yPos, [
+      const summaryItems = [
         { label: 'Total Items Sold', value: totalItems.toString(), color: this.colors.primary },
         { label: 'Total Revenue', value: `$${totalRevenue.toFixed(2)}`, color: this.colors.success },
         { label: 'Unique Products', value: Object.keys(productSales).length.toString(), color: this.colors.warning },
         { label: 'Total Transactions', value: sales.length.toString(), color: this.colors.dark }
-      ]);
+      ];
 
-      // Product ranking
+      const boxWidth = 500;
+      const boxHeight = 20 + (summaryItems.length * 25);
+      
+      doc.rect(50, yPos, boxWidth, boxHeight)
+         .fillAndStroke(this.colors.light, this.colors.primary);
+
+      let itemY = yPos + 15;
+      summaryItems.forEach(item => {
+        doc.fontSize(11)
+           .fillColor(this.colors.dark)
+           .font('Helvetica-Bold')
+           .text(item.label + ':', 70, itemY, { width: 200, continued: false });
+        
+        doc.font('Helvetica')
+           .fillColor(item.color || this.colors.text)
+           .text(item.value, 250, itemY, { width: 280 });
+        
+        itemY += 25;
+      });
+
+      yPos += boxHeight + 30;
+
       doc.fontSize(14)
          .fillColor(this.colors.primary)
          .font('Helvetica-Bold')
@@ -772,55 +661,24 @@ class PDFService {
       const sortedProducts = Object.entries(productSales)
         .sort((a, b) => b[1].quantity - a[1].quantity);
 
-      // Table header
-      doc.fontSize(10)
-         .fillColor('white')
-         .font('Helvetica-Bold');
+      const tableData = [['#', 'Product', 'Units', 'Revenue', 'Avg Price', 'Share']];
       
-      doc.rect(50, yPos, 500, 25)
-         .fill(this.colors.primary);
-      
-      doc.text('#', 70, yPos + 8, { width: 30 });
-      doc.text('Product', 100, yPos + 8, { width: 160 });
-      doc.text('Units', 260, yPos + 8, { width: 60, align: 'center' });
-      doc.text('Revenue', 320, yPos + 8, { width: 80, align: 'right' });
-      doc.text('Avg Price', 400, yPos + 8, { width: 70, align: 'right' });
-      doc.text('Share', 470, yPos + 8, { width: 60, align: 'center' });
-
-      yPos += 25;
-
-      // Table rows
-      let rowIndex = 0;
       sortedProducts.forEach(([product, data], index) => {
-        if (yPos > 700) {
-          doc.addPage();
-          yPos = 50;
-        }
-
-        const bgColor = rowIndex % 2 === 0 ? '#ffffff' : this.colors.light;
         const avgPrice = data.revenue / data.quantity;
         const share = ((data.quantity / totalItems) * 100).toFixed(1);
-
-        doc.rect(50, yPos, 500, 25).fill(bgColor);
-
-        doc.fontSize(9)
-           .fillColor(this.colors.text)
-           .font('Helvetica-Bold')
-           .text((index + 1).toString(), 70, yPos + 8, { width: 30 });
         
-        doc.font('Helvetica')
-           .text(product, 100, yPos + 8, { width: 160 });
-        
-        doc.text(data.quantity.toString(), 260, yPos + 8, { width: 60, align: 'center' });
-        doc.text(`$${data.revenue.toFixed(2)}`, 320, yPos + 8, { width: 80, align: 'right' });
-        doc.text(`$${avgPrice.toFixed(2)}`, 400, yPos + 8, { width: 70, align: 'right' });
-        doc.text(`${share}%`, 470, yPos + 8, { width: 60, align: 'center' });
-
-        yPos += 25;
-        rowIndex++;
+        tableData.push([
+          (index + 1).toString(),
+          product,
+          data.quantity.toString(),
+          `$${data.revenue.toFixed(2)}`,
+          `$${avgPrice.toFixed(2)}`,
+          `${share}%`
+        ]);
       });
 
-      // Insights section
+      yPos = this.drawTable(doc, tableData, 50, yPos, [30, 160, 60, 80, 70, 60]);
+
       yPos += 20;
       if (yPos > 650) {
         doc.addPage();
@@ -858,7 +716,6 @@ class PDFService {
            { width: 460, lineGap: 4 }
          );
 
-      // Footer
       this.addFooter(doc);
       doc.end();
 

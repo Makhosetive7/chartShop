@@ -8,6 +8,7 @@ import CancellationService from "./CancellationService.js";
 import CustomerService from "./CustomerService.js";
 import OrderService from "./OrderService.js";
 import ExpenseService from "./ExpenseService.js";
+import FinancialService from "./FinancialService.js";
 
 class CommandService {
   async processCommand(telegramId, text) {
@@ -182,6 +183,27 @@ Need help? Just type *help* anytime!`;
       return await this.handleExpenseReports(shop._id, text);
     }
 
+
+    if (command.startsWith('expense breakdown') || 
+      command.startsWith('expenses breakdown')) {
+    return await this.handleExpenseBreakdown(shop._id, text);
+  }
+  
+  // Update existing daily command:
+  if (command === 'daily' || command === 'total') {
+    return await this.handleDailyTotal(shop._id);
+  }
+  
+  // Update existing weekly command:
+  if (command.startsWith('weekly') || command.startsWith('week')) {
+    return await this.handleWeeklyReport(shop._id);
+  }
+  
+  // Update existing monthly command:
+  if (command.startsWith('monthly') || command.startsWith('month')) {
+    return await this.handleMonthlyReport(shop._id);
+  }
+  
     if (command.startsWith("profit")) {
       return await this.handleProfitCalculation(shop._id, text);
     }
@@ -756,10 +778,11 @@ Need help? Just type *help* anytime!`;
       product.price = newPrice;
       await product.save();
 
-      return `*Price Updated Successfully!*\n\n${product.name
-        }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
-          2
-        )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
+      return `*Price Updated Successfully!*\n\n${
+        product.name
+      }\nOld Price: $${oldPrice.toFixed(2)}\nNew Price: $${newPrice.toFixed(
+        2
+      )}\n\nChange: $${(newPrice - oldPrice).toFixed(2)}`;
     } catch (error) {
       console.error("Update price error:", error);
       return "Failed to update price. Please try again.";
@@ -850,8 +873,9 @@ Need help? Just type *help* anytime!`;
           }
           oldValue = product.price;
           product.price = newValue;
-          response = `*Price Updated!*\n\n${product.name
-            }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
+          response = `*Price Updated!*\n\n${
+            product.name
+          }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
           break;
 
         case "stock":
@@ -1002,459 +1026,57 @@ Need help? Just type *help* anytime!`;
    */
   async handleDailyTotal(shopId) {
     try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      // Get different types of sales
-      const cashSales = await Sale.find({
-        shopId,
-        date: { $gte: today },
-        type: "cash",
-        isCancelled: false,
-      });
-
-      const creditSales = await Sale.find({
-        shopId,
-        date: { $gte: today },
-        type: "credit",
-        isCancelled: false,
-      });
-
-      const completedLaybyes = await Sale.find({
-        shopId,
-        date: { $gte: today },
-        type: "completed_laybye",
-        isCancelled: false,
-      });
-
-      // Calculate totals
-      const cashTotal = cashSales.reduce((sum, sale) => sum + sale.total, 0);
-      const creditTotal = creditSales.reduce(
-        (sum, sale) => sum + sale.total,
-        0
+      console.log(
+        "[CommandService] Generating daily report using FinancialService"
       );
-      const laybyeTotal = completedLaybyes.reduce(
-        (sum, sale) => sum + sale.total,
-        0
-      );
-      const totalRevenue = cashTotal + creditTotal + laybyeTotal;
 
-      // Calculate profit
-      const cashProfit = cashSales.reduce(
-        (sum, sale) => sum + (sale.profit || 0),
-        0
-      );
-      const creditProfit = creditSales.reduce(
-        (sum, sale) => sum + (sale.profit || 0),
-        0
-      );
-      const laybyeProfit = completedLaybyes.reduce(
-        (sum, sale) => sum + (sale.profit || 0),
-        0
-      );
-      const totalProfit = cashProfit + creditProfit + laybyeProfit;
+      const result = await FinancialService.getDailyCashFlow(shopId);
 
-      // Get laybye payments (cash flow)
-      const laybyePayments = await LayBye.aggregate([
-        {
-          $match: {
-            shopId: mongoose.Types.ObjectId(shopId),
-            "installments.date": { $gte: today },
-          },
-        },
-        { $unwind: "$installments" },
-        {
-          $match: {
-            "installments.date": { $gte: today },
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: "$installments.amount" },
-          },
-        },
-      ]);
+      if (!result.success) {
+        return `*Error Generating Report*\n\n${result.message}`;
+      }
 
-      const laybyeCashFlow = laybyePayments[0]?.total || 0;
-
-      // Get credit payments (cash flow)
-      const creditPayments = await Customer.aggregate([
-        {
-          $match: { shopId: mongoose.Types.ObjectId(shopId) },
-        },
-        { $unwind: "$creditTransactions" },
-        {
-          $match: {
-            "creditTransactions.type": "payment",
-            "creditTransactions.date": { $gte: today },
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: "$creditTransactions.amount" },
-          },
-        },
-      ]);
-
-      const creditCashFlow = creditPayments[0]?.total || 0;
-
-      // Calculate total cash flow
-      const totalCashFlow = cashTotal + laybyeCashFlow + creditCashFlow;
-
-      // Generate report
-      let report = `*DAILY BUSINESS REPORT*\n\n`;
-      report += `Date: ${today.toDateString()}\n\n`;
-
-      report += `*SALES RECOGNITION*\n`;
-      report += `Cash Sales: $${cashTotal.toFixed(2)}\n`;
-      report += `Credit Sales: $${creditTotal.toFixed(2)}\n`;
-      report += `Completed Laybyes: $${laybyeTotal.toFixed(2)}\n`;
-      report += `Total Revenue: $${totalRevenue.toFixed(2)}\n\n`;
-
-      report += `*PROFIT RECOGNITION*\n`;
-      report += `Cash Profit: $${cashProfit.toFixed(2)}\n`;
-      report += `Credit Profit: $${creditProfit.toFixed(2)}\n`;
-      report += `Laybye Profit: $${laybyeProfit.toFixed(2)}\n`;
-      report += `Total Profit: $${totalProfit.toFixed(2)}\n\n`;
-
-      report += `*CASH FLOW TODAY*\n`;
-      report += `Cash Sales: $${cashTotal.toFixed(2)}\n`;
-      report += `Laybye Payments: $${laybyeCashFlow.toFixed(2)}\n`;
-      report += `Credit Payments: $${creditCashFlow.toFixed(2)}\n`;
-      report += `Total Cash In: $${totalCashFlow.toFixed(2)}\n\n`;
-
-      report += `*OUTSTANDING BALANCES*\n`;
-
-      // Active laybyes
-      const activeLaybyes = await LayBye.find({
-        shopId,
-        status: "active",
-      });
-
-      const totalLaybyeDue = activeLaybyes.reduce(
-        (sum, lb) => sum + lb.balanceDue,
-        0
-      );
-      report += `Active Laybyes: $${totalLaybyeDue.toFixed(2)} (${activeLaybyes.length
-        })\n`;
-
-      // Credit balances
-      const customersWithCredit = await Customer.find({
-        shopId,
-        currentBalance: { $gt: 0 },
-      });
-
-      const totalCreditDue = customersWithCredit.reduce(
-        (sum, c) => sum + c.currentBalance,
-        0
-      );
-      report += `Credit Balances: $${totalCreditDue.toFixed(2)} (${customersWithCredit.length
-        } customers)\n`;
-
-      return report;
+      return result.report;
     } catch (error) {
-      console.error("Daily report error:", error);
-      return "Failed to generate daily report. Please try again.";
+      console.error("[CommandService] Daily report error:", error);
+      return `Failed to generate daily report: ${error.message}`;
     }
   }
 
-  async handleWeeklyReport(shopId) {
-    try {
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 7);
-      startDate.setHours(0, 0, 0, 0);
-
-      // Get current period data
-      const currentSales = await Sale.find({
-        shopId,
-        date: { $gte: startDate, $lte: endDate },
-        isCancelled: false,
-      });
-
-      // Get previous period data for comparison
-      const prevStartDate = new Date(startDate);
-      prevStartDate.setDate(prevStartDate.getDate() - 7);
-      const prevEndDate = new Date(startDate);
-
-      const previousSales = await Sale.find({
-        shopId,
-        date: { $gte: prevStartDate, $lte: prevEndDate },
-        isCancelled: false,
-      });
-
-      if (currentSales.length === 0) {
-        return `*WEEKLY REPORT*\n\nNo sales in the last 7 days.\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`;
-      }
-
-      // Calculate totals
-      const currentTotal = currentSales.reduce(
-        (sum, sale) => sum + sale.total,
-        0
-      );
-      const currentItems = currentSales.reduce(
-        (sum, sale) =>
-          sum +
-          sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
-        0
-      );
-
-      const previousTotal = previousSales.reduce(
-        (sum, sale) => sum + sale.total,
-        0
-      );
-      const previousItems = previousSales.reduce(
-        (sum, sale) =>
-          sum +
-          sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
-        0
-      );
-
-      // Calculate growth
-      const revenueGrowth =
-        previousTotal > 0
-          ? ((currentTotal - previousTotal) / previousTotal) * 100
-          : 100;
-      const volumeGrowth =
-        previousItems > 0
-          ? ((currentItems - previousItems) / previousItems) * 100
-          : 100;
-
-      // Daily breakdown
-      const dailyBreakdown = {};
-      currentSales.forEach((sale) => {
-        const day = sale.date.toDateString();
-        if (!dailyBreakdown[day]) {
-          dailyBreakdown[day] = { sales: 0, items: 0, transactions: 0 };
-        }
-        dailyBreakdown[day].sales += sale.total;
-        dailyBreakdown[day].items += sale.items.reduce(
-          (sum, item) => sum + item.quantity,
-          0
-        );
-        dailyBreakdown[day].transactions += 1;
-      });
-
-      // Top products
-      const productSales = {};
-      currentSales.forEach((sale) => {
-        sale.items.forEach((item) => {
-          if (!productSales[item.productName]) {
-            productSales[item.productName] = { quantity: 0, revenue: 0 };
-          }
-          productSales[item.productName].quantity += item.quantity;
-          productSales[item.productName].revenue += item.total;
-        });
-      });
-
-      const topProducts = Object.entries(productSales)
-        .sort((a, b) => b[1].quantity - a[1].quantity)
-        .slice(0, 5);
-
-      let report = `*WEEKLY BUSINESS REPORT*\n\n`;
-      report += `Period: ${startDate.toDateString()} - ${endDate.toDateString()}\n`;
-      report += `Compared to: ${prevStartDate.toDateString()} - ${prevEndDate.toDateString()}\n\n`;
-
-      report += `*FINANCIAL SUMMARY*\n`;
-      report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
-      report += `Previous Week: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
-
-      report += `*VOLUME SUMMARY*\n`;
-      report += `Items Sold: ${currentItems}\n`;
-      report += `Previous Week: ${previousItems}\n`;
-      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
-
-      report += `*TRANSACTION SUMMARY*\n`;
-      report += `Total Transactions: ${currentSales.length}\n`;
-      report += `Avg per Transaction: $${(
-        currentTotal / currentSales.length
-      ).toFixed(2)}\n\n`;
-
-      report += `*DAILY BREAKDOWN*\n`;
-      Object.entries(dailyBreakdown).forEach(([day, data]) => {
-        report += `${new Date(day).toLocaleDateString("en", {
-          weekday: "short",
-        })}: $${data.sales.toFixed(2)} (${data.items} items)\n`;
-      });
-
-      if (topProducts.length > 0) {
-        report += `\n*TOP 5 PRODUCTS THIS WEEK*\n`;
-        topProducts.forEach(([product, data], index) => {
-          const medals = ["1st", "2nd", "3rd", "4th", "5️th"];
-          report += `${medals[index]} ${product}: ${data.quantity
-            } sold ($${data.revenue.toFixed(2)})\n`;
-        });
-      }
-
-      report += `\n*Insight:* ${this.getWeeklyInsight(
-        revenueGrowth,
-        volumeGrowth
-      )}`;
-
-      return report;
-    } catch (error) {
-      console.error("Weekly report error:", error);
-      return "Failed to generate weekly report. Please try again.";
+async handleWeeklyReport(shopId) {
+  try {
+    console.log('[CommandService] Generating weekly report using FinancialService');
+    
+    const result = await FinancialService.getWeeklyCashFlow(shopId);
+    
+    if (!result.success) {
+      return `*Error Generating Report*\n\n${result.message}`;
     }
+    
+    return result.report;
+  } catch (error) {
+    console.error('[CommandService] Weekly report error:', error);
+    return `Failed to generate weekly report: ${error.message}`;
   }
+}
 
-  async handleMonthlyReport(shopId) {
-    try {
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 30);
-      startDate.setHours(0, 0, 0, 0);
-
-      // Get current period data
-      const currentSales = await Sale.find({
-        shopId,
-        date: { $gte: startDate, $lte: endDate },
-        isCancelled: false,
-      });
-
-      // Get previous period data
-      const prevStartDate = new Date(startDate);
-      prevStartDate.setDate(prevStartDate.getDate() - 30);
-      const prevEndDate = new Date(startDate);
-
-      const previousSales = await Sale.find({
-        shopId,
-        date: { $gte: prevStartDate, $lte: prevEndDate },
-        isCancelled: false,
-      });
-
-      if (currentSales.length === 0) {
-        return `*MONTHLY REPORT*\n\nNo sales in the last 30 days.\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`;
-      }
-
-      // Calculate totals
-      const currentTotal = currentSales.reduce(
-        (sum, sale) => sum + sale.total,
-        0
-      );
-      const currentItems = currentSales.reduce(
-        (sum, sale) =>
-          sum +
-          sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
-        0
-      );
-
-      const previousTotal = previousSales.reduce(
-        (sum, sale) => sum + sale.total,
-        0
-      );
-      const previousItems = previousSales.reduce(
-        (sum, sale) =>
-          sum +
-          sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
-        0
-      );
-
-      // Calculate growth
-      const revenueGrowth =
-        previousTotal > 0
-          ? ((currentTotal - previousTotal) / previousTotal) * 100
-          : 100;
-      const volumeGrowth =
-        previousItems > 0
-          ? ((currentItems - previousItems) / previousItems) * 100
-          : 100;
-
-      // Weekly breakdown
-      const weeklyBreakdown = {};
-      currentSales.forEach((sale) => {
-        const weekStart = new Date(sale.date);
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Start of week (Sunday)
-        const weekKey = weekStart.toDateString();
-
-        if (!weeklyBreakdown[weekKey]) {
-          weeklyBreakdown[weekKey] = { sales: 0, items: 0, transactions: 0 };
-        }
-        weeklyBreakdown[weekKey].sales += sale.total;
-        weeklyBreakdown[weekKey].items += sale.items.reduce(
-          (sum, item) => sum + item.quantity,
-          0
-        );
-        weeklyBreakdown[weekKey].transactions += 1;
-      });
-
-      // Top products
-      const productSales = {};
-      currentSales.forEach((sale) => {
-        sale.items.forEach((item) => {
-          if (!productSales[item.productName]) {
-            productSales[item.productName] = { quantity: 0, revenue: 0 };
-          }
-          productSales[item.productName].quantity += item.quantity;
-          productSales[item.productName].revenue += item.total;
-        });
-      });
-
-      const topProducts = Object.entries(productSales)
-        .sort((a, b) => b[1].quantity - a[1].quantity)
-        .slice(0, 8);
-
-      let report = `*MONTHLY BUSINESS REPORT*\n\n`;
-      report += `Period: ${startDate.toDateString()} - ${endDate.toDateString()}\n`;
-      report += `Compared to previous 30 days\n\n`;
-
-      report += `*FINANCIAL SUMMARY*\n`;
-      report += `Total Revenue: $${currentTotal.toFixed(2)}\n`;
-      report += `Previous Period: $${previousTotal.toFixed(2)}\n`;
-      report += `Growth: ${revenueGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(revenueGrowth).toFixed(1)}%\n\n`;
-
-      report += `*VOLUME SUMMARY*\n`;
-      report += `Items Sold: ${currentItems}\n`;
-      report += `Previous Period: ${previousItems}\n`;
-      report += `Growth: ${volumeGrowth >= 0 ? "Increase" : "Decrease"
-        } ${Math.abs(volumeGrowth).toFixed(1)}%\n\n`;
-
-      report += `*BUSINESS METRICS*\n`;
-      report += `Total Transactions: ${currentSales.length}\n`;
-      report += `Daily Average: $${(currentTotal / 30).toFixed(2)}\n`;
-      report += `Items per Day: ${(currentItems / 30).toFixed(1)}\n\n`;
-
-      report += `*WEEKLY PERFORMANCE*\n`;
-      Object.entries(weeklyBreakdown).forEach(([week, data], index) => {
-        report += `Week ${index + 1}: $${data.sales.toFixed(2)} (${data.items
-          } items)\n`;
-      });
-
-      if (topProducts.length > 0) {
-        report += `\n*TOP PRODUCTS THIS MONTH*\n`;
-        topProducts.forEach(([product, data], index) => {
-          const medals = [
-            "1st",
-            "2nd",
-            "3rd",
-            "4️th",
-            "5️th",
-            "6️th",
-            "7️th",
-            "8️th",
-          ];
-          report += `${medals[index]} ${product}: ${data.quantity
-            } sold ($${data.revenue.toFixed(2)})\n`;
-        });
-      }
-
-      report += `\n*Monthly Insight:* ${this.getMonthlyInsight(
-        revenueGrowth,
-        currentTotal
-      )}`;
-
-      return report;
-    } catch (error) {
-      console.error("Monthly report error:", error);
-      return "Failed to generate monthly report. Please try again.";
+async handleMonthlyReport(shopId) {
+  try {
+    console.log('[CommandService] Generating monthly report using FinancialService');
+    
+    const result = await FinancialService.getMonthlyCashFlow(shopId);
+    
+    if (!result.success) {
+      return `*Error Generating Report*\n\n${result.message}`;
     }
+    
+    return result.report;
+  } catch (error) {
+    console.error('[CommandService] Monthly report error:', error);
+    return `Failed to generate monthly report: ${error.message}`;
   }
+}
+
 
   async handleBestSellingProducts(shopId, text) {
     try {
@@ -1579,213 +1201,64 @@ Need help? Just type *help* anytime!`;
     }
   }
 
-  async handleExportReport(shop, text) {
-    try {
-      // Parse command
-      const parts = text
-        .toLowerCase()
-        .replace("export", "")
-        .replace("pdf", "")
-        .trim()
-        .split(" ");
-      const reportType = parts[0] || "daily";
+async handleExportReport(shop, text) {
+  try {
+    const parts = text.toLowerCase()
+      .replace('export', '')
+      .replace('pdf', '')
+      .trim()
+      .split(' ');
+    const reportType = parts[0] || 'daily';
 
-      let startDate, endDate, sales, days;
+    console.log('[CommandService] Exporting', reportType, 'report');
 
-      // Determine report type and date range
-      switch (reportType) {
-        case "daily":
-        case "today":
-          startDate = new Date();
-          startDate.setHours(0, 0, 0, 0);
-          endDate = new Date();
-          days = 1;
+    let pdfMethod;
+    let periodName;
 
-          sales = await Sale.find({
-            shopId: shop._id,
-            date: { $gte: startDate, $lte: endDate },
-            isCancelled: false,
+    switch (reportType) {
+      case 'daily':
+      case 'today':
+        pdfMethod = 'generateEnhancedDailyReportPDF';
+        periodName = 'Daily';
+        break;
+      
+      case 'weekly':
+      case 'week':
+        pdfMethod = 'generateEnhancedWeeklyReportPDF';
+        periodName = 'Weekly';
+        break;
+      
+      case 'monthly':
+      case 'month':
+        pdfMethod = 'generateEnhancedMonthlyReportPDF';
+        periodName = 'Monthly';
+        break;
+      
+      default:
+        return `Invalid report type: "${reportType}"\n\nAvailable:\n• export daily\n• export weekly\n• export monthly`;
+    }
+
+    // Return promise for PDF generation
+    return new Promise((resolve, reject) => {
+      PDFService[pdfMethod](shop, (error, result) => {
+        if (error) {
+          console.error('[CommandService] PDF generation error:', error);
+          resolve(`*PDF Generation Failed*\n\n${error.message}`);
+        } else {
+          resolve({
+            type: 'pdf',
+            message: `*${periodName} Financial Report Generated!*\n\nYour comprehensive financial report is ready with:\n\n✓ Cash flow analysis\n✓ Revenue breakdown\n✓ Expense details by category\n✓ Profitability metrics\n✓ Outstanding balances\n\nComplete financial transparency at your fingertips.`,
+            filePath: result.filePath,
+            fileName: result.filename,
           });
-          break;
-
-        case "weekly":
-        case "week":
-          endDate = new Date();
-          startDate = new Date();
-          startDate.setDate(startDate.getDate() - 7);
-          startDate.setHours(0, 0, 0, 0);
-          days = 7;
-
-          sales = await Sale.find({
-            shopId: shop._id,
-            date: { $gte: startDate, $lte: endDate },
-          });
-          break;
-
-        case "monthly":
-        case "month":
-          endDate = new Date();
-          startDate = new Date();
-          startDate.setDate(startDate.getDate() - 30);
-          startDate.setHours(0, 0, 0, 0);
-          days = 30;
-
-          sales = await Sale.find({
-            shopId: shop._id,
-            date: { $gte: startDate, $lte: endDate },
-          });
-          break;
-
-        case "best":
-        case "bestsellers":
-          // Check for period modifier
-          if (parts[1] === "month" || parts[1] === "monthly") {
-            days = 30;
-          } else if (parts[1] === "today") {
-            days = 1;
-          } else {
-            days = 7; // Default to weekly
-          }
-
-          endDate = new Date();
-          startDate = new Date();
-          startDate.setDate(startDate.getDate() - days);
-          startDate.setHours(0, 0, 0, 0);
-
-          sales = await Sale.find({
-            shopId: shop._id,
-            date: { $gte: startDate, $lte: endDate },
-          });
-          break;
-
-        default:
-          return `Invalid report type: "${reportType}"\n\nAvailable options:\n• export daily\n• export weekly\n• export monthly\n• export best\n• export best month`;
-      }
-
-      // Check if we have data
-      if (!sales || sales.length === 0) {
-        return `*No Sales Data Available*\n\nThere are no sales recorded for the requested period.\n\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`;
-      }
-
-      // Return immediate response
-      const periodName =
-        reportType === "best"
-          ? days === 1
-            ? "today's"
-            : days === 7
-              ? "weekly"
-              : "monthly"
-          : reportType;
-
-      const response = {
-        type: "pdf_generating",
-        message: `*Generating ${periodName.toUpperCase()} PDF Report...*\n\nYour professional business report is being created. This will take a few seconds.\n\nSales data: ${sales.length
-          } transactions\nPeriod: ${startDate.toDateString()} - ${endDate.toDateString()}`,
-      };
-
-      // Generate PDF asynchronously and return file info
-      return new Promise((resolve, reject) => {
-        // Choose appropriate PDF generation method
-        let pdfMethod;
-
-        if (reportType === "daily" || reportType === "today") {
-          pdfMethod = PDFService.generateDailyReportPDF.bind(PDFService);
-          PDFService.generateDailyReportPDF(
-            shop,
-            sales,
-            startDate,
-            (error, result) => {
-              if (error) {
-                console.error("PDF generation error:", error);
-                resolve(
-                  `Failed to generate PDF report.\n\nError: ${error.message}\n\nPlease try again or contact support.`
-                );
-              } else {
-                resolve({
-                  type: "pdf",
-                  message: `*Daily Report Generated Successfully!*\n\nYour comprehensive daily business report is ready.\n\n${sales.length} transactions analyzed\nComplete financial breakdown included`,
-                  filePath: result.filePath,
-                  fileName: result.filename,
-                });
-              }
-            }
-          );
-        } else if (reportType === "weekly" || reportType === "week") {
-          PDFService.generateWeeklyReportPDF(
-            shop,
-            sales,
-            startDate,
-            endDate,
-            (error, result) => {
-              if (error) {
-                console.error("PDF generation error:", error);
-                resolve(
-                  `Failed to generate PDF report.\n\nError: ${error.message}\n\nPlease try again or contact support.`
-                );
-              } else {
-                resolve({
-                  type: "pdf",
-                  message: `*Weekly Report Generated Successfully!*\n\nYour 7-day business analysis is ready.\n\nDaily breakdown included\nTop products ranked\nGrowth insights provided`,
-                  filePath: result.filePath,
-                  fileName: result.filename,
-                });
-              }
-            }
-          );
-        } else if (reportType === "monthly" || reportType === "month") {
-          PDFService.generateMonthlyReportPDF(
-            shop,
-            sales,
-            startDate,
-            endDate,
-            (error, result) => {
-              if (error) {
-                console.error("PDF generation error:", error);
-                resolve(
-                  `Failed to generate PDF report.\n\nError: ${error.message}\n\nPlease try again or contact support.`
-                );
-              } else {
-                resolve({
-                  type: "pdf",
-                  message: `*Monthly Report Generated Successfully!*\n\nYour 30-day comprehensive report is ready.\n\nWeekly performance breakdown\nTop 8 products analyzed\nStrategic insights included`,
-                  filePath: result.filePath,
-                  fileName: result.filename,
-                });
-              }
-            }
-          );
-        } else if (reportType === "best" || reportType === "bestsellers") {
-          PDFService.generateBestSellersReportPDF(
-            shop,
-            sales,
-            startDate,
-            endDate,
-            days,
-            (error, result) => {
-              if (error) {
-                console.error("PDF generation error:", error);
-                resolve(
-                  `Failed to generate PDF report.\n\nError: ${error.message}\n\nPlease try again or contact support.`
-                );
-              } else {
-                const periodText =
-                  days === 1 ? "Today's" : days === 7 ? "Weekly" : "Monthly";
-                resolve({
-                  type: "pdf",
-                  message: `*${periodText} Best Sellers Report Generated!*\n\nYour product performance analysis is ready.\n\nComplete product rankings\nRevenue share analysis\nPromotional insights included`,
-                  filePath: result.filePath,
-                  fileName: result.filename,
-                });
-              }
-            }
-          );
         }
       });
-    } catch (error) {
-      console.error("Export report error:", error);
-      return `*Report Generation Failed*\n\nAn error occurred while generating your report.\n\nError: ${error.message}\n\nPlease try again or type "help" for assistance.`;
-    }
+    });
+  } catch (error) {
+    console.error('[CommandService] Export report error:', error);
+    return `*Export Failed*\n\n${error.message}`;
   }
+}
 
   async handleCancelSale(shopId, text) {
     try {
@@ -2471,12 +1944,12 @@ Need help? Just type *help* anytime!`;
         installments:
           depositAmount > 0
             ? [
-              {
-                amount: depositAmount,
-                date: new Date(),
-                paymentMethod: "cash",
-              },
-            ]
+                {
+                  amount: depositAmount,
+                  date: new Date(),
+                  paymentMethod: "cash",
+                },
+              ]
             : [],
         status: "active",
         reservedStock: true, // Set to true if you want to reserve stock
@@ -2612,7 +2085,6 @@ Need help? Just type *help* anytime!`;
     }
   }
 
-
   /**
    * Generate cash sale receipt
    */
@@ -2712,7 +2184,9 @@ Need help? Just type *help* anytime!`;
 
     receipt += `*PAYMENT DETAILS*\n`;
     receipt += `Amount Paid: $${amount.toFixed(2)}\n`;
-    receipt += `Previous Balance: $${(laybye.balanceDue + amount).toFixed(2)}\n`;
+    receipt += `Previous Balance: $${(laybye.balanceDue + amount).toFixed(
+      2
+    )}\n`;
     receipt += `New Balance: $${laybye.balanceDue.toFixed(2)}\n`;
     receipt += `Total Paid to Date: $${laybye.amountPaid.toFixed(2)}\n\n`;
 
@@ -2749,18 +2223,20 @@ Need help? Just type *help* anytime!`;
 
     receipt += `\n*NOTES*\n`;
     receipt += `✓ Stock deducted from inventory\n`;
-    receipt += `✓ Profit now recognized: $${laybye.items.reduce((sum, item) => {
-      const cost = item.costPrice || (item.price * 0.6);
-      return sum + ((item.price - cost) * item.quantity);
-    }, 0).toFixed(2)}\n`;
+    receipt += `✓ Profit now recognized: $${laybye.items
+      .reduce((sum, item) => {
+        const cost = item.costPrice || item.price * 0.6;
+        return sum + (item.price - cost) * item.quantity;
+      }, 0)
+      .toFixed(2)}\n`;
     receipt += `✓ Products ready for collection`;
 
     return receipt;
   }
 
   /**
-  * Reserve stock for laybye
-  */
+   * Reserve stock for laybye
+   */
   async reserveStockForLaybye(shopId, items) {
     try {
       // Check if all items have enough stock
@@ -2768,7 +2244,7 @@ Need help? Just type *help* anytime!`;
         if (item.product.trackStock && item.product.stock < item.quantity) {
           return {
             success: false,
-            message: `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}`
+            message: `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}`,
           };
         }
       }
@@ -2779,7 +2255,7 @@ Need help? Just type *help* anytime!`;
     } catch (error) {
       return {
         success: false,
-        message: `Stock reservation failed: ${error.message}`
+        message: `Stock reservation failed: ${error.message}`,
       };
     }
   }
@@ -2801,11 +2277,11 @@ Need help? Just type *help* anytime!`;
       const laybye = await LayBye.findOne({
         shopId,
         $or: [
-          { customerName: new RegExp(`^${customerIdentifier}$`, 'i') },
-          { customerPhone: customerIdentifier }
+          { customerName: new RegExp(`^${customerIdentifier}$`, "i") },
+          { customerPhone: customerIdentifier },
         ],
-        status: 'active',
-        balanceDue: 0
+        status: "active",
+        balanceDue: 0,
       });
 
       if (!laybye) {
@@ -2822,7 +2298,7 @@ Check balance: laybye pay ${customerIdentifier} 0`;
 
       return this.generateLayByeCompletionReceipt(laybye);
     } catch (error) {
-      console.error('Laybye complete error:', error);
+      console.error("Laybye complete error:", error);
       return `Failed to complete laybye: ${error.message}`;
     }
   }
@@ -2917,8 +2393,9 @@ Check balance: laybye pay ${customerIdentifier} 0`;
 
       receipt += `*ITEMS ON CREDIT*\n`;
       items.forEach((item) => {
-        receipt += `• ${item.quantity}x ${item.productName
-          } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
+        receipt += `• ${item.quantity}x ${
+          item.productName
+        } @ $${item.price.toFixed(2)} = $${item.total.toFixed(2)}\n`;
       });
 
       receipt += `\n*Total Credit: $${totalAmount.toFixed(2)}*\n\n`;
@@ -2983,12 +2460,13 @@ Check balance: laybye pay ${customerIdentifier} 0`;
       }
 
       if (amount > customer.currentBalance) {
-        return `*Payment Exceeds Debt*\n\n${customer.name
-          } owes: $${customer.currentBalance.toFixed(
-            2
-          )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
-            amount - customer.currentBalance
-          ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
+        return `*Payment Exceeds Debt*\n\n${
+          customer.name
+        } owes: $${customer.currentBalance.toFixed(
+          2
+        )}\nPayment amount: $${amount.toFixed(2)}\n\nOverpayment: $${(
+          amount - customer.currentBalance
+        ).toFixed(2)}\n\nPlease enter exact or smaller amount.`;
       }
 
       const previousBalance = customer.currentBalance;
@@ -3047,10 +2525,11 @@ Check balance: laybye pay ${customerIdentifier} 0`;
         !customer.creditTransactions ||
         customer.creditTransactions.length === 0
       ) {
-        return `*No Credit History*\n\n${customer.name
-          } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
-            2
-          )}`;
+        return `*No Credit History*\n\n${
+          customer.name
+        } has no credit transactions yet.\n\nCurrent Balance: $${customer.currentBalance.toFixed(
+          2
+        )}`;
       }
 
       let history = `*CREDIT HISTORY*\n\n`;
@@ -3086,8 +2565,9 @@ Check balance: laybye pay ${customerIdentifier} 0`;
       });
 
       if (customer.creditTransactions.length > 10) {
-        history += `... and ${customer.creditTransactions.length - 10
-          } more transactions`;
+        history += `... and ${
+          customer.creditTransactions.length - 10
+        } more transactions`;
       }
 
       return history;
@@ -3402,6 +2882,74 @@ Check balance: laybye pay ${customerIdentifier} 0`;
       return "Failed to generate expense report. Please try again.";
     }
   }
+
+  async handleExpenseBreakdown(shopId, text) {
+  try {
+    console.log('[CommandService] Generating expense breakdown');
+    
+    // Determine period from command
+    const lowerText = text.toLowerCase();
+    let period = 'daily';
+    
+    if (lowerText.includes('week')) {
+      period = 'weekly';
+    } else if (lowerText.includes('month')) {
+      period = 'monthly';
+    }
+    
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+    
+    if (period === 'daily') {
+      startDate.setHours(0, 0, 0, 0);
+    } else if (period === 'weekly') {
+      startDate.setDate(startDate.getDate() - 7);
+      startDate.setHours(0, 0, 0, 0);
+    } else {
+      startDate.setDate(startDate.getDate() - 30);
+      startDate.setHours(0, 0, 0, 0);
+    }
+    
+    const result = await FinancialService.categorizeExpenses(shopId, startDate, endDate);
+    
+    if (!result.success) {
+      return `*Error*\n\n${result.message}`;
+    }
+    
+    if (result.categories.length === 0) {
+      const periodName = period === 'daily' ? 'today' : period === 'weekly' ? 'this week' : 'this month';
+      return `*No Expenses*\n\nNo expenses recorded ${periodName}.`;
+    }
+    
+    let report = `*EXPENSE BREAKDOWN - ${period.toUpperCase()}*\n\n`;
+    report += `Period: ${startDate.toDateString()} - ${endDate.toDateString()}\n`;
+    report += `Total Expenses: $${result.total.toFixed(2)}\n`;
+    report += `Categories: ${result.categories.length}\n\n`;
+    
+    result.categories.forEach((cat, index) => {
+      const categoryName = cat.category.charAt(0).toUpperCase() + cat.category.slice(1);
+      report += `${index + 1}. *${categoryName}*\n`;
+      report += `   Total: $${cat.total.toFixed(2)} (${cat.percentage.toFixed(1)}%)\n`;
+      report += `   Items: ${cat.count}\n`;
+      
+      // Show top 3 items in category
+      cat.items.slice(0, 3).forEach(item => {
+        report += `   • ${item.description || 'No description'}: $${item.amount.toFixed(2)}\n`;
+      });
+      
+      if (cat.items.length > 3) {
+        report += `   ... and ${cat.items.length - 3} more items\n`;
+      }
+      report += '\n';
+    });
+    
+    return report;
+  } catch (error) {
+    console.error('[CommandService] Expense breakdown error:', error);
+    return `Failed to generate expense breakdown: ${error.message}`;
+  }
+}
 
   /**
    * Handle profit calculations
