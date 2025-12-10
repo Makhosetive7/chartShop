@@ -5,7 +5,6 @@ import FinancialService from './FinancialService.js';
 
 class PDFService {
   constructor() {
-    // Color scheme for professional reports
     this.colors = {
       primary: '#2980b9',
       success: '#27ae60',
@@ -62,13 +61,18 @@ class PDFService {
   }
 
   /**
-   * Helper method to add footer to document
+   * Helper method to add footer to document - FIXED VERSION
    */
   addFooter(doc) {
-    const pageCount = doc.bufferedPageRange().count;
+    // Get the page range - this returns start and count
+    const range = doc.bufferedPageRange();
+    const pageCount = range.count;
+    const startPage = range.start;
     
+    // Iterate through actual pages
     for (let i = 0; i < pageCount; i++) {
-      doc.switchToPage(i);
+      // Switch to the actual page index (start + offset)
+      doc.switchToPage(startPage + i);
       
       doc.strokeColor(this.colors.light)
          .lineWidth(1)
@@ -151,7 +155,7 @@ class PDFService {
    * Add financial summary section with visual cash flow boxes
    */
   addFinancialSummarySection(doc, cashFlowData, y) {
-    const { cashFlow, revenue, profitability } = cashFlowData;
+    const { cashFlow, revenue, details } = cashFlowData;
     
     doc.fontSize(14).font('Helvetica-Bold').text('Financial Summary', 50, y);
     y += 25;
@@ -221,12 +225,12 @@ class PDFService {
   }
 
   /**
-   * Add revenue and profit section
+   * Add revenue section (NO PROFIT - we don't have cost data)
    */
-  addRevenueProfitSection(doc, cashFlowData, y) {
-    const { revenue, profitability } = cashFlowData;
+  addRevenueSection(doc, cashFlowData, y) {
+    const { revenue } = cashFlowData;
 
-    doc.fontSize(12).font('Helvetica-Bold').text('Revenue & Profitability', 50, y);
+    doc.fontSize(12).font('Helvetica-Bold').text('Revenue Summary', 50, y);
     y += 20;
 
     const revenueData = [
@@ -238,37 +242,152 @@ class PDFService {
     ];
 
     y = this.drawTable(doc, revenueData, 50, y, [200, 150, 100]);
-    y += 10;
+    y += 20;
 
-    const profitData = [
-      ['Metric', 'Amount'],
-      ['Gross Profit', `$${profitability.grossProfit.toFixed(2)}`],
-      ['Total Expenses', `($${profitability.expenses.toFixed(2)})`],
-      ['Net Profit', `$${profitability.netProfit.toFixed(2)}`],
-      ['Profit Margin', `${profitability.profitMargin.toFixed(1)}%`],
+    // Expense summary
+    doc.fontSize(12).font('Helvetica-Bold').text('Expense Summary', 50, y);
+    y += 20;
+
+    const { details } = cashFlowData;
+    const totalExpenses = details.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    
+    const expenseData = [
+      ['Expense Type', 'Amount'],
+      ['Total Expenses', `$${totalExpenses.toFixed(2)}`],
+      ['Expense Count', details.expenses.length.toString()],
     ];
 
-    y = this.drawTable(doc, profitData, 50, y, [250, 200]);
+    y = this.drawTable(doc, expenseData, 50, y, [250, 200]);
 
     return y + 20;
   }
 
   /**
-   * Add expense breakdown section with categories
+   * Add detailed sales page (NEW)
    */
-  addExpenseBreakdownSection(doc, expenses, y) {
-    if (!expenses || expenses.length === 0) {
-      return y;
+  addDetailedSalesPage(doc, cashFlowData, shop) {
+    doc.addPage();
+    
+    let y = 50;
+    doc.fontSize(16).font('Helvetica-Bold')
+       .fillColor(this.colors.primary)
+       .text('DETAILED SALES BREAKDOWN', 50, y, { align: 'center' });
+    
+    y += 40;
+
+    const { details } = cashFlowData;
+    const allSales = [...details.cashSales, ...details.creditSales, ...details.completedLaybyes];
+
+    if (allSales.length === 0) {
+      doc.fontSize(12).font('Helvetica')
+         .fillColor(this.colors.text)
+         .text('No sales recorded in this period.', 50, y);
+      return;
     }
 
+    // Sort by date
+    allSales.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    doc.fontSize(14).font('Helvetica-Bold').text(`All Sales (${allSales.length} transactions)`, 50, y);
+    y += 25;
+
+    // Sales table header
+    const salesData = [['Date', 'Type', 'Items', 'Amount']];
+
+    allSales.forEach(sale => {
+      const date = new Date(sale.date).toLocaleDateString();
+      const type = sale.type === 'cash' ? 'Cash' : sale.type === 'credit' ? 'Credit' : 'Laybye';
+      const itemsSummary = sale.items.slice(0, 2)
+        .map(item => `${item.quantity}x ${item.productName}`)
+        .join(', ');
+      const moreItems = sale.items.length > 2 ? ` +${sale.items.length - 2}` : '';
+      
+      salesData.push([
+        date,
+        type,
+        itemsSummary + moreItems,
+        `$${sale.total.toFixed(2)}`
+      ]);
+
+      // Add page break if needed
+      if (salesData.length > 30) {
+        y = this.drawTable(doc, salesData, 50, y, [80, 60, 250, 80], true);
+        
+        if (y > 650) {
+          doc.addPage();
+          y = 50;
+          doc.fontSize(14).font('Helvetica-Bold').text('Sales (continued)', 50, y);
+          y += 25;
+          salesData.length = 1; // Keep header only
+        }
+      }
+    });
+
+    if (salesData.length > 1) {
+      y = this.drawTable(doc, salesData, 50, y, [80, 60, 250, 80], true);
+    }
+
+    // Product summary
+    y += 30;
     if (y > 650) {
       doc.addPage();
       y = 50;
     }
 
-    doc.fontSize(12).font('Helvetica-Bold').text('Expense Breakdown by Category', 50, y);
+    doc.fontSize(14).font('Helvetica-Bold').text('Products Sold Summary', 50, y);
     y += 20;
 
+    const productSummary = {};
+    allSales.forEach(sale => {
+      sale.items.forEach(item => {
+        if (!productSummary[item.productName]) {
+          productSummary[item.productName] = {
+            quantity: 0,
+            revenue: 0,
+            count: 0
+          };
+        }
+        productSummary[item.productName].quantity += item.quantity;
+        productSummary[item.productName].revenue += item.total;
+        productSummary[item.productName].count += 1;
+      });
+    });
+
+    const sortedProducts = Object.entries(productSummary)
+      .sort((a, b) => b[1].quantity - a[1].quantity);
+
+    const productData = [['Product', 'Units Sold', 'Revenue', 'Transactions']];
+    
+    sortedProducts.forEach(([product, data]) => {
+      productData.push([
+        product,
+        data.quantity.toString(),
+        `$${data.revenue.toFixed(2)}`,
+        data.count.toString()
+      ]);
+    });
+
+    y = this.drawTable(doc, productData, 50, y, [200, 100, 100, 100], true);
+  }
+
+  /**
+   * Add detailed expenses page (NEW)
+   */
+  addDetailedExpensesPage(doc, expenses, shop) {
+    if (!expenses || expenses.length === 0) {
+      return;
+    }
+
+    doc.addPage();
+    
+    let y = 50;
+    doc.fontSize(16).font('Helvetica-Bold')
+       .fillColor(this.colors.primary)
+       .text('DETAILED EXPENSES BREAKDOWN', 50, y, { align: 'center' });
+    
+    y += 40;
+
+    // Group by category
     const categories = {};
     let total = 0;
 
@@ -288,6 +407,10 @@ class PDFService {
 
     const sortedCategories = Object.entries(categories)
       .sort((a, b) => b[1].total - a[1].total);
+
+    // Category summary
+    doc.fontSize(14).font('Helvetica-Bold').text('Expenses by Category', 50, y);
+    y += 20;
 
     const summaryData = [['Category', 'Amount', 'Count', '% of Total']];
     
@@ -310,45 +433,205 @@ class PDFService {
     ]);
 
     y = this.drawTable(doc, summaryData, 50, y, [150, 120, 80, 100]);
-    y += 20;
+    y += 30;
 
-    doc.fontSize(11).font('Helvetica-Bold').text('Detailed Expenses', 50, y);
-    y += 15;
-
+    // Detailed expense listing by category
     sortedCategories.forEach(([category, data]) => {
-      if (y > 700) {
+      if (y > 650) {
         doc.addPage();
         y = 50;
       }
 
       const categoryName = category.charAt(0).toUpperCase() + category.slice(1);
-      doc.fontSize(10).font('Helvetica-Bold')
-         .text(`${categoryName} (${data.count} items)`, 60, y);
-      y += 15;
+      doc.fontSize(12).font('Helvetica-Bold')
+         .text(`${categoryName} Expenses (${data.count} items - $${data.total.toFixed(2)})`, 50, y);
+      y += 20;
 
-      const categoryItems = [['Description', 'Amount', 'Date']];
+      const categoryItems = [['Date', 'Description', 'Amount', 'Payment']];
       
       data.items.forEach(item => {
         const date = new Date(item.date).toLocaleDateString();
+        const desc = item.description.substring(0, 30) + (item.description.length > 30 ? '...' : '');
         categoryItems.push([
-          item.description || 'No description',
+          date,
+          desc,
           `$${item.amount.toFixed(2)}`,
-          date
+          item.paymentMethod
         ]);
       });
 
-      y = this.drawTable(doc, categoryItems, 70, y, [250, 100, 100], true);
-      y += 10;
+      y = this.drawTable(doc, categoryItems, 50, y, [70, 250, 80, 70], true);
+      y += 15;
     });
-
-    return y;
   }
 
   /**
-   * Generate Enhanced Daily Report PDF with FinancialService
+   * Add business insights page (NEW - NO PROFIT METRICS)
+   */
+  addBusinessInsightsPage(doc, cashFlowData, shop) {
+    doc.addPage();
+    
+    let y = 50;
+    doc.fontSize(16).font('Helvetica-Bold')
+       .fillColor(this.colors.primary)
+       .text('BUSINESS INSIGHTS & RECOMMENDATIONS', 50, y, { align: 'center' });
+    
+    y += 40;
+
+    const { cashFlow, outstanding, revenue, details } = cashFlowData;
+    
+    // Calculate total expenses
+    const totalExpenses = details.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+
+    // Key Metrics (NO PROFIT - we don't have cost data)
+    doc.fontSize(14).font('Helvetica-Bold').text('Key Performance Indicators', 50, y);
+    y += 20;
+
+    const metrics = [
+      {
+        label: 'Cash Flow Health',
+        value: cashFlow.net >= 0 ? 'Positive' : 'Negative',
+        color: cashFlow.net >= 0 ? this.colors.success : this.colors.danger,
+        detail: `Net flow: $${cashFlow.net.toFixed(2)}`
+      },
+      {
+        label: 'Total Revenue',
+        value: `$${revenue.total.toFixed(2)}`,
+        color: revenue.total > 0 ? this.colors.success : this.colors.warning,
+        detail: `From ${revenue.cash.count + revenue.credit.count + revenue.completedLaybyes.count} transactions`
+      },
+      {
+        label: 'Expense Ratio',
+        value: `${revenue.total > 0 ? (totalExpenses / revenue.total * 100).toFixed(1) : 0}%`,
+        color: (totalExpenses / revenue.total) < 0.4 ? this.colors.success : 
+               (totalExpenses / revenue.total) < 0.6 ? this.colors.warning : this.colors.danger,
+        detail: `Total expenses: $${totalExpenses.toFixed(2)}`
+      },
+      {
+        label: 'Outstanding Debt',
+        value: `$${outstanding.total.toFixed(2)}`,
+        color: outstanding.total > revenue.total * 0.3 ? this.colors.danger : this.colors.warning,
+        detail: `From ${outstanding.creditDue.customers + outstanding.laybyeDue.count} accounts`
+      }
+    ];
+
+    metrics.forEach(metric => {
+      doc.rect(50, y, 500, 35)
+         .fillAndStroke('#f8f9fa', '#dee2e6')
+         .fillColor('#000');
+
+      doc.fontSize(11).font('Helvetica-Bold')
+         .fillColor(this.colors.dark)
+         .text(metric.label, 60, y + 8);
+
+      doc.fontSize(14).font('Helvetica-Bold')
+         .fillColor(metric.color)
+         .text(metric.value, 300, y + 8);
+
+      doc.fontSize(9).font('Helvetica')
+         .fillColor(this.colors.text)
+         .text(metric.detail, 60, y + 22);
+
+      y += 45;
+    });
+
+    y += 20;
+
+    // Recommendations (NO PROFIT RECOMMENDATIONS)
+    doc.fontSize(14).font('Helvetica-Bold').text('Recommendations', 50, y);
+    y += 20;
+
+    const recommendations = [];
+
+    // Cash flow recommendation
+    if (cashFlow.net < 0) {
+      recommendations.push({
+        title: 'Negative Cash Flow Alert',
+        message: 'You are spending more than you earn. Review expenses immediately and consider collecting outstanding debts.',
+        priority: 'HIGH'
+      });
+    } else if (cashFlow.net < revenue.total * 0.1) {
+      recommendations.push({
+        title: 'Low Cash Reserve',
+        message: 'Your cash flow is positive but thin. Build a cash reserve for emergencies.',
+        priority: 'MEDIUM'
+      });
+    }
+
+    // Expense recommendation
+    const expenseRatio = revenue.total > 0 ? (totalExpenses / revenue.total) : 0;
+    if (expenseRatio > 0.6) {
+      recommendations.push({
+        title: 'Very High Expense Ratio',
+        message: 'Expenses exceed 60% of revenue. Review your expense breakdown and cut unnecessary costs urgently.',
+        priority: 'HIGH'
+      });
+    } else if (expenseRatio > 0.4) {
+      recommendations.push({
+        title: 'High Expense Ratio',
+        message: 'Expenses exceed 40% of revenue. Consider reviewing costs to improve your margins.',
+        priority: 'MEDIUM'
+      });
+    }
+
+    // Outstanding debt recommendation
+    if (outstanding.total > revenue.total * 0.3) {
+      recommendations.push({
+        title: 'High Outstanding Debt',
+        message: `$${outstanding.total.toFixed(2)} is owed to you. Follow up with customers to collect payments.`,
+        priority: 'HIGH'
+      });
+    }
+
+    // Revenue growth (if we have comparison data)
+    if (revenue.total > 0) {
+      recommendations.push({
+        title: 'Keep Growing',
+        message: `You've generated $${revenue.total.toFixed(2)} in revenue. Focus on maintaining positive cash flow and managing expenses.`,
+        priority: 'LOW'
+      });
+    }
+
+    // Display recommendations
+    recommendations.forEach(rec => {
+      if (y > 650) {
+        doc.addPage();
+        y = 50;
+      }
+
+      const priorityColor = 
+        rec.priority === 'HIGH' ? this.colors.danger :
+        rec.priority === 'MEDIUM' ? this.colors.warning :
+        this.colors.success;
+
+      doc.rect(50, y, 500, 60)
+         .fillAndStroke('#ffffff', priorityColor)
+         .lineWidth(2)
+         .fillColor('#000');
+
+      doc.fontSize(10).font('Helvetica-Bold')
+         .fillColor(priorityColor)
+         .text(`[${rec.priority}]`, 480, y + 8, { width: 60, align: 'right' });
+
+      doc.fontSize(12).font('Helvetica-Bold')
+         .fillColor(this.colors.dark)
+         .text(`${rec.icon} ${rec.title}`, 60, y + 8);
+
+      doc.fontSize(10).font('Helvetica')
+         .fillColor(this.colors.text)
+         .text(rec.message, 60, y + 28, { width: 480 });
+
+      y += 70;
+    });
+  }
+
+  /**
+   * Generate Enhanced Daily Report PDF with FinancialService (IMPROVED)
    */
   async generateEnhancedDailyReportPDF(shop, callback) {
     try {
+      console.log('[PDFService] Generating enhanced daily report');
+      
       // Get financial data from FinancialService
       const financialReport = await FinancialService.getDailyCashFlow(shop._id);
       
@@ -359,13 +642,13 @@ class PDFService {
       const { data } = financialReport;
 
       const doc = new PDFDocument({ margin: 50, size: 'A4' });
-      const filename = `${shop.businessName.replace(/\s+/g, '_')}_Daily_Enhanced_${new Date().toISOString().split('T')[0]}.pdf`;
+      const filename = `${shop.businessName.replace(/\s+/g, '_')}_Daily_Report_${new Date().toISOString().split('T')[0]}.pdf`;
       const filePath = path.join(this.ensureReportsDirectory(), filename);
 
       const stream = fs.createWriteStream(filePath);
       doc.pipe(stream);
 
-      // Header
+      // PAGE 1: Executive Summary
       let yPos = this.addHeader(
         doc,
         shop,
@@ -373,16 +656,8 @@ class PDFService {
         `Date: ${new Date().toDateString()}`
       );
 
-      // Financial Summary Section with visual boxes
       yPos = this.addFinancialSummarySection(doc, data, yPos);
-
-      // Revenue & Profit Section
-      yPos = this.addRevenueProfitSection(doc, data, yPos);
-
-      // Expense Breakdown Section
-      if (data.details.expenses && data.details.expenses.length > 0) {
-        yPos = this.addExpenseBreakdownSection(doc, data.details.expenses, yPos);
-      }
+      yPos = this.addRevenueSection(doc, data, yPos);
 
       // Outstanding Receivables Warning
       if (data.outstanding.total > 0) {
@@ -393,7 +668,7 @@ class PDFService {
 
         doc.fontSize(12).font('Helvetica-Bold')
            .fillColor('#856404')
-           .text('⚠️ Outstanding Receivables', 50, yPos);
+           .text('Outstanding Receivables', 50, yPos);
         
         doc.fontSize(10).font('Helvetica')
            .fillColor('#000')
@@ -403,14 +678,29 @@ class PDFService {
            .text(`Total Outstanding: $${data.outstanding.total.toFixed(2)}`, 50, yPos + 50);
       }
 
+      // PAGE 2: Detailed Sales
+      this.addDetailedSalesPage(doc, data, shop);
+
+      // PAGE 3: Detailed Expenses
+      if (data.details.expenses && data.details.expenses.length > 0) {
+        this.addDetailedExpensesPage(doc, data.details.expenses, shop);
+      }
+
+      // PAGE 4: Business Insights
+      this.addBusinessInsightsPage(doc, data, shop);
+
+      // Add footer to all pages
       this.addFooter(doc);
+      
       doc.end();
 
       stream.on('finish', () => {
+        console.log('[PDFService] PDF generated successfully:', filename);
         callback(null, { filePath, filename });
       });
 
       stream.on('error', (error) => {
+        console.error('[PDFService] Stream error:', error);
         callback(error, null);
       });
 
@@ -434,7 +724,7 @@ class PDFService {
       const { data } = financialReport;
 
       const doc = new PDFDocument({ margin: 50, size: 'A4' });
-      const filename = `${shop.businessName.replace(/\s+/g, '_')}_Weekly_Enhanced_${new Date().toISOString().split('T')[0]}.pdf`;
+      const filename = `${shop.businessName.replace(/\s+/g, '_')}_Weekly_Report_${new Date().toISOString().split('T')[0]}.pdf`;
       const filePath = path.join(this.ensureReportsDirectory(), filename);
 
       const stream = fs.createWriteStream(filePath);
@@ -448,11 +738,7 @@ class PDFService {
       );
 
       yPos = this.addFinancialSummarySection(doc, data, yPos);
-      yPos = this.addRevenueProfitSection(doc, data, yPos);
-
-      if (data.details.expenses && data.details.expenses.length > 0) {
-        yPos = this.addExpenseBreakdownSection(doc, data.details.expenses, yPos);
-      }
+      yPos = this.addRevenueSection(doc, data, yPos);
 
       if (data.outstanding.total > 0) {
         if (yPos > 650) {
@@ -462,12 +748,20 @@ class PDFService {
 
         doc.fontSize(12).font('Helvetica-Bold')
            .fillColor('#856404')
-           .text('⚠️ Outstanding Receivables', 50, yPos);
+           .text('Outstanding Receivables', 50, yPos);
         
         doc.fontSize(10).font('Helvetica')
            .fillColor('#000')
            .text(`Total Outstanding: $${data.outstanding.total.toFixed(2)}`, 50, yPos + 20);
       }
+
+      this.addDetailedSalesPage(doc, data, shop);
+
+      if (data.details.expenses && data.details.expenses.length > 0) {
+        this.addDetailedExpensesPage(doc, data.details.expenses, shop);
+      }
+
+      this.addBusinessInsightsPage(doc, data, shop);
 
       this.addFooter(doc);
       doc.end();
@@ -500,7 +794,7 @@ class PDFService {
       const { data } = financialReport;
 
       const doc = new PDFDocument({ margin: 50, size: 'A4' });
-      const filename = `${shop.businessName.replace(/\s+/g, '_')}_Monthly_Enhanced_${new Date().toISOString().split('T')[0]}.pdf`;
+      const filename = `${shop.businessName.replace(/\s+/g, '_')}_Monthly_Report_${new Date().toISOString().split('T')[0]}.pdf`;
       const filePath = path.join(this.ensureReportsDirectory(), filename);
 
       const stream = fs.createWriteStream(filePath);
@@ -514,11 +808,7 @@ class PDFService {
       );
 
       yPos = this.addFinancialSummarySection(doc, data, yPos);
-      yPos = this.addRevenueProfitSection(doc, data, yPos);
-
-      if (data.details.expenses && data.details.expenses.length > 0) {
-        yPos = this.addExpenseBreakdownSection(doc, data.details.expenses, yPos);
-      }
+      yPos = this.addRevenueSection(doc, data, yPos);
 
       if (data.outstanding.total > 0) {
         if (yPos > 650) {
@@ -528,12 +818,20 @@ class PDFService {
 
         doc.fontSize(12).font('Helvetica-Bold')
            .fillColor('#856404')
-           .text('⚠️ Outstanding Receivables', 50, yPos);
+           .text('Outstanding Receivables', 50, yPos);
         
         doc.fontSize(10).font('Helvetica')
            .fillColor('#000')
            .text(`Total Outstanding: $${data.outstanding.total.toFixed(2)}`, 50, yPos + 20);
       }
+
+      this.addDetailedSalesPage(doc, data, shop);
+
+      if (data.details.expenses && data.details.expenses.length > 0) {
+        this.addDetailedExpensesPage(doc, data.details.expenses, shop);
+      }
+
+      this.addBusinessInsightsPage(doc, data, shop);
 
       this.addFooter(doc);
       doc.end();
@@ -550,26 +848,6 @@ class PDFService {
       console.error('[PDFService] Enhanced monthly report error:', error);
       callback(error, null);
     }
-  }
-
-  /**
-   * Legacy methods maintained for backward compatibility
-   * These now use FinancialService under the hood where applicable
-   */
-
-  generateDailyReportPDF(shop, sales, date, callback) {
-    // Redirect to enhanced version
-    this.generateEnhancedDailyReportPDF(shop, callback);
-  }
-
-  generateWeeklyReportPDF(shop, sales, startDate, endDate, callback) {
-    // Redirect to enhanced version
-    this.generateEnhancedWeeklyReportPDF(shop, callback);
-  }
-
-  generateMonthlyReportPDF(shop, sales, startDate, endDate, callback) {
-    // Redirect to enhanced version
-    this.generateEnhancedMonthlyReportPDF(shop, callback);
   }
 
   /**
@@ -699,7 +977,7 @@ class PDFService {
       doc.fontSize(12)
          .fillColor(this.colors.dark)
          .font('Helvetica-Bold')
-         .text('🎯 Key Insights', 70, yPos + 15);
+         .text('Key Insights', 70, yPos + 15);
 
       doc.fontSize(9)
          .font('Helvetica')
@@ -730,6 +1008,21 @@ class PDFService {
     } catch (error) {
       callback(error, null);
     }
+  }
+
+  /**
+   * Legacy methods for backward compatibility
+   */
+  generateDailyReportPDF(shop, sales, date, callback) {
+    this.generateEnhancedDailyReportPDF(shop, callback);
+  }
+
+  generateWeeklyReportPDF(shop, sales, startDate, endDate, callback) {
+    this.generateEnhancedWeeklyReportPDF(shop, callback);
+  }
+
+  generateMonthlyReportPDF(shop, sales, startDate, endDate, callback) {
+    this.generateEnhancedMonthlyReportPDF(shop, callback);
   }
 }
 
