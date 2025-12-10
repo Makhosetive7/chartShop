@@ -33,17 +33,17 @@ class CommandService {
     if (!shop) {
       return `*Welcome to Chart Shop!*
 
-Hi there! I don't see an active shop setup for your account.
+                Hi there! I don't see an active shop setup for your account.
 
-*To get started:*
-• Register a new shop: \`register "Your Business Name" 1234\`
-• Login to existing shop: \`login 1234\`
+                *To get started:*
+                • Register a new shop: \`register "Your Business Name" 1234\`
+                • Login to existing shop: \`login 1234\`
 
-*Example:* 
-\`register "Bella's Boutique" 5678\`
-\`login 5678\`
+                *Example:* 
+                \`register "Bella's Boutique" 5678\`
+                \`login 5678\`
 
-Need help? Just type *help* anytime!`;
+                Need help? Just type *help* anytime!`;
     }
 
     if (command.startsWith("sell to")) {
@@ -849,120 +849,126 @@ Need help? Just type *help* anytime!`;
       return "Failed to delete product. Please try again.";
     }
   }
- async handleEditProduct(shopId, text) {
-  try {
-    // Remove the "edit " prefix
-    const input = text.replace("edit ", "").trim();
+  async handleEditProduct(shopId, text) {
+    try {
+      // Remove the "edit " prefix
+      const input = text.replace("edit ", "").trim();
 
-    // Match: product-name field value (supports quoted product names and multi-word values)
-    // New regex handles both quoted and unquoted product names, and captures all remaining text as value
-    const match = input.match(
-      /^(?:"([^"]+)"|(\S+))\s+(price|stock|threshold|name)\s+(.+)$/i
-    );
+      // Match: product-name field value (supports quoted product names and multi-word values)
+      // New regex handles both quoted and unquoted product names, and captures all remaining text as value
+      const match = input.match(
+        /^(?:"([^"]+)"|(\S+))\s+(price|stock|threshold|name)\s+(.+)$/i
+      );
 
-    if (!match) {
-      return 'Invalid format.\n\nUse: edit [product] [field] [value]\n\nAvailable fields:\n• price [amount]\n• stock [quantity]\n• threshold [quantity]\n• name [new-name]\n\nExamples:\n• edit bread price 3.00\n• edit "carex condoms" stock 100\n• edit milk threshold 10\n• edit bread name "White Bread"\n• edit "old name" name "New Product Name"';
+      if (!match) {
+        return 'Invalid format.\n\nUse: edit [product] [field] [value]\n\nAvailable fields:\n• price [amount]\n• stock [quantity]\n• threshold [quantity]\n• name [new-name]\n\nExamples:\n• edit bread price 3.00\n• edit "carex condoms" stock 100\n• edit milk threshold 10\n• edit bread name "White Bread"\n• edit "old name" name "New Product Name"';
+      }
+
+      const productName = match[1] || match[2]; // Group 1 is quoted, group 2 is unquoted
+      const field = match[3].toLowerCase();
+      let value = match[4].trim();
+
+      // For name field, remove quotes if present
+      if (field === "name" && value.startsWith('"') && value.endsWith('"')) {
+        value = value.slice(1, -1);
+      }
+
+      // Escape regex special characters in product name for search
+      const escapedProductName = productName.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+      );
+
+      const product = await Product.findOne({
+        shopId,
+        name: { $regex: new RegExp(`^${escapedProductName}$`, "i") },
+        isActive: true,
+      });
+
+      if (!product) {
+        return `Product "${productName}" not found.`;
+      }
+
+      let oldValue, newValue, response;
+
+      switch (field) {
+        case "price":
+          newValue = parseFloat(value);
+          if (isNaN(newValue) || newValue <= 0) {
+            return "Invalid price. Must be greater than 0.\nExample: 2.50";
+          }
+          oldValue = product.price;
+          product.price = newValue;
+          response = `*Price Updated!*\n\n${
+            product.name
+          }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
+          break;
+
+        case "stock":
+          newValue = parseInt(value);
+          if (isNaN(newValue) || newValue < 0) {
+            return "Invalid stock quantity.\nExample: 50";
+          }
+          oldValue = product.stock;
+          product.stock = newValue;
+          product.trackStock = true; // Ensure stock tracking is enabled
+          response = `*Stock Updated!*\n\n${product.name}\nOld: ${oldValue} units\nNew: ${newValue} units`;
+
+          if (newValue <= product.lowStockThreshold) {
+            response += `\n\n*LOW STOCK!* Current stock (${newValue}) is at or below threshold (${product.lowStockThreshold})`;
+          }
+          break;
+
+        case "threshold":
+          newValue = parseInt(value);
+          if (isNaN(newValue) || newValue < 0) {
+            return "Invalid threshold.\nExample: 15";
+          }
+          oldValue = product.lowStockThreshold;
+          product.lowStockThreshold = newValue;
+          response = `*Low Stock Threshold Updated!*\n\n${product.name}\nOld: ${oldValue} units\nNew: ${newValue} units`;
+
+          if (product.stock <= newValue) {
+            response += `\n\n*NOTE:* Current stock (${product.stock}) is at or below new threshold`;
+          }
+          break;
+
+        case "name":
+          newValue = value;
+          // For multi-word names, we need to check if they already exist
+          // Escape regex special characters for search
+          const escapedNewValue = newValue.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            "\\$&"
+          );
+
+          const existingProduct = await Product.findOne({
+            shopId,
+            name: { $regex: new RegExp(`^${escapedNewValue}$`, "i") },
+            isActive: true,
+            _id: { $ne: product._id },
+          });
+
+          if (existingProduct) {
+            return `Product name "${newValue}" already exists.`;
+          }
+
+          oldValue = product.name;
+          product.name = newValue;
+          response = `*Product Renamed!*\n\nOld: ${oldValue}\nNew: ${newValue}`;
+          break;
+
+        default:
+          return `Invalid field "${field}".\nAvailable fields: price, stock, threshold, name`;
+      }
+
+      await product.save();
+      return response;
+    } catch (error) {
+      console.error("Edit product error:", error);
+      return "Failed to update product. Please try again.";
     }
-
-    const productName = match[1] || match[2]; // Group 1 is quoted, group 2 is unquoted
-    const field = match[3].toLowerCase();
-    let value = match[4].trim();
-
-    // For name field, remove quotes if present
-    if (field === "name" && value.startsWith('"') && value.endsWith('"')) {
-      value = value.slice(1, -1);
-    }
-
-    // Escape regex special characters in product name for search
-    const escapedProductName = productName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    
-    const product = await Product.findOne({
-      shopId,
-      name: { $regex: new RegExp(`^${escapedProductName}$`, "i") },
-      isActive: true,
-    });
-
-    if (!product) {
-      return `Product "${productName}" not found.`;
-    }
-
-    let oldValue, newValue, response;
-
-    switch (field) {
-      case "price":
-        newValue = parseFloat(value);
-        if (isNaN(newValue) || newValue <= 0) {
-          return "Invalid price. Must be greater than 0.\nExample: 2.50";
-        }
-        oldValue = product.price;
-        product.price = newValue;
-        response = `*Price Updated!*\n\n${
-          product.name
-        }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
-        break;
-
-      case "stock":
-        newValue = parseInt(value);
-        if (isNaN(newValue) || newValue < 0) {
-          return "Invalid stock quantity.\nExample: 50";
-        }
-        oldValue = product.stock;
-        product.stock = newValue;
-        product.trackStock = true; // Ensure stock tracking is enabled
-        response = `*Stock Updated!*\n\n${product.name}\nOld: ${oldValue} units\nNew: ${newValue} units`;
-
-        if (newValue <= product.lowStockThreshold) {
-          response += `\n\n*LOW STOCK!* Current stock (${newValue}) is at or below threshold (${product.lowStockThreshold})`;
-        }
-        break;
-
-      case "threshold":
-        newValue = parseInt(value);
-        if (isNaN(newValue) || newValue < 0) {
-          return "Invalid threshold.\nExample: 15";
-        }
-        oldValue = product.lowStockThreshold;
-        product.lowStockThreshold = newValue;
-        response = `*Low Stock Threshold Updated!*\n\n${product.name}\nOld: ${oldValue} units\nNew: ${newValue} units`;
-
-        if (product.stock <= newValue) {
-          response += `\n\n*NOTE:* Current stock (${product.stock}) is at or below new threshold`;
-        }
-        break;
-
-      case "name":
-        newValue = value;
-        // For multi-word names, we need to check if they already exist
-        // Escape regex special characters for search
-        const escapedNewValue = newValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        
-        const existingProduct = await Product.findOne({
-          shopId,
-          name: { $regex: new RegExp(`^${escapedNewValue}$`, "i") },
-          isActive: true,
-          _id: { $ne: product._id },
-        });
-
-        if (existingProduct) {
-          return `Product name "${newValue}" already exists.`;
-        }
-
-        oldValue = product.name;
-        product.name = newValue;
-        response = `*Product Renamed!*\n\nOld: ${oldValue}\nNew: ${newValue}`;
-        break;
-
-      default:
-        return `Invalid field "${field}".\nAvailable fields: price, stock, threshold, name`;
-    }
-
-    await product.save();
-    return response;
-  } catch (error) {
-    console.error("Edit product error:", error);
-    return "Failed to update product. Please try again.";
   }
-}
 
   async handleSetThreshold(shopId, text) {
     try {
@@ -1178,12 +1184,12 @@ Need help? Just type *help* anytime!`;
           "1st: ",
           "2nd: ",
           "3rd: ",
-          "4️th: ",
-          "5️th: ",
-          "6️th: ",
-          "7️th: ",
+          "4th: ",
+          "5th: ",
+          "6th: ",
+          "7th: ",
           "8th: ",
-          "9️th: ",
+          "9th: ",
           "10th: ",
         ];
         const medal = index < 10 ? medals[index] : `${index + 1}.`;
@@ -1413,11 +1419,10 @@ Need help? Just type *help* anytime!`;
   /**
    * Handle adding a new customer
    */
-  async handleAddCustomer(shopId, text) {
+ async handleAddCustomer(shopId, text) {
     try {
       console.log("[CommandService] Adding customer from text:", text);
 
-      // Remove "customer add" or "customers add" prefix
       let cleanText = text.replace(/^customers?\s+add\s+/i, "").trim();
       console.log("[CommandService] Clean text:", cleanText);
 
@@ -1460,10 +1465,6 @@ Need help? Just type *help* anytime!`;
     try {
       console.log("[CommandService] Sell to customer:", text);
 
-      // Single regex to handle all cases:
-      // 1. sell to "John Doe" [items]
-      // 2. sell to John [items]
-      // 3. sell to 0771234567 [items]
       const match = text.match(/^sell\s+to\s+(?:"([^"]+)"|(\S+))\s+(.+)$/i);
 
       if (!match) {
@@ -1504,262 +1505,55 @@ Need help? Just type *help* anytime!`;
   /**
    * Process sale with customer linking
    */
-async processSaleWithCustomer(shopId, itemsText, customer) {
-  try {
-    console.log("[CommandService] Processing sale with customer:", {
-      customerId: customer._id,
-      customerName: customer.name,
-      items: itemsText,
-    });
-
-    // Parse items using regex with support for multi-word names
-    const items = [];
-    const regex = /(\d+)\s+(?:"([^"]+)"|(\S+))(?:\s+([\d.]+))?(?=\s|$)/g;
-    
-    let match;
-    while ((match = regex.exec(itemsText)) !== null) {
-      const quantity = parseInt(match[1]);
-      
-      if (isNaN(quantity) || quantity <= 0) {
-        return `Invalid quantity: "${match[1]}"`;
-      }
-
-      let productName = match[2] || match[3];
-      
-      if (!productName) {
-        return `Missing product name for quantity ${quantity}.`;
-      }
-
-      let price = match[4] ? parseFloat(match[4]) : null;
-      
-      // Clean product name
-      productName = productName.replace(/^"+|"+$/g, '').trim();
-
-      // Find product
-      const escapedProductName = productName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const product = await Product.findOne({
-        shopId,
-        name: { $regex: new RegExp(`^${escapedProductName}$`, 'i') },
-        isActive: true,
+  async processSaleWithCustomer(shopId, itemsText, customer) {
+    try {
+      console.log("[CommandService] Processing sale with customer:", {
+        customerId: customer._id,
+        customerName: customer.name,
+        items: itemsText,
       });
 
-      if (!product) {
-        return `Product "${productName}" not found. Type "list" to see products.`;
-      }
+      // Parse items using regex with support for multi-word names
+      const items = [];
+      const regex = /(\d+)\s+(?:"([^"]+)"|(\S+))(?:\s+([\d.]+))?(?=\s|$)/g;
 
-      const finalPrice = price !== null ? price : product.price;
-      const itemTotal = quantity * finalPrice;
-      const isCustomPrice = price !== null;
+      let match;
+      while ((match = regex.exec(itemsText)) !== null) {
+        const quantity = parseInt(match[1]);
 
-      items.push({
-        productId: product._id,
-        product: product,
-        productName: product.name,
-        quantity,
-        price: finalPrice,
-        standardPrice: product.price,
-        isCustomPrice,
-        total: itemTotal,
-      });
-    }
+        if (isNaN(quantity) || quantity <= 0) {
+          return `Invalid quantity: "${match[1]}"`;
+        }
 
-    if (items.length === 0) {
-      return `No valid items found. Format: [quantity] [product] [price?]\nExamples:\n• 2 bread 1 milk\n• 2 "mince meat" 1.20\n• 1 "carex condoms" 1.50`;
-    }
+        let productName = match[2] || match[3];
 
-    let total = 0;
-    
-    // Check stock
-    for (const item of items) {
-      if (item.product.trackStock && item.product.stock < item.quantity) {
-        return `*INSUFFICIENT STOCK*\n\n${item.product.name}\nRequested: ${item.quantity}\nAvailable: ${item.product.stock}`;
-      }
-      total += item.total;
-    }
+        if (!productName) {
+          return `Missing product name for quantity ${quantity}.`;
+        }
 
-    // Deduct stock
-    for (const item of items) {
-      if (item.product.trackStock) {
-        item.product.stock -= item.quantity;
-        await item.product.save();
-      }
-    }
+        let price = match[4] ? parseFloat(match[4]) : null;
 
-    console.log(
-      "[CommandService] Parsed items:",
-      items.length,
-      "Total:",
-      total
-    );
+        // Clean product name
+        productName = productName.replace(/^"+|"+$/g, "").trim();
 
-    // Create sale with customer reference
-    const sale = await Sale.create({
-      shopId,
-      items: items.map((item) => ({
-        productId: item.product._id,
-        productName: item.product.name,
-        quantity: item.quantity,
-        price: item.price,
-        standardPrice: item.standardPrice,
-        isCustomPrice: item.isCustomPrice,
-        total: item.total,
-      })),
-      total,
-      customerId: customer._id,
-      customerName: customer.name,
-      customerPhone: customer.phone,
-    });
-
-    console.log("[CommandService] Sale created:", sale._id);
-
-    // Update customer statistics
-    const linked = await CustomerService.linkSaleToCustomer(
-      sale,
-      customer,
-      total
-    );
-    console.log("[CommandService] Customer linked:", linked);
-
-    // Generate receipt
-    return this.generateCustomerReceipt(sale, customer, items);
-  } catch (error) {
-    console.error(
-      "[CommandService] Process sale with customer error:",
-      error
-    );
-    return `Failed to process sale: ${error.message}`;
-  }
-}
-
-// Helper function to generate receipt
-generateCustomerReceipt(sale, customer, items) {
-  const now = new Date();
-  const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
-
-  let receipt = `INVOICE: ${invoiceNumber}\n`;
-  receipt += "=".repeat(40) + "\n";
-  receipt += `CUSTOMER: ${customer.name.toUpperCase()}\n`;
-  if (customer.phone) {
-    receipt += `PHONE: ${customer.phone}\n`;
-  }
-  receipt += `DATE: ${now.toLocaleDateString()}\n`;
-  receipt += `TIME: ${now.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  })}\n`;
-  receipt += "-".repeat(40) + "\n\n";
-
-  receipt += "ITEM DETAILS:\n";
-  receipt += "-".repeat(40) + "\n";
-
-  items.forEach((item, index) => {
-    receipt += `${index + 1}. ${item.product.name}\n`;
-    receipt += `   Quantity: ${item.quantity}`.padEnd(20);
-    receipt += `Price: $${item.price.toFixed(2)}\n`;
-    receipt += `   Subtotal: $${item.total.toFixed(2)}\n`;
-
-    if (item.isCustomPrice) {
-      receipt += `   Note: Custom price (standard: $${item.standardPrice.toFixed(2)})\n`;
-    }
-
-    if (item.product.trackStock) {
-      receipt += `   Stock after sale: ${item.product.stock}`;
-      if (item.product.stock <= item.product.lowStockThreshold) {
-        receipt += ` [LOW STOCK]`;
-      }
-      receipt += "\n";
-    }
-    receipt += "\n";
-  });
-
-  receipt += "-".repeat(40) + "\n";
-  receipt +=
-    "TOTAL AMOUNT:".padEnd(30) + `$${sale.total.toFixed(2)}`.padStart(10);
-  receipt += "\n" + "=".repeat(40) + "\n\n";
-
-  receipt += "CUSTOMER SUMMARY\n";
-  receipt += "-".repeat(40) + "\n";
-  receipt += `Total Spent: $${customer.totalSpent.toFixed(2)}\n`;
-  receipt += `Total Visits: ${customer.totalVisits}\n`;
-  receipt += `Loyalty Points: ${customer.loyaltyPoints}\n\n`;
-
-  receipt += "Thank you for your business!";
-
-  return receipt;
-}
-
-  /**
-   * Parse sale items from text
-   */
-async parseSaleItems(shopId, itemsText) {
-  try {
-    console.log("[parseSaleItems] Input text:", itemsText);
-    
-    const items = [];
-    const regex = /(\d+)\s+(?:"([^"]+)"|(\S+))(?:\s+([\d.]+))?(?=\s|$)/g;
-    
-    let match;
-    while ((match = regex.exec(itemsText)) !== null) {
-      console.log("[parseSaleItems] Match found:", match);
-      
-      const quantity = parseInt(match[1]);
-      
-      if (isNaN(quantity) || quantity <= 0) {
-        return `Invalid quantity: "${match[1]}"`;
-      }
-
-      let productName = match[2] || match[3];
-      
-      if (!productName) {
-        return `Missing product name for quantity ${quantity}.`;
-      }
-
-      let price = match[4] ? parseFloat(match[4]) : null;
-
-      // Clean product name
-      const originalName = productName;
-      productName = productName.replace(/^"+|"+$/g, '').trim();
-      console.log("[parseSaleItems] Product name cleaned:", originalName, "->", productName);
-
-      // Escape regex characters
-      const escapedProductName = productName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      console.log("[parseSaleItems] Searching for:", escapedProductName);
-
-      // Find product
-      const product = await Product.findOne({
-        shopId,
-        name: { $regex: new RegExp(`^${escapedProductName}$`, 'i') },
-        isActive: true,
-      });
-
-      console.log("[parseSaleItems] Found product:", product);
-
-      if (!product) {
-        // Try a partial match as fallback
-        const productPartial = await Product.findOne({
+        // Find product
+        const escapedProductName = productName.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        );
+        const product = await Product.findOne({
           shopId,
-          name: { $regex: productName, $options: 'i' },
+          name: { $regex: new RegExp(`^${escapedProductName}$`, "i") },
           isActive: true,
         });
-        
-        if (!productPartial) {
+
+        if (!product) {
           return `Product "${productName}" not found. Type "list" to see products.`;
         }
-        
-        const finalPrice = price !== null ? price : productPartial.price;
-        const itemTotal = quantity * finalPrice;
 
-        items.push({
-          productId: productPartial._id,
-          product: productPartial,
-          productName: productPartial.name,
-          quantity,
-          price: finalPrice,
-          total: itemTotal,
-        });
-      } else {
         const finalPrice = price !== null ? price : product.price;
         const itemTotal = quantity * finalPrice;
+        const isCustomPrice = price !== null;
 
         items.push({
           productId: product._id,
@@ -1767,22 +1561,242 @@ async parseSaleItems(shopId, itemsText) {
           productName: product.name,
           quantity,
           price: finalPrice,
+          standardPrice: product.price,
+          isCustomPrice,
           total: itemTotal,
         });
       }
-    }
 
-    if (items.length === 0) {
-      return `No valid items found. Please check format.`;
-    }
+      if (items.length === 0) {
+        return `No valid items found. Format: [quantity] [product] [price?]\nExamples:\n• 2 bread 1 milk\n• 2 "mince meat" 1.20\n• 1 "carex condoms" 1.50`;
+      }
 
-    console.log("[parseSaleItems] Parsed items:", items);
-    return items;
-  } catch (error) {
-    console.error("[parseSaleItems] Error:", error);
-    return `Failed to parse items: ${error.message}`;
+      let total = 0;
+
+      // Check stock
+      for (const item of items) {
+        if (item.product.trackStock && item.product.stock < item.quantity) {
+          return `*INSUFFICIENT STOCK*\n\n${item.product.name}\nRequested: ${item.quantity}\nAvailable: ${item.product.stock}`;
+        }
+        total += item.total;
+      }
+
+      // Deduct stock
+      for (const item of items) {
+        if (item.product.trackStock) {
+          item.product.stock -= item.quantity;
+          await item.product.save();
+        }
+      }
+
+      console.log(
+        "[CommandService] Parsed items:",
+        items.length,
+        "Total:",
+        total
+      );
+
+      // Create sale with customer reference
+      const sale = await Sale.create({
+        shopId,
+        items: items.map((item) => ({
+          productId: item.product._id,
+          productName: item.product.name,
+          quantity: item.quantity,
+          price: item.price,
+          standardPrice: item.standardPrice,
+          isCustomPrice: item.isCustomPrice,
+          total: item.total,
+        })),
+        total,
+        customerId: customer._id,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+      });
+
+      console.log("[CommandService] Sale created:", sale._id);
+
+      // Update customer statistics
+      const linked = await CustomerService.linkSaleToCustomer(
+        sale,
+        customer,
+        total
+      );
+      console.log("[CommandService] Customer linked:", linked);
+
+      // Generate receipt
+      return this.generateCustomerReceipt(sale, customer, items);
+    } catch (error) {
+      console.error(
+        "[CommandService] Process sale with customer error:",
+        error
+      );
+      return `Failed to process sale: ${error.message}`;
+    }
   }
-}
+
+  // Helper function to generate receipt
+  generateCustomerReceipt(sale, customer, items) {
+    const now = new Date();
+    const invoiceNumber = `INV-${Date.now().toString().slice(-8)}`;
+
+    let receipt = `INVOICE: ${invoiceNumber}\n`;
+    receipt += "=".repeat(40) + "\n";
+    receipt += `CUSTOMER: ${customer.name.toUpperCase()}\n`;
+    if (customer.phone) {
+      receipt += `PHONE: ${customer.phone}\n`;
+    }
+    receipt += `DATE: ${now.toLocaleDateString()}\n`;
+    receipt += `TIME: ${now.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    })}\n`;
+    receipt += "-".repeat(40) + "\n\n";
+
+    receipt += "ITEM DETAILS:\n";
+    receipt += "-".repeat(40) + "\n";
+
+    items.forEach((item, index) => {
+      receipt += `${index + 1}. ${item.product.name}\n`;
+      receipt += `   Quantity: ${item.quantity}`.padEnd(20);
+      receipt += `Price: $${item.price.toFixed(2)}\n`;
+      receipt += `   Subtotal: $${item.total.toFixed(2)}\n`;
+
+      if (item.isCustomPrice) {
+        receipt += `   Note: Custom price (standard: $${item.standardPrice.toFixed(
+          2
+        )})\n`;
+      }
+
+      if (item.product.trackStock) {
+        receipt += `   Stock after sale: ${item.product.stock}`;
+        if (item.product.stock <= item.product.lowStockThreshold) {
+          receipt += ` [LOW STOCK]`;
+        }
+        receipt += "\n";
+      }
+      receipt += "\n";
+    });
+
+    receipt += "-".repeat(40) + "\n";
+    receipt +=
+      "TOTAL AMOUNT:".padEnd(30) + `$${sale.total.toFixed(2)}`.padStart(10);
+    receipt += "\n" + "=".repeat(40) + "\n\n";
+
+    receipt += "CUSTOMER SUMMARY\n";
+    receipt += "-".repeat(40) + "\n";
+    receipt += `Total Spent: $${customer.totalSpent.toFixed(2)}\n`;
+    receipt += `Total Visits: ${customer.totalVisits}\n`;
+    receipt += `Loyalty Points: ${customer.loyaltyPoints}\n\n`;
+
+    receipt += "Thank you for your business!";
+
+    return receipt;
+  }
+
+  /**
+   * Parse sale items from text
+   */
+  async parseSaleItems(shopId, itemsText) {
+    try {
+      console.log("[parseSaleItems] Input text:", itemsText);
+
+      const items = [];
+      const regex = /(\d+)\s+(?:"([^"]+)"|(\S+))(?:\s+([\d.]+))?(?=\s|$)/g;
+
+      let match;
+      while ((match = regex.exec(itemsText)) !== null) {
+        console.log("[parseSaleItems] Match found:", match);
+
+        const quantity = parseInt(match[1]);
+
+        if (isNaN(quantity) || quantity <= 0) {
+          return `Invalid quantity: "${match[1]}"`;
+        }
+
+        let productName = match[2] || match[3];
+
+        if (!productName) {
+          return `Missing product name for quantity ${quantity}.`;
+        }
+
+        let price = match[4] ? parseFloat(match[4]) : null;
+
+        // Clean product name
+        const originalName = productName;
+        productName = productName.replace(/^"+|"+$/g, "").trim();
+        console.log(
+          "[parseSaleItems] Product name cleaned:",
+          originalName,
+          "->",
+          productName
+        );
+
+        // Escape regex characters
+        const escapedProductName = productName.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        );
+        console.log("[parseSaleItems] Searching for:", escapedProductName);
+
+        // Find product
+        const product = await Product.findOne({
+          shopId,
+          name: { $regex: new RegExp(`^${escapedProductName}$`, "i") },
+          isActive: true,
+        });
+
+        console.log("[parseSaleItems] Found product:", product);
+
+        if (!product) {
+          // Try a partial match as fallback
+          const productPartial = await Product.findOne({
+            shopId,
+            name: { $regex: productName, $options: "i" },
+            isActive: true,
+          });
+
+          if (!productPartial) {
+            return `Product "${productName}" not found. Type "list" to see products.`;
+          }
+
+          const finalPrice = price !== null ? price : productPartial.price;
+          const itemTotal = quantity * finalPrice;
+
+          items.push({
+            productId: productPartial._id,
+            product: productPartial,
+            productName: productPartial.name,
+            quantity,
+            price: finalPrice,
+            total: itemTotal,
+          });
+        } else {
+          const finalPrice = price !== null ? price : product.price;
+          const itemTotal = quantity * finalPrice;
+
+          items.push({
+            productId: product._id,
+            product: product,
+            productName: product.name,
+            quantity,
+            price: finalPrice,
+            total: itemTotal,
+          });
+        }
+      }
+
+      if (items.length === 0) {
+        return `No valid items found. Please check format.`;
+      }
+
+      console.log("[parseSaleItems] Parsed items:", items);
+      return items;
+    } catch (error) {
+      console.error("[parseSaleItems] Error:", error);
+      return `Failed to parse items: ${error.message}`;
+    }
+  }
 
   /**
    * Handle cash sales (existing sell command)
@@ -1897,7 +1911,7 @@ async parseSaleItems(shopId, itemsText) {
         total: totalAmount,
         amountPaid: 0,
         balanceDue: totalAmount,
-        status: "completed", // Credit sales are completed immediately
+        status: "completed",
       });
 
       // Update customer balance
@@ -1927,9 +1941,6 @@ async parseSaleItems(shopId, itemsText) {
    */
   async handleLayBye(shopId, text) {
     try {
-      // Format: laybye for "John Doe" 2 bread 1 milk deposit 20
-      // OR: laybye John 2 bread 1 milk deposit 20
-      // OR: laybye 0771234567 2 bread 1 milk deposit 20
       const match = text.match(
         /^laybye\s+(?:for\s+)?(?:"([^"]+)"|(\S+))\s+(.+?)(?:\s+deposit\s+(\d+(?:\.\d+)?))?$/i
       );
@@ -1999,8 +2010,8 @@ async parseSaleItems(shopId, itemsText) {
               ]
             : [],
         status: "active",
-        reservedStock: true, // Set to true if you want to reserve stock
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days default
+        reservedStock: true,
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       });
 
       // Update customer laybye history
@@ -2025,9 +2036,6 @@ async parseSaleItems(shopId, itemsText) {
    */
   async handleLayByePayment(shopId, text) {
     try {
-      // Format: laybye pay "John Doe" 50
-      // OR: laybye pay John 50
-      // OR: laybye pay 0771234567 50
       const match = text.match(
         /^laybye\s+pay\s+(?:"([^"]+)"|(\S+))\s+(\d+(?:\.\d+)?)$/i
       );
@@ -2088,7 +2096,6 @@ async parseSaleItems(shopId, itemsText) {
    */
   async completeLayBye(shopId, laybye) {
     try {
-      // DEDUCT STOCK NOW (when fully paid)
       for (const item of laybye.items) {
         const product = await Product.findById(item.productId);
         if (product && product.trackStock) {
@@ -2465,7 +2472,6 @@ Check balance: laybye pay ${customerIdentifier} 0`;
     try {
       console.log("[CommandService] Customer payment:", text);
 
-      // Format: payment John 50.00
       const parts = text
         .replace(/^payment\s+/i, "")
         .trim()
@@ -2678,47 +2684,49 @@ Check balance: laybye pay ${customerIdentifier} 0`;
   /**
    * Process new order placement
    */
-async processNewOrder(shopId, orderText) {
-  try {
-    console.log("[processNewOrder] Input:", orderText);
-    
-    // Regex to match: customer (quoted or unquoted) items type? notes?
-    // Example: "John Doe" 2 bread 1 milk delivery "Leave at door"
-    const match = orderText.match(/^(?:"([^"]+)"|(\S+))\s+(.+?)(?:\s+(pickup|delivery|reservation)\s+(?:"([^"]+)"|(.+))?)?$/i);
-    
-    if (!match) {
-      return 'Please specify customer and items.\n\nUse: order [customer] [items] [type?] [notes?]\n\nExamples:\n• order John 2 bread 1 milk\n• order "Jane Doe" 2 "mince meat" 1 milk delivery\n• order 1234567890 3 eggs 1 sugar pickup "Need by 5pm"\n• order John 2 "carex condoms" 1 bread pickup';
-    }
-    
-    const customerIdentifier = match[1] || match[2]; // Quoted or unquoted customer name
-    let itemsText = match[3].trim();
-    const orderType = match[4] ? match[4].toLowerCase() : "pickup";
-    let notes = match[5] || match[6] || ""; // Quoted or unquoted notes
-    
-    console.log("[processNewOrder] Parsed:", {
-      customerIdentifier,
-      itemsText,
-      orderType,
-      notes
-    });
+  async processNewOrder(shopId, orderText) {
+    try {
+      console.log("[processNewOrder] Input:", orderText);
 
-    if (!itemsText) {
-      return "Please specify items for the order.\n\nUse: order [customer] [items]\nExamples:\n• order John 2 bread 1 milk\n• order \"John Doe\" 2 \"mince meat\" 1 milk";
-    }
+      // Regex to match: customer (quoted or unquoted) items type? notes?
+      // Example: "John Doe" 2 bread 1 milk delivery "Leave at door"
+      const match = orderText.match(
+        /^(?:"([^"]+)"|(\S+))\s+(.+?)(?:\s+(pickup|delivery|reservation)\s+(?:"([^"]+)"|(.+))?)?$/i
+      );
 
-    const result = await OrderService.placeOrder(
-      shopId,
-      customerIdentifier,
-      itemsText,
-      orderType,
-      notes
-    );
-    return result.message;
-  } catch (error) {
-    console.error("Process new order error:", error);
-    return `Failed to place order: ${error.message}`;
+      if (!match) {
+        return 'Please specify customer and items.\n\nUse: order [customer] [items] [type?] [notes?]\n\nExamples:\n• order John 2 bread 1 milk\n• order "Jane Doe" 2 "mince meat" 1 milk delivery\n• order 1234567890 3 eggs 1 sugar pickup "Need by 5pm"\n• order John 2 "carex condoms" 1 bread pickup';
+      }
+
+      const customerIdentifier = match[1] || match[2]; // Quoted or unquoted customer name
+      let itemsText = match[3].trim();
+      const orderType = match[4] ? match[4].toLowerCase() : "pickup";
+      let notes = match[5] || match[6] || ""; // Quoted or unquoted notes
+
+      console.log("[processNewOrder] Parsed:", {
+        customerIdentifier,
+        itemsText,
+        orderType,
+        notes,
+      });
+
+      if (!itemsText) {
+        return 'Please specify items for the order.\n\nUse: order [customer] [items]\nExamples:\n• order John 2 bread 1 milk\n• order "John Doe" 2 "mince meat" 1 milk';
+      }
+
+      const result = await OrderService.placeOrder(
+        shopId,
+        customerIdentifier,
+        itemsText,
+        orderType,
+        notes
+      );
+      return result.message;
+    } catch (error) {
+      console.error("Process new order error:", error);
+      return `Failed to place order: ${error.message}`;
+    }
   }
-}
   /**
    * Handle order status updates
    */
@@ -3111,9 +3119,9 @@ Place Orders:
 • order "Jane Doe" 2 "mince meat" 1 "blue butterfly heels" delivery
 
 Manage Orders:
-• orders - All orders
-• orders pending - Pending
-• orders ready - Ready
+• order - All orders
+• order pending - Pending
+• order ready - Ready
 • order details A1B2 - Details
 • confirm order A1B2 - Confirm
 • ready order A1B2 - Mark ready

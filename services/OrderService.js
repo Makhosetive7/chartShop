@@ -1,21 +1,30 @@
-import Order from '../models/Order.js';
-import Product from '../models/Product.js';
-import Customer from '../models/Customer.js';
-import CustomerService from './CustomerService.js';
+import Order from "../models/Order.js";
+import Product from "../models/Product.js";
+import Customer from "../models/Customer.js";
+import CustomerService from "./CustomerService.js";
 
 class OrderService {
   /**
    * Place a new order
    */
-  async placeOrder(shopId, customerIdentifier, itemsText, orderType = 'pickup', notes = '') {
+  async placeOrder(
+    shopId,
+    customerIdentifier,
+    itemsText,
+    orderType = "pickup",
+    notes = ""
+  ) {
     try {
       // Find or create customer
-      let customer = await CustomerService.findCustomer(shopId, customerIdentifier);
-      
+      let customer = await CustomerService.findCustomer(
+        shopId,
+        customerIdentifier
+      );
+
       if (!customer) {
-        return { 
-          success: false, 
-          message: `Customer "${customerIdentifier}" not found.\n\nPlease add customer first:\ncustomer add "${customerIdentifier}" [phone]` 
+        return {
+          success: false,
+          message: `Customer "${customerIdentifier}" not found.\n\nPlease add customer first:\ncustomer add "${customerIdentifier}" [phone]`,
         };
       }
 
@@ -37,19 +46,19 @@ class OrderService {
         total,
         orderType,
         notes: notes.trim(),
-        orderDate: new Date()
+        orderDate: new Date(),
       });
 
       return {
         success: true,
         message: this.generateOrderConfirmation(order),
-        order
+        order,
       };
     } catch (error) {
-      console.error('Place order error:', error);
-      return { 
-        success: false, 
-        message: 'Failed to place order. Please try again.' 
+      console.error("Place order error:", error);
+      return {
+        success: false,
+        message: "Failed to place order. Please try again.",
       };
     }
   }
@@ -57,66 +66,66 @@ class OrderService {
   /**
    * Parse order items from text
    */
-   /**
-   * Parse order items from text
-   */
   async parseOrderItems(shopId, itemsText) {
     try {
       console.log("[OrderService] Parsing order items:", itemsText);
-      
+
       const items = [];
       let total = 0;
-      
+
       const regex = /(\d+)\s+(?:"([^"]+)"|(\S+))(?:\s+([\d.]+))?(?=\s|$)/g;
-      
+
       let match;
       while ((match = regex.exec(itemsText)) !== null) {
         console.log("[OrderService] Item match:", match);
-        
+
         const quantity = parseInt(match[1]);
-        
+
         if (isNaN(quantity) || quantity <= 0) {
-          return { 
-            success: false, 
-            message: `Invalid quantity: "${match[1]}"\n\nPlease use positive numbers only.` 
+          return {
+            success: false,
+            message: `Invalid quantity: "${match[1]}"\n\nPlease use positive numbers only.`,
           };
         }
 
         let productName = match[2] || match[3];
-        
+
         if (!productName) {
-          return { 
-            success: false, 
-            message: "Missing product name after quantity." 
+          return {
+            success: false,
+            message: "Missing product name after quantity.",
           };
         }
 
         // Clean product name - remove quotes
-        productName = productName.replace(/^"+|"+$/g, '').trim();
+        productName = productName.replace(/^"+|"+$/g, "").trim();
         console.log("[OrderService] Searching for product:", productName);
 
         // Optional price (if provided in order)
         const customPrice = match[4] ? parseFloat(match[4]) : null;
 
         // Find product - escape regex special characters
-        const escapedProductName = productName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escapedProductName = productName.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        );
         const product = await Product.findOne({
           shopId,
-          name: { $regex: new RegExp(`^${escapedProductName}$`, 'i') },
+          name: { $regex: new RegExp(`^${escapedProductName}$`, "i") },
           isActive: true,
         });
 
         if (!product) {
-          return { 
-            success: false, 
-            message: `Product "${productName}" not found.\n\nUse "list" to see available products.` 
+          return {
+            success: false,
+            message: `Product "${productName}" not found.\n\nUse "list" to see available products.`,
           };
         }
 
         // Use custom price if provided, otherwise use product price
         const price = customPrice !== null ? customPrice : product.price;
         const itemTotal = quantity * price;
-        
+
         items.push({
           productId: product._id,
           productName: product.name,
@@ -129,24 +138,25 @@ class OrderService {
       }
 
       if (items.length === 0) {
-        return { 
-          success: false, 
-          message: "No valid items found.\n\nFormat: [quantity] [product] [price?]\nExample: 2 bread 1 milk\nExample with price: 2 bread 2.50\nExample with multi-word: 2 \"mince meat\" 1.20" 
+        return {
+          success: false,
+          message:
+            'No valid items found.\n\nFormat: [quantity] [product] [price?]\nExample: 2 bread 1 milk\nExample with price: 2 bread 2.50\nExample with multi-word: 2 "mince meat" 1.20',
         };
       }
 
       console.log("[OrderService] Parsed items:", items);
-      
+
       return {
         success: true,
         items,
-        total
+        total,
       };
     } catch (error) {
-      console.error('[OrderService] Parse order items error:', error);
-      return { 
-        success: false, 
-        message: 'Failed to parse order items. Please check the format.' 
+      console.error("[OrderService] Parse order items error:", error);
+      return {
+        success: false,
+        message: "Failed to parse order items. Please check the format.",
       };
     }
   }
@@ -154,41 +164,41 @@ class OrderService {
   /**
    * Update order status
    */
-  async updateOrderStatus(shopId, orderIdentifier, newStatus, notes = '') {
+  async updateOrderStatus(shopId, orderIdentifier, newStatus, notes = "") {
     try {
       const order = await this.findOrder(shopId, orderIdentifier);
-      
+
       if (!order) {
-        return { 
-          success: false, 
-          message: `Order "${orderIdentifier}" not found.` 
+        return {
+          success: false,
+          message: `Order "${orderIdentifier}" not found.`,
         };
       }
 
       // Validate status transition
       if (!this.isValidStatusTransition(order.status, newStatus)) {
-        return { 
-          success: false, 
-          message: `Cannot change order status from "${order.status}" to "${newStatus}".` 
+        return {
+          success: false,
+          message: `Cannot change order status from "${order.status}" to "${newStatus}".`,
         };
       }
 
       // Update status and timestamps
       order.status = newStatus;
-      
+
       switch (newStatus) {
-        case 'confirmed':
+        case "confirmed":
           order.confirmedAt = new Date();
           break;
-        case 'ready':
+        case "ready":
           order.readyAt = new Date();
           break;
-        case 'completed':
+        case "completed":
           order.completedAt = new Date();
           // Deduct stock when order is completed
           await this.deductOrderStock(order);
           break;
-        case 'cancelled':
+        case "cancelled":
           order.cancelledAt = new Date();
           break;
       }
@@ -202,13 +212,13 @@ class OrderService {
       return {
         success: true,
         message: this.generateStatusUpdateMessage(order, newStatus),
-        order
+        order,
       };
     } catch (error) {
-      console.error('Update order status error:', error);
-      return { 
-        success: false, 
-        message: 'Failed to update order status. Please try again.' 
+      console.error("Update order status error:", error);
+      return {
+        success: false,
+        message: "Failed to update order status. Please try again.",
       };
     }
   }
@@ -226,7 +236,7 @@ class OrderService {
         }
       }
     } catch (error) {
-      console.error('Deduct order stock error:', error);
+      console.error("Deduct order stock error:", error);
       throw error;
     }
   }
@@ -240,7 +250,7 @@ class OrderService {
       if (orderIdentifier.match(/^[0-9a-fA-F]{24}$/)) {
         return await Order.findOne({
           _id: orderIdentifier,
-          shopId
+          shopId,
         });
       }
 
@@ -249,15 +259,17 @@ class OrderService {
         const orders = await Order.find({ shopId })
           .sort({ orderDate: -1 })
           .limit(100);
-        
-        return orders.find(order => 
-          order._id.toString().slice(-4).toLowerCase() === orderIdentifier.toLowerCase()
+
+        return orders.find(
+          (order) =>
+            order._id.toString().slice(-4).toLowerCase() ===
+            orderIdentifier.toLowerCase()
         );
       }
 
       return null;
     } catch (error) {
-      console.error('Find order error:', error);
+      console.error("Find order error:", error);
       return null;
     }
   }
@@ -265,36 +277,36 @@ class OrderService {
   /**
    * List orders with filtering
    */
-  async listOrders(shopId, status = 'all', limit = 10) {
+  async listOrders(shopId, status = "all", limit = 10) {
     try {
       let query = { shopId };
-      
-      if (status !== 'all') {
+
+      if (status !== "all") {
         query.status = status;
       }
 
       const orders = await Order.find(query)
         .sort({ orderDate: -1 })
         .limit(limit)
-        .populate('customerId', 'name phone');
+        .populate("customerId", "name phone");
 
       if (orders.length === 0) {
-        return { 
-          success: false, 
-          message: `No ${status === 'all' ? '' : status + ' '}orders found.` 
+        return {
+          success: false,
+          message: `No ${status === "all" ? "" : status + " "}orders found.`,
         };
       }
 
       return {
         success: true,
         message: this.generateOrdersListMessage(orders, status),
-        orders
+        orders,
       };
     } catch (error) {
-      console.error('List orders error:', error);
-      return { 
-        success: false, 
-        message: 'Failed to fetch orders. Please try again.' 
+      console.error("List orders error:", error);
+      return {
+        success: false,
+        message: "Failed to fetch orders. Please try again.",
       };
     }
   }
@@ -305,26 +317,26 @@ class OrderService {
   async getOrderDetails(shopId, orderIdentifier) {
     try {
       const order = await this.findOrder(shopId, orderIdentifier);
-      
+
       if (!order) {
-        return { 
-          success: false, 
-          message: `Order "${orderIdentifier}" not found.\n\nUse "orders" to see all orders.` 
+        return {
+          success: false,
+          message: `Order "${orderIdentifier}" not found.\n\nUse "orders" to see all orders.`,
         };
       }
 
-      await order.populate('customerId', 'name phone totalSpent totalVisits');
+      await order.populate("customerId", "name phone totalSpent totalVisits");
 
       return {
         success: true,
         message: this.generateOrderDetailsMessage(order),
-        order
+        order,
       };
     } catch (error) {
-      console.error('Get order details error:', error);
-      return { 
-        success: false, 
-        message: 'Failed to get order details. Please try again.' 
+      console.error("Get order details error:", error);
+      return {
+        success: false,
+        message: "Failed to get order details. Please try again.",
       };
     }
   }
@@ -334,11 +346,11 @@ class OrderService {
    */
   isValidStatusTransition(currentStatus, newStatus) {
     const validTransitions = {
-      pending: ['confirmed', 'cancelled'],
-      confirmed: ['ready', 'cancelled'],
-      ready: ['completed', 'cancelled'],
-      completed: [], 
-      cancelled: [] 
+      pending: ["confirmed", "cancelled"],
+      confirmed: ["ready", "cancelled"],
+      ready: ["completed", "cancelled"],
+      completed: [],
+      cancelled: [],
     };
 
     return validTransitions[currentStatus]?.includes(newStatus) || false;
@@ -349,31 +361,40 @@ class OrderService {
    */
   generateOrderConfirmation(order) {
     const orderId = order._id.toString().slice(-4).toUpperCase();
-    
+
     let message = `*NEW ORDER RECEIVED!* (#${orderId})\n\n`;
     message += `Customer: ${order.customerName}\n`;
     message += `Phone: ${order.customerPhone}\n`;
     message += `Order Date: ${order.orderDate.toLocaleString()}\n`;
     message += `Type: ${order.orderType.toUpperCase()}\n\n`;
-    
+
     message += `*ORDER ITEMS:*\n`;
     order.items.forEach((item, index) => {
-      message += `${index + 1}. ${item.quantity}x ${item.productName} - $${item.price.toFixed(2)} each\n`;
+      message += `${index + 1}. ${item.quantity}x ${
+        item.productName
+      } - $${item.price.toFixed(2)} each\n`;
       message += `   Subtotal: $${item.total.toFixed(2)}\n`;
     });
-    
+
     message += `\n*Total: $${order.total.toFixed(2)}*\n`;
     message += `Status: ${order.status.toUpperCase()}\n`;
-    
+
     if (order.notes) {
       message += ` Notes: ${order.notes}\n`;
     }
-    
-    message += `\n *Quick Actions:*\n`;
-    message += `• confirm order ${orderId} - Confirm order\n`;
-    message += `• ready order ${orderId} - Mark as ready\n`;
-    message += `• complete order ${orderId} - Complete order\n`;
-    message += `• cancel order ${orderId} - Cancel order`;
+
+    message += `\n*ORDER WORKFLOW:*\n`;
+    message += `1. *Confirm Order*\n`;
+    message += `   confirm order ${orderId}\n\n`;
+
+    message += `2. *Mark as Ready for Pickup*\n`;
+    message += `   ready order ${orderId}\n\n`;
+
+    message += `3. *Complete Order*\n`;
+    message += `   complete order ${orderId}\n\n`;
+
+    message += `*Cancel Order (if needed)*\n`;
+    message += `   cancel order ${orderId}`;
 
     return message;
   }
@@ -383,22 +404,16 @@ class OrderService {
    */
   generateStatusUpdateMessage(order, newStatus) {
     const orderId = order._id.toString().slice(-4).toUpperCase();
-    const statusIcons = {
-      confirmed: 'confirmed',
-      ready: 'ready', 
-      completed: 'completed',
-      cancelled: 'cancelled'
-    };
 
-    let message = `${statusIcons[newStatus]} *ORDER ${newStatus.toUpperCase()}* (#${orderId})\n\n`;
+    let message = `*ORDER ${newStatus.toUpperCase()}* (#${orderId})\n\n`;
     message += `Customer: ${order.customerName}\n`;
     message += `Order Total: $${order.total.toFixed(2)}\n`;
     message += `Updated: ${new Date().toLocaleString()}\n`;
-    
-    if (newStatus === 'completed') {
-      message += `\nStock has been deducted for completed order.`;
-    } else if (newStatus === 'cancelled') {
-      message += `\nReason: ${order.notes || 'No reason provided'}`;
+
+    if (newStatus === "completed") {
+      message += `\n Stock has been deducted for completed order.`;
+    } else if (newStatus === "cancelled") {
+      message += `\n Reason: ${order.notes || "No reason provided"}`;
     }
 
     return message;
@@ -409,28 +424,30 @@ class OrderService {
    */
   generateOrdersListMessage(orders, status) {
     let message = ` *ORDERS`;
-    
-    if (status !== 'all') {
+
+    if (status !== "all") {
       message += ` - ${status.toUpperCase()}`;
     }
-    
+
     message += `*\n\n`;
 
     orders.forEach((order, index) => {
       const orderId = order._id.toString().slice(-4).toUpperCase();
       const statusIcons = {
-        pending: 'pending',
-        confirmed: 'confirmed',
-        ready: 'ready',
-        completed: 'completed',
-        cancelled: 'cancelled'
+        pending: "pending",
+        confirmed: "confirmed",
+        ready: "ready",
+        completed: "completed",
+        cancelled: "cancelled",
       };
 
-      const topItems = order.items.slice(0, 2)
-        .map(item => `${item.quantity}x ${item.productName}`)
-        .join(', ');
-      
-      const moreItems = order.items.length > 2 ? ` +${order.items.length - 2} more` : '';
+      const topItems = order.items
+        .slice(0, 2)
+        .map((item) => `${item.quantity}x ${item.productName}`)
+        .join(", ");
+
+      const moreItems =
+        order.items.length > 2 ? ` +${order.items.length - 2} more` : "";
 
       message += `${index + 1}. ${statusIcons[order.status]} #${orderId}\n`;
       message += `   ${order.customerName}\n`;
@@ -454,17 +471,19 @@ class OrderService {
   generateOrderDetailsMessage(order) {
     const orderId = order._id.toString().slice(-4).toUpperCase();
     const statusIcons = {
-      pending: 'pending',
-      confirmed: 'confirmed',
-      ready: 'ready',
-      completed: 'completed',
-      cancelled: 'cancelled'
+      pending: "pending",
+      confirmed: "confirmed",
+      ready: "ready",
+      completed: "completed",
+      cancelled: "cancelled",
     };
 
     let message = `*ORDER #${orderId} - DETAILS*\n\n`;
     message += `Customer: ${order.customerName}\n`;
     message += `Phone: ${order.customerPhone}\n`;
-    message += `${statusIcons[order.status]} Status: ${order.status.toUpperCase()}\n`;
+    message += `${
+      statusIcons[order.status]
+    } Status: ${order.status.toUpperCase()}\n`;
     message += `Type: ${order.orderType.toUpperCase()}\n`;
     message += `Total: $${order.total.toFixed(2)}\n\n`;
 
@@ -496,7 +515,7 @@ class OrderService {
     }
 
     // Customer info if populated
-    if (order.customerId && typeof order.customerId === 'object') {
+    if (order.customerId && typeof order.customerId === "object") {
       message += `\n*CUSTOMER INFO:*\n`;
       message += `Total Spent: $${order.customerId.totalSpent.toFixed(2)}\n`;
       message += `Total Visits: ${order.customerId.totalVisits}\n`;
@@ -505,15 +524,15 @@ class OrderService {
     // Action buttons based on status
     message += `\ *ACTIONS:*\n`;
     switch (order.status) {
-      case 'pending':
+      case "pending":
         message += `confirm order ${orderId}\n`;
         message += `cancel order ${orderId} [reason]\n`;
         break;
-      case 'confirmed':
+      case "confirmed":
         message += `ready order ${orderId}\n`;
         message += `cancel order ${orderId} [reason]\n`;
         break;
-      case 'ready':
+      case "ready":
         message += `complete order ${orderId}\n`;
         message += `cancel order ${orderId} [reason]\n`;
         break;

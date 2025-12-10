@@ -2,7 +2,6 @@ import Customer from "../models/Customer.js";
 import Sale from "../models/Sale.js";
 
 class CustomerService {
-  // Add a new customer with comprehensive validation
   async addCustomer(shopId, name, phone, email = "") {
     try {
       console.log('[CustomerService] Adding customer:', { shopId, name, phone, email });
@@ -28,7 +27,6 @@ class CustomerService {
       const normalizedPhone = this.normalizePhone(phone);
       console.log('[CustomerService] Normalized phone:', normalizedPhone);
 
-      // Check if customer already exists
       const existingCustomer = await Customer.findOne({
         shopId,
         phone: normalizedPhone,
@@ -164,8 +162,6 @@ class CustomerService {
       customer.totalSpent += saleTotal;
       customer.totalVisits += 1;
       customer.lastPurchaseDate = new Date();
-
-      // Add loyalty points (1 point per $1 spent)
       customer.loyaltyPoints += Math.floor(saleTotal);
 
       await customer.save();
@@ -206,7 +202,6 @@ class CustomerService {
         };
       }
 
-      // Get customer's sales history
       const sales = await Sale.find({
         shopId,
         customerId: customer._id,

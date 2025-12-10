@@ -7,7 +7,6 @@ class CancellationService {
      */
     async cancelLastSale(shopId, reason = 'No reason provided') {
         try {
-            // Find the most recent non-cancelled sale
             const lastSale = await Sale.findOne({
                 shopId,
                 isCancelled: false
@@ -39,7 +38,6 @@ class CancellationService {
                     isCancelled: false
                 });
             } else {
-                // Treat as recent sales index (e.g., "cancel sale 3" for 3rd most recent)
                 const sales = await Sale.find({
                     shopId,
                     isCancelled: false
@@ -70,7 +68,6 @@ class CancellationService {
      */
     async processCancellation(sale, reason) {
         try {
-            // Restore stock for all items in the sale
             for (const item of sale.items) {
                 const product = await Product.findById(item.productId);
                 if (product && product.trackStock) {
@@ -79,7 +76,6 @@ class CancellationService {
                 }
             }
 
-            // Mark sale as cancelled
             sale.isCancelled = true;
             sale.cancelledAt = new Date();
             sale.cancellationReason = reason;

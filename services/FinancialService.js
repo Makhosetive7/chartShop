@@ -15,7 +15,6 @@ class FinancialService {
     return new mongoose.Types.ObjectId(id);
   }
 
-
   async calculateCashFlow(shopId, startDate, endDate) {
     try {
       const shopObjectId = this.toObjectId(shopId);

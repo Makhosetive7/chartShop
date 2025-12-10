@@ -11,7 +11,7 @@ import path from 'path';
 dotenv.config();
 
 const environment = process.env.NODE_ENV || 'development';
-console.log(`Starting server in ${environment} mode...`);
+console.log(`Starting server in ${environment} mode`);
 
 const app = express();
 

@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 
-// Credit transaction schema
 const creditTransactionSchema = new mongoose.Schema({
   type: {
     type: String,
@@ -60,7 +59,6 @@ const customerSchema = new mongoose.Schema({
   lastPurchaseDate: Date,
   firstPurchaseDate: Date,
   
-  // Enhanced Credit/Debt tracking
   currentBalance: {
     type: Number,
     default: 0,
@@ -70,7 +68,6 @@ const customerSchema = new mongoose.Schema({
     default: 0,
   },
   
-  // Credit transaction history
   creditTransactions: [creditTransactionSchema],
   
   loyaltyPoints: {

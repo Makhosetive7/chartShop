@@ -4,10 +4,10 @@ import commandService from '../services/commandService.js';
 export const handleWebhook = async (req, res) => {
   try {
     const update = req.body;
-    console.log('📨 Webhook received:', update.update_id);
+    console.log('Webhook received:', update.update_id);
 
     if (!update.message || !update.message.text) {
-      console.log('⚠️ No text message, ignoring');
+      console.log('No text message, ignoring');
       return res.sendStatus(200);
     }
 
@@ -15,7 +15,7 @@ export const handleWebhook = async (req, res) => {
     const telegramId = chatId.toString();
     const text = update.message.text;
 
-    console.log(`💬 Message from ${telegramId}: ${text}`);
+    console.log(`Message from ${telegramId}: ${text}`);
 
     // Process the command
     const response = await commandService.processCommand(telegramId, text);
@@ -24,7 +24,7 @@ export const handleWebhook = async (req, res) => {
     if (response && typeof response === 'object') {
       if (response.type === 'pdf') {
         // Send PDF document
-        console.log('📄 Sending PDF:', response.fileName);
+        console.log('Sending PDF:', response.fileName);
         await telegramService.sendDocument(chatId, response.filePath, response.message);
       } else if (response.type === 'pdf_generating') {
         // Send initial generating message
@@ -37,7 +37,7 @@ export const handleWebhook = async (req, res) => {
 
     res.sendStatus(200);
   } catch (error) {
-    console.error('❌ Webhook error:', error);
+    console.error('Webhook error:', error);
     console.error('Error details:', error.stack);
     res.sendStatus(500);
   }
@@ -63,7 +63,7 @@ export const setWebhook = async (req, res) => {
       data: result 
     });
   } catch (error) {
-    console.error('❌ Set webhook error:', error);
+    console.error('Set webhook error:', error);
     res.status(500).json({ 
       success: false, 
       error: error.message 
