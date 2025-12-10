@@ -849,113 +849,121 @@ Need help? Just type *help* anytime!`;
       return "Failed to delete product. Please try again.";
     }
   }
-  async handleEditProduct(shopId, text) {
-    try {
-      // Remove the "edit " prefix
-      const input = text.replace("edit ", "").trim();
+ async handleEditProduct(shopId, text) {
+  try {
+    // Remove the "edit " prefix
+    const input = text.replace("edit ", "").trim();
 
-      // Match: product-name field value (supports quoted product names and multi-word values for name field)
-      const match = input.match(
-        /^(?:"([^"]+)"|(\S+))\s+(price|stock|threshold|name)\s+(.+)$/i
-      );
+    // Match: product-name field value (supports quoted product names and multi-word values)
+    // New regex handles both quoted and unquoted product names, and captures all remaining text as value
+    const match = input.match(
+      /^(?:"([^"]+)"|(\S+))\s+(price|stock|threshold|name)\s+(.+)$/i
+    );
 
-      if (!match) {
-        return 'Invalid format.\n\nUse: edit [product] [field] [value]\n\nAvailable fields:\n• price [amount]\n• stock [quantity]\n• threshold [quantity]\n• name [new-name]\n\nExamples:\n• edit bread price 3.00\n• edit "carex condoms" stock 100\n• edit milk threshold 10\n• edit bread name "White Bread"\n• edit "old name" name "New Product Name"';
-      }
-
-      const productName = match[1] || match[2]; // Group 1 is quoted, group 2 is unquoted
-      const field = match[3].toLowerCase();
-      let value = match[4].trim();
-
-      // Remove quotes from name value if present
-      if (field === "name" && value.startsWith('"') && value.endsWith('"')) {
-        value = value.slice(1, -1);
-      }
-
-      const product = await Product.findOne({
-        shopId,
-        name: new RegExp(`^${productName}$`, "i"),
-        isActive: true,
-      });
-
-      if (!product) {
-        return `Product "${productName}" not found.`;
-      }
-
-      let oldValue, newValue, response;
-
-      switch (field) {
-        case "price":
-          newValue = parseFloat(value);
-          if (isNaN(newValue) || newValue <= 0) {
-            return "Invalid price. Must be greater than 0.\nExample: 2.50";
-          }
-          oldValue = product.price;
-          product.price = newValue;
-          response = `*Price Updated!*\n\n${
-            product.name
-          }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
-          break;
-
-        case "stock":
-          newValue = parseInt(value);
-          if (isNaN(newValue) || newValue < 0) {
-            return "Invalid stock quantity.\nExample: 50";
-          }
-          oldValue = product.stock;
-          product.stock = newValue;
-          product.trackStock = true; // Ensure stock tracking is enabled
-          response = `*Stock Updated!*\n\n${product.name}\nOld: ${oldValue} units\nNew: ${newValue} units`;
-
-          if (newValue <= product.lowStockThreshold) {
-            response += `\n\n*LOW STOCK!* Current stock (${newValue}) is at or below threshold (${product.lowStockThreshold})`;
-          }
-          break;
-
-        case "threshold":
-          newValue = parseInt(value);
-          if (isNaN(newValue) || newValue < 0) {
-            return "Invalid threshold.\nExample: 15";
-          }
-          oldValue = product.lowStockThreshold;
-          product.lowStockThreshold = newValue;
-          response = `*Low Stock Threshold Updated!*\n\n${product.name}\nOld: ${oldValue} units\nNew: ${newValue} units`;
-
-          if (product.stock <= newValue) {
-            response += `\n\n*NOTE:* Current stock (${product.stock}) is at or below new threshold`;
-          }
-          break;
-
-        case "name":
-          newValue = value;
-          // Check if new name already exists
-          const existingProduct = await Product.findOne({
-            shopId,
-            name: new RegExp(`^${newValue}$`, "i"),
-            isActive: true,
-            _id: { $ne: product._id },
-          });
-
-          if (existingProduct) {
-            return `Product name "${newValue}" already exists.`;
-          }
-
-          oldValue = product.name;
-          product.name = newValue;
-          response = `*Product Renamed!*\n\nOld: ${oldValue}\nNew: ${newValue}`;
-          break;
-
-        default:
-          return `Invalid field "${field}".\nAvailable fields: price, stock, threshold, name`;
-      }
-
-      await product.save();
-      return response;
-    } catch (error) {
-      console.error("Edit product error:", error);
-      return "Failed to update product. Please try again.";
+    if (!match) {
+      return 'Invalid format.\n\nUse: edit [product] [field] [value]\n\nAvailable fields:\n• price [amount]\n• stock [quantity]\n• threshold [quantity]\n• name [new-name]\n\nExamples:\n• edit bread price 3.00\n• edit "carex condoms" stock 100\n• edit milk threshold 10\n• edit bread name "White Bread"\n• edit "old name" name "New Product Name"';
     }
+
+    const productName = match[1] || match[2]; // Group 1 is quoted, group 2 is unquoted
+    const field = match[3].toLowerCase();
+    let value = match[4].trim();
+
+    // For name field, remove quotes if present
+    if (field === "name" && value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1);
+    }
+
+    // Escape regex special characters in product name for search
+    const escapedProductName = productName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    
+    const product = await Product.findOne({
+      shopId,
+      name: { $regex: new RegExp(`^${escapedProductName}$`, "i") },
+      isActive: true,
+    });
+
+    if (!product) {
+      return `Product "${productName}" not found.`;
+    }
+
+    let oldValue, newValue, response;
+
+    switch (field) {
+      case "price":
+        newValue = parseFloat(value);
+        if (isNaN(newValue) || newValue <= 0) {
+          return "Invalid price. Must be greater than 0.\nExample: 2.50";
+        }
+        oldValue = product.price;
+        product.price = newValue;
+        response = `*Price Updated!*\n\n${
+          product.name
+        }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
+        break;
+
+      case "stock":
+        newValue = parseInt(value);
+        if (isNaN(newValue) || newValue < 0) {
+          return "Invalid stock quantity.\nExample: 50";
+        }
+        oldValue = product.stock;
+        product.stock = newValue;
+        product.trackStock = true; // Ensure stock tracking is enabled
+        response = `*Stock Updated!*\n\n${product.name}\nOld: ${oldValue} units\nNew: ${newValue} units`;
+
+        if (newValue <= product.lowStockThreshold) {
+          response += `\n\n*LOW STOCK!* Current stock (${newValue}) is at or below threshold (${product.lowStockThreshold})`;
+        }
+        break;
+
+      case "threshold":
+        newValue = parseInt(value);
+        if (isNaN(newValue) || newValue < 0) {
+          return "Invalid threshold.\nExample: 15";
+        }
+        oldValue = product.lowStockThreshold;
+        product.lowStockThreshold = newValue;
+        response = `*Low Stock Threshold Updated!*\n\n${product.name}\nOld: ${oldValue} units\nNew: ${newValue} units`;
+
+        if (product.stock <= newValue) {
+          response += `\n\n*NOTE:* Current stock (${product.stock}) is at or below new threshold`;
+        }
+        break;
+
+      case "name":
+        newValue = value;
+        // For multi-word names, we need to check if they already exist
+        // Escape regex special characters for search
+        const escapedNewValue = newValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        
+        const existingProduct = await Product.findOne({
+          shopId,
+          name: { $regex: new RegExp(`^${escapedNewValue}$`, "i") },
+          isActive: true,
+          _id: { $ne: product._id },
+        });
+
+        if (existingProduct) {
+          return `Product name "${newValue}" already exists.`;
+        }
+
+        oldValue = product.name;
+        product.name = newValue;
+        response = `*Product Renamed!*\n\nOld: ${oldValue}\nNew: ${newValue}`;
+        break;
+
+      default:
+        return `Invalid field "${field}".\nAvailable fields: price, stock, threshold, name`;
+    }
+
+    await product.save();
+    return response;
+  } catch (error) {
+    console.error("Edit product error:", error);
+    return "Failed to update product. Please try again.";
   }
+}
+
   async handleSetThreshold(shopId, text) {
     try {
       // Remove the "threshold " prefix
@@ -2670,51 +2678,47 @@ Check balance: laybye pay ${customerIdentifier} 0`;
   /**
    * Process new order placement
    */
-  async processNewOrder(shopId, orderText) {
-    try {
-      // Format: John 2 bread 1 milk pickup "Need by Friday"
-      const parts = orderText.trim().split(" ");
-      const customerIdentifier = parts[0];
-
-      if (!customerIdentifier) {
-        return 'Please specify customer.\n\nUse: order [customer] [items] [type?] [notes?]\nExamples:\n• order John 2 bread 1 milk\n• order John 2 bread 1 milk delivery "Leave at door"\n• order 1234567890 3 eggs 1 sugar pickup';
-      }
-
-      // Extract order type and notes
-      let itemsText = "";
-      let orderType = "pickup";
-      let notes = "";
-
-      const typeIndex = parts.findIndex((part) =>
-        ["pickup", "delivery", "reservation"].includes(part.toLowerCase())
-      );
-
-      if (typeIndex !== -1) {
-        itemsText = parts.slice(1, typeIndex).join(" ");
-        orderType = parts[typeIndex].toLowerCase();
-        notes = parts.slice(typeIndex + 1).join(" ");
-      } else {
-        itemsText = parts.slice(1).join(" ");
-      }
-
-      if (!itemsText.trim()) {
-        return "Please specify items for the order.\n\nUse: order [customer] [items]\nExample: order John 2 bread 1 milk";
-      }
-
-      const result = await OrderService.placeOrder(
-        shopId,
-        customerIdentifier,
-        itemsText,
-        orderType,
-        notes
-      );
-      return result.message;
-    } catch (error) {
-      console.error("Process new order error:", error);
-      return "Failed to place order. Please try again.";
+async processNewOrder(shopId, orderText) {
+  try {
+    console.log("[processNewOrder] Input:", orderText);
+    
+    // Regex to match: customer (quoted or unquoted) items type? notes?
+    // Example: "John Doe" 2 bread 1 milk delivery "Leave at door"
+    const match = orderText.match(/^(?:"([^"]+)"|(\S+))\s+(.+?)(?:\s+(pickup|delivery|reservation)\s+(?:"([^"]+)"|(.+))?)?$/i);
+    
+    if (!match) {
+      return 'Please specify customer and items.\n\nUse: order [customer] [items] [type?] [notes?]\n\nExamples:\n• order John 2 bread 1 milk\n• order "Jane Doe" 2 "mince meat" 1 milk delivery\n• order 1234567890 3 eggs 1 sugar pickup "Need by 5pm"\n• order John 2 "carex condoms" 1 bread pickup';
     }
-  }
+    
+    const customerIdentifier = match[1] || match[2]; // Quoted or unquoted customer name
+    let itemsText = match[3].trim();
+    const orderType = match[4] ? match[4].toLowerCase() : "pickup";
+    let notes = match[5] || match[6] || ""; // Quoted or unquoted notes
+    
+    console.log("[processNewOrder] Parsed:", {
+      customerIdentifier,
+      itemsText,
+      orderType,
+      notes
+    });
 
+    if (!itemsText) {
+      return "Please specify items for the order.\n\nUse: order [customer] [items]\nExamples:\n• order John 2 bread 1 milk\n• order \"John Doe\" 2 \"mince meat\" 1 milk";
+    }
+
+    const result = await OrderService.placeOrder(
+      shopId,
+      customerIdentifier,
+      itemsText,
+      orderType,
+      notes
+    );
+    return result.message;
+  } catch (error) {
+    console.error("Process new order error:", error);
+    return `Failed to place order: ${error.message}`;
+  }
+}
   /**
    * Handle order status updates
    */
@@ -3043,6 +3047,10 @@ Add/Edit:
 • stock -bread 20 - Reduce stock
 • stock -"blue butterfly heels" 30
 • edit bread price 2.60 - Edit details
+• edit "brown bread" name "Whole Wheat Bread"
+• edit "blue butterfly heels" trackstock false
+• edit "blue butterfly heels" threshold 5
+• edit "mince meat" price 1.50
 • delete bread - Remove product
 
 View:
@@ -3099,6 +3107,8 @@ Place Orders:
 • order John 2 bread 1 milk - Pickup
 • order John 2 bread 1 milk delivery
 • order John 2 bread 1 milk reservation
+• order John 2 "mince meat" 1 milk
+• order "Jane Doe" 2 "mince meat" 1 "blue butterfly heels" delivery
 
 Manage Orders:
 • orders - All orders

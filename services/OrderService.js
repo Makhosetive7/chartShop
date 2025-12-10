@@ -57,24 +57,33 @@ class OrderService {
   /**
    * Parse order items from text
    */
+   /**
+   * Parse order items from text
+   */
   async parseOrderItems(shopId, itemsText) {
     try {
-      const parts = itemsText.trim().split(' ');
+      console.log("[OrderService] Parsing order items:", itemsText);
+      
       const items = [];
       let total = 0;
-
-      let i = 0;
-      while (i < parts.length) {
-        const quantity = parseInt(parts[i]);
+      
+      const regex = /(\d+)\s+(?:"([^"]+)"|(\S+))(?:\s+([\d.]+))?(?=\s|$)/g;
+      
+      let match;
+      while ((match = regex.exec(itemsText)) !== null) {
+        console.log("[OrderService] Item match:", match);
+        
+        const quantity = parseInt(match[1]);
         
         if (isNaN(quantity) || quantity <= 0) {
           return { 
             success: false, 
-            message: `Invalid quantity: "${parts[i]}"\n\nPlease use positive numbers only.` 
+            message: `Invalid quantity: "${match[1]}"\n\nPlease use positive numbers only.` 
           };
         }
 
-        const productName = parts[i + 1];
+        let productName = match[2] || match[3];
+        
         if (!productName) {
           return { 
             success: false, 
@@ -82,10 +91,18 @@ class OrderService {
           };
         }
 
-        // Find product
+        // Clean product name - remove quotes
+        productName = productName.replace(/^"+|"+$/g, '').trim();
+        console.log("[OrderService] Searching for product:", productName);
+
+        // Optional price (if provided in order)
+        const customPrice = match[4] ? parseFloat(match[4]) : null;
+
+        // Find product - escape regex special characters
+        const escapedProductName = productName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const product = await Product.findOne({
           shopId,
-          name: new RegExp(`^${productName}$`, 'i'),
+          name: { $regex: new RegExp(`^${escapedProductName}$`, 'i') },
           isActive: true,
         });
 
@@ -96,35 +113,37 @@ class OrderService {
           };
         }
 
-        // Check stock availability for immediate items
-        if (product.trackStock && product.stock < quantity) {
-          return { 
-            success: false, 
-            message: `Insufficient stock for ${product.name}.\n\nRequested: ${quantity}\nAvailable: ${product.stock}\n\nUse "stock ${product.name} [quantity]" to restock.` 
-          };
-        }
-
-        const itemTotal = quantity * product.price;
+        // Use custom price if provided, otherwise use product price
+        const price = customPrice !== null ? customPrice : product.price;
+        const itemTotal = quantity * price;
         
         items.push({
           productId: product._id,
           productName: product.name,
           quantity,
-          price: product.price,
+          price: price,
           total: itemTotal,
         });
 
         total += itemTotal;
-        i += 2; // Move to next item pair
       }
 
+      if (items.length === 0) {
+        return { 
+          success: false, 
+          message: "No valid items found.\n\nFormat: [quantity] [product] [price?]\nExample: 2 bread 1 milk\nExample with price: 2 bread 2.50\nExample with multi-word: 2 \"mince meat\" 1.20" 
+        };
+      }
+
+      console.log("[OrderService] Parsed items:", items);
+      
       return {
         success: true,
         items,
         total
       };
     } catch (error) {
-      console.error('Parse order items error:', error);
+      console.error('[OrderService] Parse order items error:', error);
       return { 
         success: false, 
         message: 'Failed to parse order items. Please check the format.' 
@@ -338,8 +357,9 @@ class OrderService {
     message += `Type: ${order.orderType.toUpperCase()}\n\n`;
     
     message += `*ORDER ITEMS:*\n`;
-    order.items.forEach(item => {
-      message += `• ${item.quantity}x ${item.productName} - $${item.price.toFixed(2)} each\n`;
+    order.items.forEach((item, index) => {
+      message += `${index + 1}. ${item.quantity}x ${item.productName} - $${item.price.toFixed(2)} each\n`;
+      message += `   Subtotal: $${item.total.toFixed(2)}\n`;
     });
     
     message += `\n*Total: $${order.total.toFixed(2)}*\n`;
