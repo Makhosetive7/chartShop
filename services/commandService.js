@@ -9,18 +9,30 @@ import CustomerService from "./CustomerService.js";
 import OrderService from "./OrderService.js";
 import ExpenseService from "./ExpenseService.js";
 import FinancialService from "./FinancialService.js";
+import AuthService from "./AuthService.js";
+import crypto from 'crypto';
 
 class CommandService {
   async processCommand(telegramId, text) {
     const command = text.trim().toLowerCase();
 
     // Register command
-    if (command.startsWith("register ")) {
+    if (command.startsWith("register") || command === "register") {
       return await this.handleRegister(telegramId, text);
     }
 
+    // Check if user is in registration flow
+    const regStatus = AuthService.getRegistrationStatus(telegramId);
+    if (regStatus && !command.startsWith("/")) {
+      const result = await AuthService.processRegistrationStep(
+        telegramId,
+        text
+      );
+      return result.message;
+    }
+
     // Login command
-    if (command.startsWith("login ")) {
+    if (command.startsWith("login") || command === "login") {
       return await this.handleLogin(telegramId, text);
     }
 
@@ -28,22 +40,27 @@ class CommandService {
     if (command === "logout") {
       return await this.handleLogout(telegramId);
     }
-    // Get shop for authenticated commands
+
+    // Account info
+    if (command === "account" || command === "profile") {
+      return await this.handleAccount(telegramId);
+    }
+
+    // Status check
+    if (command === "status") {
+      return await this.handleStatus(telegramId);
+    }
+
+    if (!AuthService.isAuthenticated(telegramId)) {
+      return `*Welcome to Chart Shop!*\n\nHi there! You need to be logged in.\n\n*To get started:*\n• Register: \`register\`\n• Login: \`login\`\n\nNeed help? Type *help*`;
+    }
+
+    // Update activity
+    AuthService.updateActivity(telegramId);
+
     const shop = await Shop.findOne({ telegramId, isActive: true });
     if (!shop) {
-      return `*Welcome to Chart Shop!*
-
-                Hi there! I don't see an active shop setup for your account.
-
-                *To get started:*
-                • Register a new shop: \`register "Your Business Name" 1234\`
-                • Login to existing shop: \`login 1234\`
-
-                *Example:* 
-                \`register "Bella's Boutique" 5678\`
-                \`login 5678\`
-
-                Need help? Just type *help* anytime!`;
+      return `*Session Error*\n\nPlease login again: \`login\``;
     }
 
     if (command.startsWith("sell to")) {
@@ -337,84 +354,238 @@ class CommandService {
 
   async handleRegister(telegramId, text) {
     try {
-      const match =
+      // Check if this is the old format: register "Business Name" 1234
+      const oldFormatMatch =
         text.match(/register\s+"([^"]+)"\s+(\d{4})/i) ||
         text.match(/register\s+(\S+(?:\s+\S+)*?)\s+(\d{4})/i);
 
-      if (!match) {
-        return ' *Registration Format*\n\nPlease use:\n• `register "Business Name" 1234`\n• `register BusinessName 1234`\n\n*Example:*\n`register "Family Bakery" 5678`\n`register QuickMart 4321`\n\n *Security Tip:* Use a unique 4-digit PIN you will remember.';
+      if (oldFormatMatch) {
+        // Old format - convert to new progressive registration
+        const businessName = oldFormatMatch[1];
+        const pin = oldFormatMatch[2];
+
+        // Validate PIN
+        const pinValidation = AuthService.validatePin(pin);
+        if (!pinValidation.valid) {
+          return `❌ *Weak PIN*\n\n${pinValidation.message}\n\nPlease choose a stronger 4-digit PIN.`;
+        }
+
+        // Check if already registered
+        const existing = await Shop.findOne({ telegramId });
+        if (existing) {
+          return "*Already Registered!*\n\nYou already have an account.\n\n• To login: `login 1234`\n\nYou can only have one shop per Telegram account.";
+        }
+
+        // Hash PIN and create shop
+        const hashedPin = await bcrypt.hash(pin, 12);
+
+        const shop = await Shop.create({
+          telegramId,
+          businessName: businessName,
+          businessDescription: "General merchandise", // Default description
+          pin: hashedPin,
+          isActive: true,
+          registeredAt: new Date(),
+        });
+
+        // Auto-login
+        const sessionToken = crypto.randomBytes(32).toString("hex");
+        AuthService.activeSessions.set(telegramId, {
+          sessionToken,
+          loginTime: new Date(),
+          lastActivity: new Date(),
+          shopId: shop._id,
+        });
+
+        return `*Registration Complete!*\n\n ${businessName} is ready!\n\n *Quick Start:*\n\n*Add Products:*\n• add bread 2.50 stock 50\n• list - View products\n\n*Record Sales:*\n• sell 2 bread 1 milk\n• daily - View report\n\n*Get Help:*\n• help - See all commands\n\n💡 _Start by adding some products!_`;
       }
 
-      const businessName = match[1];
-      const pin = match[2];
+      if (text.trim().toLowerCase() === "register") {
+        const result = await AuthService.startRegistration(telegramId, {
+          firstName: "",
+          lastName: "",
+          username: "",
+        });
 
-      const existing = await Shop.findOne({ telegramId });
-      if (existing) {
-        return "*Already Registered!*\n\nWelcome back! It looks like you already have an account.\n\n• To login: `login ${existing.businessName.substring(0, 3)}***`\n• Forgot PIN? Contact support.\n\nYou can only have one shop per Telegram account.";
+        return result.message;
       }
 
-      const hashedPin = await bcrypt.hash(pin, 10);
+      // If user is in registration flow, process the step
+      const regStatus = AuthService.getRegistrationStatus(telegramId);
+      if (regStatus) {
+        const result = await AuthService.processRegistrationStep(
+          telegramId,
+          text
+        );
+        return result.message;
+      }
 
-      await Shop.create({
-        telegramId,
-        businessName,
-        pin: hashedPin,
-        isActive: true,
-      });
-
-      return `*Registration successful!*\n\nWelcome, ${businessName}!\n\nYou have been automatically logged in.\n\nUse: login [pin] for future access to your account.`;
+      // No match - show help
+      return `*Registration Format*\n\n*Quick Registration:*\n\`register "Business Name" 1234\`\n\n*Or Progressive Registration:*\nJust type: \`register\`\n\n*Examples:*\n• \`register "Family Bakery" 5678\`\n• \`register\` (step-by-step)\n\n*Security Tip:* Use a unique 4-digit PIN.`;
     } catch (error) {
       console.error("Register error:", error);
       return "Registration failed. Please try again.";
     }
   }
 
+  //LOGIN
   async handleLogin(telegramId, text) {
     try {
-      const parts = text.split(" ");
-      const pin = parts[1];
-
-      if (!pin || pin.length !== 4) {
-        return "Invalid PIN.\n\nUse: login [pin]\nExample: login 1234";
+      // Check if already logged in
+      if (AuthService.isAuthenticated(telegramId)) {
+        const shop = await Shop.findOne({ telegramId });
+        return `*Already logged in*\n\n ${shop.shopName}\n\n*Quick Actions:*\n• sell - Record a sale\n• daily - View today's summary\n• products - Check inventory`;
       }
 
-      const shop = await Shop.findOne({ telegramId });
-      if (!shop) {
-        return "Not registered.\n\nUse: register [business name] [pin]";
+      // Old format: login 1234
+      const oldFormatMatch = text.match(/^login\s+(\d{4})$/i);
+
+      if (oldFormatMatch) {
+        const pin = oldFormatMatch[1];
+        const result = await AuthService.login(telegramId, pin);
+
+        // Update shop isActive status for backward compatibility
+        if (result.success) {
+          const shop = await Shop.findOne({ telegramId });
+          if (shop) {
+            shop.isActive = true;
+            await shop.save();
+          }
+        }
+
+        return result.message;
       }
 
-      const isValid = await bcrypt.compare(pin, shop.pin);
-      if (!isValid) {
-        return "Invalid PIN. Please try again.";
+      if (text.trim().toLowerCase() === "login") {
+        return `*Login*\n\nPlease enter your 4-digit PIN.`;
       }
 
-      shop.isActive = true;
-      await shop.save();
+      // Check if this is a PIN entry (4 digits)
+      const pinMatch = text.match(/^\d{4}$/);
+      if (pinMatch) {
+        const pin = pinMatch[0];
+        const result = await AuthService.login(telegramId, pin);
 
-      return `*Welcome back, ${shop.businessName}!*\n\nBusiness: ${businessName}\n\nYou can now:\n• add bread 2.50 - Add products\n• list - View products\n• sell 2 bread - Record sales\n• sell 2 bread 2.00 - Sell at custom price\n• daily - View detailed report\n\nType "help" for more commands.`;
+        // Update shop isActive status for backward compatibility
+        if (result.success) {
+          const shop = await Shop.findOne({ telegramId });
+          if (shop) {
+            shop.isActive = true;
+            await shop.save();
+          }
+        }
+
+        return result.message;
+      }
+
+      return "Invalid PIN format.\n\nUse: `login 1234`\nOr just type: `login`";
     } catch (error) {
       console.error("Login error:", error);
       return "Login failed. Please try again.";
     }
   }
-
   async handleLogout(telegramId) {
     try {
-      const shop = await Shop.findOne({ telegramId, isActive: true });
+      // Use AuthService logout
+      const result = await AuthService.logout(telegramId);
 
-      if (!shop) {
-        return "You are not currently logged in.";
+      const shop = await Shop.findOne({ telegramId });
+      if (shop) {
+        shop.isActive = false;
+        await shop.save();
       }
 
-      // Deactivate the shop session
-      shop.isActive = false;
-      await shop.save();
-
-      return `*Logged out successfully!*\n\nGoodbye, ${shop.businessName}! \n\nUse "login [pin]" to log back in.`;
+      return result.message;
     } catch (error) {
       console.error("Logout error:", error);
       return "Failed to logout. Please try again.";
     }
+  }
+
+  // Handle account info commanD
+  async handleAccount(telegramId) {
+    try {
+      if (!AuthService.isAuthenticated(telegramId)) {
+        return "Please login first using `login 1234`";
+      }
+
+      const shop = await Shop.findOne({ telegramId });
+      const session = AuthService.activeSessions.get(telegramId);
+
+      if (!shop) {
+        return "Account not found.";
+      }
+
+      let message = "*Your Account*\n\n";
+      message += `*Shop:* ${shop.shopName}\n`;
+
+      if (shop.shopDescription) {
+        message += `*Description:* ${shop.shopDescription}\n`;
+      }
+
+      message += `*Status:* Active\n\n`;
+      message += `*Registered:* ${shop.registeredAt.toLocaleDateString()}\n`;
+      message += `*Last Login:* ${
+        shop.lastLogin ? this.formatLastLogin(shop.lastLogin) : "N/A"
+      }\n\n`;
+
+      message += "*Commands:*\n";
+      message += "• logout - End session\n";
+      message += "• help - Get help";
+
+      return message;
+    } catch (error) {
+      console.error("Account error:", error);
+      return "Failed to get account info.";
+    }
+  }
+
+  //Handle status command
+  async handleStatus(telegramId) {
+    try {
+      // Check registration status
+      const regStatus = AuthService.getRegistrationStatus(telegramId);
+      if (regStatus) {
+        return `*Registration in progress*\n\nStep ${regStatus.stepNumber}/${
+          regStatus.totalSteps
+        }: ${regStatus.stepName}\n\n${
+          regStatus.data.shopName
+            ? `✅ Shop Name: ${regStatus.data.shopName}\n`
+            : ""
+        }${
+          regStatus.data.shopDescription
+            ? `✅ Description: ${regStatus.data.shopDescription}\n`
+            : ""
+        }\n💡 Continue where you left off, or type a different command to start over.`;
+      }
+
+      // Check authentication status
+      if (AuthService.isAuthenticated(telegramId)) {
+        const shop = await Shop.findOne({ telegramId });
+        return `*Logged in*\n\n${shop.shopName}\n\nUse \`account\` for more details.`;
+      }
+
+      // Not registered or logged in
+      return `*Status*\n\n Not logged in\n\n*New user?* Use \`register\`\n*Existing user?* Use \`login\``;
+    } catch (error) {
+      console.error("Status error:", error);
+      return "Failed to check status.";
+    }
+  }
+
+  // Format last login timE
+  formatLastLogin(lastLogin) {
+    const now = new Date();
+    const diff = now - new Date(lastLogin);
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
+    if (hours < 24) return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
+    if (days < 7) return `${days} day${days !== 1 ? "s" : ""} ago`;
+    return lastLogin.toLocaleDateString();
   }
 
   async handleSell(shopId, text) {
@@ -1419,7 +1590,7 @@ class CommandService {
   /**
    * Handle adding a new customer
    */
- async handleAddCustomer(shopId, text) {
+  async handleAddCustomer(shopId, text) {
     try {
       console.log("[CommandService] Adding customer from text:", text);
 
@@ -3040,9 +3211,13 @@ Check balance: laybye pay ${customerIdentifier} 0`;
  CORE COMMANDS
 ===============
 • help - Show this guide
-• register "Hello World" 1234
-• login 1234 - Access your account
+• register - Step-by-step setup
+• register "Business Name" 1234 - Quick setup
+• login - Login with PIN
+• login 1234 - Quick login
 • logout - End session
+• account - View account info
+• status - Check registration/login status
 
 ==================
 PRODUCT MANAGEMENT
