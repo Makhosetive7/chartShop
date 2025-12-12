@@ -10,7 +10,7 @@ import OrderService from "./OrderService.js";
 import ExpenseService from "./ExpenseService.js";
 import FinancialService from "./FinancialService.js";
 import AuthService from "./AuthService.js";
-import crypto from 'crypto';
+import crypto from "crypto";
 
 class CommandService {
   async processCommand(telegramId, text) {
@@ -28,6 +28,12 @@ class CommandService {
         telegramId,
         text
       );
+      return result.message;
+    }
+
+    const pinChangeStatus = AuthService.getPinChangeStatus(telegramId);
+    if (pinChangeStatus && !command.startsWith("/")) {
+      const result = await AuthService.processPinChange(telegramId, text);
       return result.message;
     }
 
@@ -49,6 +55,32 @@ class CommandService {
     // Status check
     if (command === "status") {
       return await this.handleStatus(telegramId);
+    }
+
+    if (command === "/profile" || command === "profile") {
+      const result = await AuthService.getProfile(telegramId);
+      return result.message;
+    }
+
+    // /profile edit name "New Name"
+    if (
+      command.startsWith("/profile edit name") ||
+      command.startsWith("profile edit name")
+    ) {
+      return await this.handleProfileEditName(telegramId, text);
+    }
+
+    // /profile edit description "New Description"
+    if (
+      command.startsWith("/profile edit description") ||
+      command.startsWith("profile edit description")
+    ) {
+      return await this.handleProfileEditDescription(telegramId, text);
+    }
+
+    // /profile edit pin
+    if (command === "/profile edit pin" || command === "profile edit pin") {
+      return await this.handleProfileEditPin(telegramId);
     }
 
     if (!AuthService.isAuthenticated(telegramId)) {
@@ -367,7 +399,7 @@ class CommandService {
         // Validate PIN
         const pinValidation = AuthService.validatePin(pin);
         if (!pinValidation.valid) {
-          return `❌ *Weak PIN*\n\n${pinValidation.message}\n\nPlease choose a stronger 4-digit PIN.`;
+          return `*Weak PIN*\n\n${pinValidation.message}\n\nPlease choose a stronger 4-digit PIN.`;
         }
 
         // Check if already registered
@@ -505,38 +537,155 @@ class CommandService {
   // Handle account info commanD
   async handleAccount(telegramId) {
     try {
-      if (!AuthService.isAuthenticated(telegramId)) {
-        return "Please login first using `login 1234`";
-      }
-
       const shop = await Shop.findOne({ telegramId });
-      const session = AuthService.activeSessions.get(telegramId);
 
       if (!shop) {
         return "Account not found.";
       }
 
-      let message = "*Your Account*\n\n";
-      message += `*Shop:* ${shop.shopName}\n`;
+      const now = new Date();
+      const isLocked = shop.lockedUntil && shop.lockedUntil > now;
 
-      if (shop.shopDescription) {
-        message += `*Description:* ${shop.shopDescription}\n`;
+      // Calculate time differences
+      const formatTimeAgo = (date) => {
+        if (!date) return "Never";
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / (1000 * 60));
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        return `${diffDays}d ago`;
+      };
+
+      const formatFullDate = (date) => {
+        if (!date) return "N/A";
+        return date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      };
+
+      // Build account message
+      let message = "*YOUR ACCOUNT*\n\n";
+
+      // Business Information
+      message += "*Business Information*\n";
+      message += `• Name: ${shop.businessName}\n`;
+      message += `• Description: ${shop.businessDescription}\n`;
+      message += `• Status: ${shop.isActive ? "Active" : "Inactive"}\n`;
+      message += `• Security: ${isLocked ? "Locked" : "Unlocked"}\n`;
+      message += `• Login Attempts: ${shop.loginAttempts}\n`;
+
+      if (isLocked && shop.lockedUntil) {
+        const lockTimeLeft = Math.ceil((shop.lockedUntil - now) / (1000 * 60));
+        message += `Locked for: ${lockTimeLeft} minutes\n`;
+      }
+      message += "\n";
+
+      // Timeline
+      message += "*Timeline*\n";
+      message += `• Registered: ${formatFullDate(shop.createdAt)}\n`;
+      message += `• Last Login: ${
+        shop.lastLogin ? formatTimeAgo(shop.lastLogin) : "Never"
+      }\n`;
+
+      if (shop.lastLogin) {
+        message += `• Date: ${formatFullDate(shop.lastLogin)}\n`;
       }
 
-      message += `*Status:* Active\n\n`;
-      message += `*Registered:* ${shop.registeredAt.toLocaleDateString()}\n`;
-      message += `*Last Login:* ${
-        shop.lastLogin ? this.formatLastLogin(shop.lastLogin) : "N/A"
-      }\n\n`;
+      if (shop.lastLogout) {
+        message += `• Last Logout: ${formatTimeAgo(shop.lastLogout)}\n`;
+        message += `• Date: ${formatFullDate(shop.lastLogout)}\n`;
+      }
 
-      message += "*Commands:*\n";
-      message += "• logout - End session\n";
-      message += "• help - Get help";
+      const accountAgeDays = Math.floor(
+        (now - shop.createdAt) / (1000 * 60 * 60 * 24)
+      );
+      message += `• Account Age: ${accountAgeDays} days\n\n`;
+
+      // Settings
+      message += "*Settings*\n";
+      message += `• Currency: ${shop.settings?.currency || "USD"}\n`;
+      message += `• Timezone: ${shop.settings?.timezone || "Africa/Harare"}\n`;
+      message += `• Low Stock Alert: ${
+        shop.settings?.lowStockAlert || 10
+      } units\n\n`;
+
+      // Quick Stats
+      if (shop.lastLogin) {
+        const daysSinceLogin = Math.floor(
+          (now - shop.lastLogin) / (1000 * 60 * 60 * 24)
+        );
+        message += "*Activity*\n";
+        message += `• Last active: ${
+          daysSinceLogin === 0 ? "Today" : `${daysSinceLogin} days ago`
+        }\n`;
+
+        if (shop.lastLogout) {
+          const sessionDuration = shop.lastLogout - shop.lastLogin;
+          const hours = Math.floor(sessionDuration / (1000 * 60 * 60));
+          const minutes = Math.floor(
+            (sessionDuration % (1000 * 60 * 60)) / (1000 * 60)
+          );
+          if (hours > 0 || minutes > 0) {
+            message += `• Last session: ${hours}h ${minutes}m\n`;
+          }
+        }
+        message += "\n";
+      }
+
+      // Commands
+      message += "*Available Commands*\n";
+      message += "• logout - End current session\n";
+      message += "• help - Get help with commands\n";
+
+      // Add warning if account is locked
+      if (isLocked) {
+        message += "\n*Warning:* Your account is temporarily locked. ";
+        message += "Please wait or contact support.\n";
+      }
+
+      // Add tip about security
+      if (shop.loginAttempts > 0) {
+        message += "\n*Security Tip:* ";
+        if (shop.loginAttempts >= 3) {
+          message += "Multiple failed login attempts detected. ";
+          message += "Ensure your PIN is secure!";
+        } else {
+          message += "Keep your PIN secure and don't share it!";
+        }
+      }
 
       return message;
     } catch (error) {
       console.error("Account error:", error);
-      return "Failed to get account info.";
+      return "Failed to get account information.";
+    }
+  }
+
+  // Keep your existing formatLastLogin method if needed elsewhere
+  formatLastLogin(date) {
+    if (!date) return "Never";
+
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      return "Today";
+    } else if (diffDays === 1) {
+      return "Yesterday";
+    } else if (diffDays < 7) {
+      return `${diffDays} days ago`;
+    } else if (diffDays < 30) {
+      return `${Math.floor(diffDays / 7)} weeks ago`;
+    } else {
+      return date.toLocaleDateString();
     }
   }
 
@@ -550,13 +699,13 @@ class CommandService {
           regStatus.totalSteps
         }: ${regStatus.stepName}\n\n${
           regStatus.data.shopName
-            ? `✅ Shop Name: ${regStatus.data.shopName}\n`
+            ? `Shop Name: ${regStatus.data.shopName}\n`
             : ""
         }${
           regStatus.data.shopDescription
-            ? `✅ Description: ${regStatus.data.shopDescription}\n`
+            ? `Description: ${regStatus.data.shopDescription}\n`
             : ""
-        }\n💡 Continue where you left off, or type a different command to start over.`;
+        }\nContinue where you left off, or type a different command to start over.`;
       }
 
       // Check authentication status
@@ -570,6 +719,98 @@ class CommandService {
     } catch (error) {
       console.error("Status error:", error);
       return "Failed to check status.";
+    }
+  }
+
+  /**
+   * Handle business name edit
+   */
+  async handleProfileEditName(telegramId, text) {
+    try {
+      // Match both with and without slash
+      const match = text.match(
+        /(?:\/)?profile\s+edit\s+name\s+(?:"([^"]+)"|(.+))$/i
+      );
+
+      if (!match) {
+        return (
+          "*Invalid Format*\n\n" +
+          'Use: /profile edit name "New Name"\n\n' +
+          "*Examples:*\n" +
+          '• /profile edit name "Mike\'s Shop"\n' +
+          '• /profile edit name "Premium Electronics"\n' +
+          '• /profile edit name "Bella\'s Boutique"'
+        );
+      }
+
+      const newName = (match[1] || match[2]).trim();
+
+      if (!newName) {
+        return (
+          "*Business name cannot be empty*\n\n" +
+          "Please provide a new business name."
+        );
+      }
+
+      const result = await AuthService.updateBusinessName(telegramId, newName);
+      return result.message;
+    } catch (error) {
+      console.error("[CommandService] Edit name error:", error);
+      return "Failed to update business name. Please try again.";
+    }
+  }
+
+  /**
+   * Handle business description edit
+   */
+  async handleProfileEditDescription(telegramId, text) {
+    try {
+      // Match both with and without slash
+      const match = text.match(
+        /(?:\/)?profile\s+edit\s+description\s+(?:"([^"]+)"|(.+))$/i
+      );
+
+      if (!match) {
+        return (
+          "*Invalid Format*\n\n" +
+          'Use: /profile edit description "New Description"\n\n' +
+          "*Examples:*\n" +
+          '• /profile edit description "Electronics and gadgets"\n' +
+          '• /profile edit description "Fashion and accessories"\n' +
+          '• /profile edit description "Grocery and household items"'
+        );
+      }
+
+      const newDescription = (match[1] || match[2]).trim();
+
+      if (!newDescription) {
+        return (
+          "*Description cannot be empty*\n\n" +
+          "Please provide a description for your business."
+        );
+      }
+
+      const result = await AuthService.updateBusinessDescription(
+        telegramId,
+        newDescription
+      );
+      return result.message;
+    } catch (error) {
+      console.error("[CommandService] Edit description error:", error);
+      return "Failed to update description. Please try again.";
+    }
+  }
+
+  /**
+   * Handle PIN change initiation
+   */
+  async handleProfileEditPin(telegramId) {
+    try {
+      const result = await AuthService.startPinChange(telegramId);
+      return result.message;
+    } catch (error) {
+      console.error("[CommandService] Edit PIN error:", error);
+      return "Failed to start PIN change. Please try again.";
     }
   }
 
@@ -3218,6 +3459,18 @@ Check balance: laybye pay ${customerIdentifier} 0`;
 • logout - End session
 • account - View account info
 • status - Check registration/login status
+• profile - View full profile
+
+==================
+PROFILE MANAGEMENT
+==================
+View:
+• profile - View complete profile
+
+Edit:
+• profile edit name "New Name" - Change business name
+• profile edit description "New Desc" - Update description
+• profile edit pin - Change PIN (secure 2-step)
 
 ==================
 PRODUCT MANAGEMENT
