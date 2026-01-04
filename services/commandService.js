@@ -1653,45 +1653,92 @@ class CommandService {
   }
 
   async handleExportReport(shop, text) {
-    try {
-      const parts = text
-        .toLowerCase()
-        .replace("export", "")
-        .replace("pdf", "")
-        .trim()
-        .split(" ");
-      const reportType = parts[0] || "daily";
+  try {
+    const parts = text
+      .toLowerCase()
+      .replace("export", "")
+      .replace("pdf", "")
+      .trim()
+      .split(/\s+/); 
+    
+    const reportType = parts[0] || "daily";
+    
+    const monthParam = reportType === "monthly" && parts[1] ? parts[1] : null;
 
-      console.log("[CommandService] Exporting", reportType, "report");
+    console.log("[CommandService] Exporting", reportType, "report", monthParam ? `for month: ${monthParam}` : '');
 
-      let pdfMethod;
-      let periodName;
+    let pdfMethod;
+    let periodName;
 
-      switch (reportType) {
-        case "daily":
-        case "today":
-          pdfMethod = "generateEnhancedDailyReportPDF";
-          periodName = "Daily";
-          break;
+    switch (reportType) {
+      case "daily":
+      case "today":
+        pdfMethod = "generateEnhancedDailyReportPDF";
+        periodName = "Daily";
+        break;
 
-        case "weekly":
-        case "week":
-          pdfMethod = "generateEnhancedWeeklyReportPDF";
-          periodName = "Weekly";
-          break;
+      case "weekly":
+      case "week":
+        pdfMethod = "generateEnhancedWeeklyReportPDF";
+        periodName = "Weekly";
+        break;
 
-        case "monthly":
-        case "month":
-          pdfMethod = "generateEnhancedMonthlyReportPDF";
-          periodName = "Monthly";
-          break;
+      case "monthly":
+      case "month":
+        pdfMethod = "generateEnhancedMonthlyReportPDF";
+        
+        if (monthParam) {
+          try {
+            const monthNum = parseInt(monthParam);
+            if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
+              const monthLabels = ['January', 'February', 'March', 'April', 'May', 'June',
+                                   'July', 'August', 'September', 'October', 'November', 'December'];
+              periodName = monthLabels[monthNum - 1];
+            } else {
+              const monthNames = {
+                'jan': 'January', 'january': 'January',
+                'feb': 'February', 'february': 'February',
+                'mar': 'March', 'march': 'March',
+                'apr': 'April', 'april': 'April',
+                'may': 'May',
+                'jun': 'June', 'june': 'June',
+                'jul': 'July', 'july': 'July',
+                'aug': 'August', 'august': 'August',
+                'sep': 'September', 'september': 'September', 'sept': 'September',
+                'oct': 'October', 'october': 'October',
+                'nov': 'November', 'november': 'November',
+                'dec': 'December', 'december': 'December'
+              };
+              periodName = monthNames[monthParam.toLowerCase()] || 'Monthly';
+            }
+          } catch (e) {
+            periodName = 'Monthly';
+          }
+        } else {
+          periodName = 'Monthly';
+        }
+        break;
 
-        default:
-          return `Invalid report type: "${reportType}"\n\nAvailable:\n• export daily\n• export weekly\n• export monthly`;
-      }
+      default:
+        return `Invalid report type: "${reportType}"\n\nAvailable:\n• export daily\n• export weekly\n• export monthly\n• export monthly 1 (January)\n• export monthly march`;
+    }
 
-      // Return promise for PDF generation
-      return new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
+      if (reportType === "monthly" || reportType === "month") {
+        PDFService[pdfMethod](shop, monthParam, (error, result) => {
+          if (error) {
+            console.error("[CommandService] PDF generation error:", error);
+            resolve(`*PDF Generation Failed*\n\n${error.message}\n\n💡 Usage:\n• export monthly\n• export monthly 1 (for January)\n• export monthly march`);
+          } else {
+            resolve({
+              type: "pdf",
+              message: `*${periodName} Financial Report Generated!*\n\nYour comprehensive financial report is ready with:\n\n✓ Cash flow analysis\n✓ Revenue breakdown\n✓ Expense details by category\n✓ Daily averages\n✓ Outstanding balances\n\nComplete financial transparency at your fingertips.`,
+              filePath: result.filePath,
+              fileName: result.filename,
+            });
+          }
+        });
+      } else {
         PDFService[pdfMethod](shop, (error, result) => {
           if (error) {
             console.error("[CommandService] PDF generation error:", error);
@@ -1699,19 +1746,19 @@ class CommandService {
           } else {
             resolve({
               type: "pdf",
-              message: `*${periodName} Financial Report Generated!*\n\nYour comprehensive financial report is ready with:\n\nCash flow analysis\nRevenue breakdown\nExpense details by category\nProfitability metrics\nOutstanding balances\n\nComplete financial transparency at your fingertips.`,
+              message: `*${periodName} Financial Report Generated!*\n\nYour comprehensive financial report is ready with:\n\n✓ Cash flow analysis\n✓ Revenue breakdown\n✓ Expense details by category\n✓ Profitability metrics\n✓ Outstanding balances\n\nComplete financial transparency at your fingertips.`,
               filePath: result.filePath,
               fileName: result.filename,
             });
           }
         });
-      });
-    } catch (error) {
-      console.error("[CommandService] Export report error:", error);
-      return `*Export Failed*\n\n${error.message}`;
-    }
+      }
+    });
+  } catch (error) {
+    console.error("[CommandService] Export report error:", error);
+    return `*Export Failed*\n\n${error.message}`;
   }
-
+}
   async handleCancelSale(shopId, text) {
     try {
       const parts = text.replace("cancel", "").trim().split(" ");

@@ -465,9 +465,6 @@ class PDFService {
     });
   }
 
-  /**
-   * Add business insights page (NEW - NO PROFIT METRICS)
-   */
   addBusinessInsightsPage(doc, cashFlowData, shop) {
     doc.addPage();
     
@@ -537,7 +534,6 @@ class PDFService {
 
     y += 20;
 
-    // Recommendations (NO PROFIT RECOMMENDATIONS)
     doc.fontSize(14).font('Helvetica-Bold').text('Recommendations', 50, y);
     y += 20;
 
@@ -625,9 +621,6 @@ class PDFService {
     });
   }
 
-  /**
-   * Generate Enhanced Daily Report PDF with FinancialService (IMPROVED)
-   */
   async generateEnhancedDailyReportPDF(shop, callback) {
     try {
       console.log('[PDFService] Generating enhanced daily report');
@@ -648,7 +641,7 @@ class PDFService {
       const stream = fs.createWriteStream(filePath);
       doc.pipe(stream);
 
-      // PAGE 1: Executive Summary
+    
       let yPos = this.addHeader(
         doc,
         shop,
@@ -678,18 +671,14 @@ class PDFService {
            .text(`Total Outstanding: $${data.outstanding.total.toFixed(2)}`, 50, yPos + 50);
       }
 
-      // PAGE 2: Detailed Sales
       this.addDetailedSalesPage(doc, data, shop);
 
-      // PAGE 3: Detailed Expenses
       if (data.details.expenses && data.details.expenses.length > 0) {
         this.addDetailedExpensesPage(doc, data.details.expenses, shop);
       }
 
-      // PAGE 4: Business Insights
       this.addBusinessInsightsPage(doc, data, shop);
 
-      // Add footer to all pages
       this.addFooter(doc);
       
       doc.end();
@@ -710,9 +699,7 @@ class PDFService {
     }
   }
 
-  /**
-   * Generate Enhanced Weekly Report PDF
-   */
+
   async generateEnhancedWeeklyReportPDF(shop, callback) {
     try {
       const financialReport = await FinancialService.getWeeklyCashFlow(shop._id);
@@ -780,79 +767,135 @@ class PDFService {
     }
   }
 
-  /**
-   * Generate Enhanced Monthly Report PDF
-   */
-  async generateEnhancedMonthlyReportPDF(shop, callback) {
-    try {
-      const financialReport = await FinancialService.getMonthlyCashFlow(shop._id);
-      
-      if (!financialReport.success) {
-        return callback(new Error(financialReport.message), null);
-      }
-
-      const { data } = financialReport;
-
-      const doc = new PDFDocument({ margin: 50, size: 'A4' });
-      const filename = `${shop.businessName.replace(/\s+/g, '_')}_Monthly_Report_${new Date().toISOString().split('T')[0]}.pdf`;
-      const filePath = path.join(this.ensureReportsDirectory(), filename);
-
-      const stream = fs.createWriteStream(filePath);
-      doc.pipe(stream);
-
-      let yPos = this.addHeader(
-        doc,
-        shop,
-        'MONTHLY FINANCIAL REPORT',
-        `Period: ${data.period.startDate.toDateString()} - ${data.period.endDate.toDateString()}`
-      );
-
-      yPos = this.addFinancialSummarySection(doc, data, yPos);
-      yPos = this.addRevenueSection(doc, data, yPos);
-
-      if (data.outstanding.total > 0) {
-        if (yPos > 650) {
-          doc.addPage();
-          yPos = 50;
-        }
-
-        doc.fontSize(12).font('Helvetica-Bold')
-           .fillColor('#856404')
-           .text('Outstanding Receivables', 50, yPos);
-        
-        doc.fontSize(10).font('Helvetica')
-           .fillColor('#000')
-           .text(`Total Outstanding: $${data.outstanding.total.toFixed(2)}`, 50, yPos + 20);
-      }
-
-      this.addDetailedSalesPage(doc, data, shop);
-
-      if (data.details.expenses && data.details.expenses.length > 0) {
-        this.addDetailedExpensesPage(doc, data.details.expenses, shop);
-      }
-
-      this.addBusinessInsightsPage(doc, data, shop);
-
-      this.addFooter(doc);
-      doc.end();
-
-      stream.on('finish', () => {
-        callback(null, { filePath, filename });
-      });
-
-      stream.on('error', (error) => {
-        callback(error, null);
-      });
-
-    } catch (error) {
-      console.error('[PDFService] Enhanced monthly report error:', error);
-      callback(error, null);
+async generateEnhancedMonthlyReportPDF(shop, monthParam = null, callback) {
+  try {
+    // If callback is passed as second parameter (backward compatibility)
+    if (typeof monthParam === 'function') {
+      callback = monthParam;
+      monthParam = null;
     }
-  }
 
-  /**
-   * Generate Best Sellers Report PDF (uses existing sales data)
-   */
+    // Call enhanced FinancialService with month parameter
+    const financialReport = await FinancialService.getMonthlyCashFlow(shop._id, monthParam);
+    
+    if (!financialReport.success) {
+      return callback(new Error(financialReport.message), null);
+    }
+
+    const { data, monthInfo } = financialReport;
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    
+    // Enhanced filename with specific month
+    const monthLabel = monthInfo ? monthInfo.label : new Date().toLocaleString('default', { month: 'long' });
+    const year = monthInfo ? monthInfo.year : new Date().getFullYear();
+    const filename = `${shop.businessName.replace(/\s+/g, '_')}_Monthly_Report_${monthLabel}_${year}.pdf`;
+    const filePath = path.join(this.ensureReportsDirectory(), filename);
+
+    const stream = fs.createWriteStream(filePath);
+    doc.pipe(stream);
+
+    // Enhanced subtitle with month-specific info
+    let subtitle = monthInfo 
+      ? `${monthInfo.label} ${monthInfo.year} - ${monthInfo.isCurrentMonth ? `${monthInfo.daysElapsed} of ${monthInfo.daysInMonth} days` : `Complete Month`}`
+      : `Period: ${data.period.startDate.toDateString()} - ${data.period.endDate.toDateString()}`;
+
+    let yPos = this.addHeader(
+      doc,
+      shop,
+      'MONTHLY FINANCIAL REPORT',
+      subtitle
+    );
+
+    // Add month status indicator if available
+    if (monthInfo) {
+      if (monthInfo.isCurrentMonth) {
+        doc.fontSize(10)
+           .fillColor('#856404')
+           .font('Helvetica-Bold')
+           .text(`${monthInfo.daysElapsed} of ${monthInfo.daysInMonth} days elapsed`, 50, yPos, { align: 'center' });
+        yPos += 20;
+      } else {
+        doc.fontSize(10)
+           .fillColor(this.colors.success)
+           .font('Helvetica-Bold')
+           .text(`Complete Month (${monthInfo.daysInMonth} days)`, 50, yPos, { align: 'center' });
+        yPos += 20;
+      }
+    }
+
+    yPos = this.addFinancialSummarySection(doc, data, yPos);
+
+    // Add daily averages section (NEW)
+    if (monthInfo) {
+      if (yPos > 650) {
+        doc.addPage();
+        yPos = 50;
+      }
+
+      doc.fontSize(12).font('Helvetica-Bold').text('Daily Averages', 50, yPos);
+      yPos += 20;
+
+      const dailyRevenue = (data.revenue.total / monthInfo.daysElapsed).toFixed(2);
+      const dailyCashFlow = (data.cashFlow.net / monthInfo.daysElapsed).toFixed(2);
+      const dailyExpenses = (data.cashFlow.outflows.total / monthInfo.daysElapsed).toFixed(2);
+
+      const avgData = [
+        ['Metric', 'Daily Average'],
+        ['Revenue', `$${dailyRevenue}`],
+        ['Cash Flow', `$${dailyCashFlow}`],
+        ['Expenses', `$${dailyExpenses}`],
+        ['Transactions', `${(data.transactions.totalSales / monthInfo.daysElapsed).toFixed(1)}`],
+      ];
+
+      yPos = this.drawTable(doc, avgData, 50, yPos, [300, 150]);
+      yPos += 20;
+    }
+
+    yPos = this.addRevenueSection(doc, data, yPos);
+
+    if (data.outstanding.total > 0) {
+      if (yPos > 650) {
+        doc.addPage();
+        yPos = 50;
+      }
+
+      doc.fontSize(12).font('Helvetica-Bold')
+         .fillColor('#856404')
+         .text('Outstanding Receivables', 50, yPos);
+      
+      doc.fontSize(10).font('Helvetica')
+         .fillColor('#000')
+         .text(`Total Outstanding: $${data.outstanding.total.toFixed(2)}`, 50, yPos + 20);
+      
+      yPos += 50;
+    }
+
+    this.addDetailedSalesPage(doc, data, shop);
+
+    if (data.details.expenses && data.details.expenses.length > 0) {
+      this.addDetailedExpensesPage(doc, data.details.expenses, shop);
+    }
+
+    this.addBusinessInsightsPage(doc, data, shop);
+
+    this.addFooter(doc);
+    doc.end();
+
+    stream.on('finish', () => {
+      callback(null, { filePath, filename });
+    });
+
+    stream.on('error', (error) => {
+      callback(error, null);
+    });
+
+  } catch (error) {
+    console.error('[PDFService] Enhanced monthly report error:', error);
+    callback(error, null);
+  }
+}
+
   generateBestSellersReportPDF(shop, sales, startDate, endDate, days, callback) {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const periodText = days === 1 ? 'Today' : days === 7 ? 'Weekly' : 'Monthly';
@@ -1010,9 +1053,7 @@ class PDFService {
     }
   }
 
-  /**
-   * Legacy methods for backward compatibility
-   */
+
   generateDailyReportPDF(shop, sales, date, callback) {
     this.generateEnhancedDailyReportPDF(shop, callback);
   }
@@ -1020,10 +1061,22 @@ class PDFService {
   generateWeeklyReportPDF(shop, sales, startDate, endDate, callback) {
     this.generateEnhancedWeeklyReportPDF(shop, callback);
   }
+  
 
-  generateMonthlyReportPDF(shop, sales, startDate, endDate, callback) {
-    this.generateEnhancedMonthlyReportPDF(shop, callback);
+generateMonthlyReportPDF(shop, sales, startDate, endDate, monthParam, callback) {
+  if (typeof monthParam === 'function') {
+    callback = monthParam;
+    monthParam = null;
   }
+  
+  // If startDate is actually the callback (very old format)
+  if (typeof startDate === 'function') {
+    callback = startDate;
+    monthParam = null;
+  }
+
+  this.generateEnhancedMonthlyReportPDF(shop, monthParam, callback);
+}
 }
 
 export default new PDFService();
