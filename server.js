@@ -92,7 +92,7 @@ async function startPolling() {
   if (isPolling) return;
   
   isPolling = true;
-  console.log('📡 Starting polling mode...');
+  console.log('Starting polling mode...');
   
   // Delete webhook first
   try {
