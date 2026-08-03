@@ -2,8 +2,10 @@ import dotenv from 'dotenv';
 import express from 'express';
 import connectDB from './config/database.js';
 import telegramRoutes from './routes/telegram.js';
+import whatsappRoutes from './routes/whatsapp.js';
 import telegramService from './services/telegramService.js';
-import commandService from './services/commandService.js';
+import { handleTelegramUpdate } from './adapters/telegram.js';
+import { isWhatsAppConfigured } from './adapters/whatsapp.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -39,6 +41,7 @@ createDirectories();
 
 // Routes
 app.use('/webhook', telegramRoutes);
+app.use('/webhook', whatsappRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ 
@@ -46,6 +49,7 @@ app.get('/health', (req, res) => {
     service: 'ChatShop',
     environment: process.env.NODE_ENV || 'development',
     mode: process.env.USE_POLLING === 'true' ? 'polling' : 'webhook',
+    whatsapp: isWhatsAppConfigured() ? 'enabled' : 'disabled',
     timestamp: new Date().toISOString(),
     node_version: process.version,
   });
@@ -58,7 +62,8 @@ app.get('/', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
     mode: process.env.USE_POLLING === 'true' ? 'polling' : 'webhook',
     endpoints: {
-      webhook: '/webhook/telegram',
+      telegramWebhook: '/webhook/telegram',
+      whatsappWebhook: '/webhook/whatsapp',
       health: '/health',
       docs: 'Coming soon...'
     },
@@ -110,25 +115,13 @@ async function startPolling() {
         for (const update of updates.result) {
           pollingOffset = update.update_id + 1;
           
-          // Process update
+          // Process update via Telegram adapter (same path as webhook)
           if (update.message && update.message.text) {
-            const chatId = update.message.chat.id;
-            const telegramId = chatId.toString();
-            const text = update.message.text;
-            
-            console.log(`Message from ${telegramId}: ${text}`);
-            
             try {
-              const response = await commandService.processCommand(telegramId, text);
-              
-              // Handle PDF responses
-              if (response && typeof response === 'object' && response.type === 'pdf') {
-                await telegramService.sendDocument(chatId, response.filePath, response.message);
-              } else {
-                await telegramService.sendMessage(chatId, response);
-              }
+              await handleTelegramUpdate(update);
             } catch (error) {
               console.error('Error processing command:', error);
+              const chatId = update.message.chat.id;
               await telegramService.sendMessage(chatId, 'Sorry, an error occurred. Please try again.');
             }
           }

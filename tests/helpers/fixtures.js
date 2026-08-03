@@ -39,6 +39,7 @@ export async function createTestProduct(shopId, overrides = {}) {
     shopId,
     name: overrides.name || "p4bread",
     price: overrides.price ?? 2.5,
+    costPrice: overrides.costPrice ?? null,
     stock: overrides.stock ?? 10,
     lowStockThreshold: overrides.lowStockThreshold ?? 2,
     trackStock: overrides.trackStock ?? true,

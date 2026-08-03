@@ -72,6 +72,10 @@ export function generateCashSaleReceipt(sale, items) {
 
   receipt += `SUMMARY\n`;
   receipt += `Total: $${sale.total.toFixed(2)}\n`;
+  if ((sale.costTotal || 0) > 0) {
+    receipt += `COGS: $${sale.costTotal.toFixed(2)}\n`;
+    receipt += `Gross Profit: $${(sale.profit || 0).toFixed(2)}\n`;
+  }
   receipt += `Payment Method: Cash (paid in full)\n`;
 
   return receipt;
