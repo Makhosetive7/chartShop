@@ -77,13 +77,23 @@ class TelegramService {
       }
 
       console.log("Setting webhook to:", url);
-      console.log("API URL:", `${this.apiUrl}/setWebhook`);
 
-      const response = await axios.post(`${this.apiUrl}/setWebhook`, {
+      const payload = {
         url,
         max_connections: 40,
         allowed_updates: ['message', 'callback_query']
-      });
+      };
+
+      const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET;
+      if (secretToken) {
+        payload.secret_token = secretToken;
+      } else if (this.environment === 'production') {
+        console.warn(
+          'TELEGRAM_WEBHOOK_SECRET is not set — inbound webhook requests will not be verified'
+        );
+      }
+
+      const response = await axios.post(`${this.apiUrl}/setWebhook`, payload);
 
       console.log("Webhook response:", response.data);
       return response.data;

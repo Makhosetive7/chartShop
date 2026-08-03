@@ -1,28 +1,19 @@
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import Shop from "../models/Shop.js";
+import SessionStore, {
+  SESSION_TTL_MS,
+  REGISTRATION_TTL_MS,
+  PIN_CHANGE_TTL_MS,
+} from "./sessionStore.js";
 
 class AuthService {
   constructor() {
-    // Session management
-    this.activeSessions = new Map();
-    this.sessionTimeout = 24 * 60 * 60 * 1000; // 24 hours
-
-    // Registration tracking
-    this.registrationSessions = new Map();
-    this.registrationTimeout = 15 * 60 * 1000; // 15 minutes
-
-    // PIN change tracking
-    this.pinChangeSessions = new Map();
-    this.pinChangeTimeout = 10 * 60 * 1000; // 10 minutes
-
-    // Rate limiting for login attempts
-    this.loginAttempts = new Map();
+    this.sessionTimeout = SESSION_TTL_MS;
+    this.registrationTimeout = REGISTRATION_TTL_MS;
+    this.pinChangeTimeout = PIN_CHANGE_TTL_MS;
     this.maxAttempts = 5;
     this.lockoutDuration = 15 * 60 * 1000; // 15 minutes
-
-    // Start cleanup intervals
-    this.startCleanupIntervals();
   }
 
   /**
@@ -41,10 +32,10 @@ class AuthService {
         };
       }
 
-      this.registrationSessions.set(telegramId, {
+      await SessionStore.upsertRegistration(telegramId, {
         step: "business_name",
         data: { telegramId },
-        startTime: Date.now(),
+        startTime: new Date(),
       });
 
       return {
@@ -74,7 +65,7 @@ class AuthService {
    */
   async processRegistrationStep(telegramId, input) {
     try {
-      const session = this.registrationSessions.get(telegramId);
+      const session = await SessionStore.getRegistration(telegramId);
 
       if (!session) {
         return {
@@ -86,8 +77,9 @@ class AuthService {
       }
 
       // Check timeout
-      if (Date.now() - session.startTime > this.registrationTimeout) {
-        this.registrationSessions.delete(telegramId);
+      const started = new Date(session.startTime).getTime();
+      if (Date.now() - started > this.registrationTimeout) {
+        await SessionStore.deleteRegistration(telegramId);
         return {
           success: false,
           message:
@@ -162,9 +154,14 @@ class AuthService {
     }
 
     // Save and proceed to next step
-    session.data.businessName = trimmedName;
+    const nextData = { ...(session.data || {}), businessName: trimmedName };
+    session.data = nextData;
     session.step = "business_description";
-    this.registrationSessions.set(telegramId, session);
+    await SessionStore.upsertRegistration(telegramId, {
+      step: "business_description",
+      data: nextData,
+      startTime: session.startTime,
+    });
 
     return {
       success: true,
@@ -199,9 +196,17 @@ class AuthService {
     }
 
     // Save and proceed to PIN setup
-    session.data.businessDescription = trimmedDescription;
+    const nextData = {
+      ...(session.data || {}),
+      businessDescription: trimmedDescription,
+    };
+    session.data = nextData;
     session.step = "pin_setup";
-    this.registrationSessions.set(telegramId, session);
+    await SessionStore.upsertRegistration(telegramId, {
+      step: "pin_setup",
+      data: nextData,
+      startTime: session.startTime,
+    });
 
     return {
       success: true,
@@ -257,15 +262,14 @@ class AuthService {
     await shop.save();
 
     // Clear registration session
-    this.registrationSessions.delete(telegramId);
+    await SessionStore.deleteRegistration(telegramId);
 
     // Auto-login
     const sessionToken = this.generateSessionToken();
-    this.activeSessions.set(telegramId, {
+    await SessionStore.upsertLoginSession(telegramId, {
       sessionToken,
-      loginTime: new Date(),
-      lastActivity: new Date(),
       shopId: shop._id,
+      loginTime: new Date(),
     });
 
     return {
@@ -284,8 +288,8 @@ class AuthService {
   /**
    * Get registration status
    */
-  getRegistrationStatus(telegramId) {
-    const session = this.registrationSessions.get(telegramId);
+  async getRegistrationStatus(telegramId) {
+    const session = await SessionStore.getRegistration(telegramId);
     if (!session) return null;
 
     const stepNames = {
@@ -317,16 +321,16 @@ class AuthService {
    */
   async login(telegramId, pin) {
     try {
-      // Check rate limiting
-      const rateLimitCheck = this.checkRateLimit(telegramId);
+      // Find shop first (needed for DB-backed lockout)
+      const shop = await Shop.findOne({ telegramId });
+
+      // Check rate limiting against shop fields
+      const rateLimitCheck = await this.checkRateLimit(shop, telegramId);
       if (!rateLimitCheck.allowed) {
         return rateLimitCheck;
       }
 
-      // Find shop
-      const shop = await Shop.findOne({ telegramId });
       if (!shop) {
-        this.recordFailedAttempt(telegramId);
         return {
           success: false,
           message:
@@ -339,9 +343,8 @@ class AuthService {
       // Verify PIN
       const validPin = await bcrypt.compare(pin, shop.pin);
       if (!validPin) {
-        this.recordFailedAttempt(telegramId);
-        const attempts = this.loginAttempts.get(telegramId);
-        const attemptsLeft = this.maxAttempts - (attempts?.count || 0);
+        await this.recordFailedAttempt(shop);
+        const attemptsLeft = this.maxAttempts - (shop.loginAttempts || 0);
 
         return {
           success: false,
@@ -358,22 +361,19 @@ class AuthService {
         };
       }
 
-      // Success - clear failed attempts
-      this.loginAttempts.delete(telegramId);
-
       // Create session
       const sessionToken = this.generateSessionToken();
-      this.activeSessions.set(telegramId, {
+      await SessionStore.upsertLoginSession(telegramId, {
         sessionToken,
-        loginTime: new Date(),
-        lastActivity: new Date(),
         shopId: shop._id,
+        loginTime: new Date(),
       });
 
-      // Update shop
+      // Update shop — clear lockout + mark active
       shop.lastLogin = new Date();
       shop.loginAttempts = 0;
       shop.lockedUntil = null;
+      shop.isActive = true;
       await shop.save();
 
       // Get greeting
@@ -408,7 +408,7 @@ class AuthService {
    */
   async logout(telegramId) {
     try {
-      const session = this.activeSessions.get(telegramId);
+      const session = await SessionStore.getLoginSession(telegramId);
 
       if (!session) {
         return {
@@ -424,7 +424,7 @@ class AuthService {
         await shop.save();
       }
 
-      this.activeSessions.delete(telegramId);
+      await SessionStore.deleteLoginSession(telegramId);
 
       return {
         success: true,
@@ -456,8 +456,8 @@ class AuthService {
         };
       }
 
-      const session = this.activeSessions.get(telegramId);
-      const isLoggedIn = session ? true : false;
+      const session = await SessionStore.getLoginSession(telegramId);
+      const isLoggedIn = !!session;
 
       let profileMessage = "*Your Profile*\n\n";
       profileMessage += `*Business Name:* ${shop.businessName}\n`;
@@ -513,7 +513,7 @@ class AuthService {
   async startPinChange(telegramId) {
     try {
       // Must be logged in to change PIN
-      if (!this.isAuthenticated(telegramId)) {
+      if (!(await this.isAuthenticated(telegramId))) {
         return {
           success: false,
           message: "*Please login first*\n\nUse /login to access your account.",
@@ -529,9 +529,9 @@ class AuthService {
       }
 
       // Start PIN change session
-      this.pinChangeSessions.set(telegramId, {
+      await SessionStore.upsertPinChange(telegramId, {
         step: "old_pin",
-        startTime: Date.now(),
+        startTime: new Date(),
       });
 
       return {
@@ -557,7 +557,7 @@ class AuthService {
    */
   async processPinChange(telegramId, input) {
     try {
-      const session = this.pinChangeSessions.get(telegramId);
+      const session = await SessionStore.getPinChange(telegramId);
 
       if (!session) {
         return {
@@ -569,7 +569,7 @@ class AuthService {
 
       // Check for cancellation
       if (input.toLowerCase().trim() === "cancel") {
-        this.pinChangeSessions.delete(telegramId);
+        await SessionStore.deletePinChange(telegramId);
         return {
           success: false,
           message: "*PIN change cancelled*",
@@ -577,8 +577,9 @@ class AuthService {
       }
 
       // Check timeout (10 minutes)
-      if (Date.now() - session.startTime > this.pinChangeTimeout) {
-        this.pinChangeSessions.delete(telegramId);
+      const started = new Date(session.startTime).getTime();
+      if (Date.now() - started > this.pinChangeTimeout) {
+        await SessionStore.deletePinChange(telegramId);
         return {
           success: false,
           message:
@@ -588,7 +589,7 @@ class AuthService {
 
       const shop = await Shop.findOne({ telegramId });
       if (!shop) {
-        this.pinChangeSessions.delete(telegramId);
+        await SessionStore.deletePinChange(telegramId);
         return {
           success: false,
           message: "*Profile not found*",
@@ -626,7 +627,10 @@ class AuthService {
 
         // Move to new PIN step
         session.step = "new_pin";
-        this.pinChangeSessions.set(telegramId, session);
+        await SessionStore.upsertPinChange(telegramId, {
+          step: "new_pin",
+          startTime: session.startTime,
+        });
 
         return {
           success: true,
@@ -679,7 +683,7 @@ class AuthService {
         await shop.save();
 
         // Clear session
-        this.pinChangeSessions.delete(telegramId);
+        await SessionStore.deletePinChange(telegramId);
 
         return {
           success: true,
@@ -698,7 +702,7 @@ class AuthService {
       };
     } catch (error) {
       console.error("[AuthService] Process PIN change error:", error);
-      this.pinChangeSessions.delete(telegramId);
+      await SessionStore.deletePinChange(telegramId);
       return {
         success: false,
         message: "Failed to process PIN change. Please try again.",
@@ -712,7 +716,7 @@ class AuthService {
   async updateBusinessName(telegramId, newName) {
     try {
       // Must be logged in
-      if (!this.isAuthenticated(telegramId)) {
+      if (!(await this.isAuthenticated(telegramId))) {
         return {
           success: false,
           message: "*Please login first*\n\nUse /login to access your account.",
@@ -782,7 +786,7 @@ class AuthService {
   async updateBusinessDescription(telegramId, newDescription) {
     try {
       // Must be logged in
-      if (!this.isAuthenticated(telegramId)) {
+      if (!(await this.isAuthenticated(telegramId))) {
         return {
           success: false,
           message: "*Please login first*\n\nUse /login to access your account.",
@@ -833,8 +837,8 @@ class AuthService {
   /**
    * Get PIN change status (check if in progress)
    */
-  getPinChangeStatus(telegramId) {
-    const session = this.pinChangeSessions.get(telegramId);
+  async getPinChangeStatus(telegramId) {
+    const session = await SessionStore.getPinChange(telegramId);
 
     if (!session) {
       return null;
@@ -854,18 +858,17 @@ class AuthService {
   // ==========================================
 
   /**
-   * Check if user is authenticated
+   * Check if user is authenticated (persisted session)
    */
-  isAuthenticated(telegramId) {
-    const session = this.activeSessions.get(telegramId);
+  async isAuthenticated(telegramId) {
+    const session = await SessionStore.getLoginSession(telegramId);
     if (!session) return false;
 
-    // Check session timeout
     const now = Date.now();
     const lastActivity = new Date(session.lastActivity).getTime();
 
     if (now - lastActivity > this.sessionTimeout) {
-      this.activeSessions.delete(telegramId);
+      await SessionStore.deleteLoginSession(telegramId);
       return false;
     }
 
@@ -873,21 +876,30 @@ class AuthService {
   }
 
   /**
+   * Create or refresh a login session (used by commandService auto-login paths)
+   */
+  async createLoginSession(telegramId, shopId) {
+    const sessionToken = this.generateSessionToken();
+    await SessionStore.upsertLoginSession(telegramId, {
+      sessionToken,
+      shopId,
+      loginTime: new Date(),
+    });
+    return sessionToken;
+  }
+
+  /**
    * Update session activity
    */
-  updateActivity(telegramId) {
-    const session = this.activeSessions.get(telegramId);
-    if (session) {
-      session.lastActivity = new Date();
-      this.activeSessions.set(telegramId, session);
-    }
+  async updateActivity(telegramId) {
+    await SessionStore.touchLoginSession(telegramId);
   }
 
   /**
    * Get authenticated shop
    */
   async getAuthenticatedShop(telegramId) {
-    if (!this.isAuthenticated(telegramId)) {
+    if (!(await this.isAuthenticated(telegramId))) {
       return null;
     }
     return await Shop.findOne({ telegramId });
@@ -992,17 +1004,15 @@ class AuthService {
   // ==========================================
 
   /**
-   * Check rate limit for login attempts
+   * Check rate limit using Shop.loginAttempts / lockedUntil
    */
-  checkRateLimit(telegramId) {
-    const attempts = this.loginAttempts.get(telegramId);
+  async checkRateLimit(shop, telegramId) {
+    if (!shop) return { allowed: true };
 
-    if (!attempts) return { allowed: true };
+    const now = new Date();
 
-    const now = Date.now();
-
-    if (attempts.lockedUntil && now < attempts.lockedUntil) {
-      const remainingMs = attempts.lockedUntil - now;
+    if (shop.lockedUntil && shop.lockedUntil > now) {
+      const remainingMs = shop.lockedUntil.getTime() - now.getTime();
       const remainingMin = Math.ceil(remainingMs / 60000);
 
       return {
@@ -1018,22 +1028,29 @@ class AuthService {
       };
     }
 
+    // Clear expired lockout
+    if (shop.lockedUntil && shop.lockedUntil <= now) {
+      shop.loginAttempts = 0;
+      shop.lockedUntil = null;
+      await shop.save();
+    }
+
     return { allowed: true };
   }
 
   /**
-   * Record failed login attempt
+   * Record failed login attempt on the Shop document
    */
-  recordFailedAttempt(telegramId) {
-    const attempts = this.loginAttempts.get(telegramId) || { count: 0 };
-    attempts.count++;
-    attempts.lastAttempt = Date.now();
+  async recordFailedAttempt(shop) {
+    if (!shop) return;
 
-    if (attempts.count >= this.maxAttempts) {
-      attempts.lockedUntil = Date.now() + this.lockoutDuration;
+    shop.loginAttempts = (shop.loginAttempts || 0) + 1;
+
+    if (shop.loginAttempts >= this.maxAttempts) {
+      shop.lockedUntil = new Date(Date.now() + this.lockoutDuration);
     }
 
-    this.loginAttempts.set(telegramId, attempts);
+    await shop.save();
   }
 
   // ==========================================
@@ -1076,67 +1093,6 @@ class AuthService {
     return lastLogin.toLocaleDateString();
   }
 
-  // ==========================================
-  // CLEANUP METHODS
-  // ==========================================
-
-  /**
-   * Start cleanup intervals for expired sessions
-   */
-  startCleanupIntervals() {
-    // Clean expired sessions every 5 minutes
-    setInterval(() => {
-      const now = Date.now();
-      for (const [telegramId, session] of this.activeSessions.entries()) {
-        const lastActivity = new Date(session.lastActivity).getTime();
-        if (now - lastActivity > this.sessionTimeout) {
-          this.activeSessions.delete(telegramId);
-          console.log(`[AuthService] Cleaned expired session: ${telegramId}`);
-        }
-      }
-    }, 5 * 60 * 1000);
-
-    // Clean expired registrations every 10 minutes
-    setInterval(() => {
-      const now = Date.now();
-      for (const [telegramId, session] of this.registrationSessions.entries()) {
-        if (now - session.startTime > this.registrationTimeout) {
-          this.registrationSessions.delete(telegramId);
-          console.log(
-            `[AuthService] Cleaned expired registration: ${telegramId}`
-          );
-        }
-      }
-    }, 10 * 60 * 1000);
-
-    // Clean expired PIN change sessions every 15 minutes
-    setInterval(() => {
-      const now = Date.now();
-      for (const [telegramId, session] of this.pinChangeSessions.entries()) {
-        if (now - session.startTime > this.pinChangeTimeout) {
-          this.pinChangeSessions.delete(telegramId);
-          console.log(
-            `[AuthService] Cleaned expired PIN change: ${telegramId}`
-          );
-        }
-      }
-    }, 15 * 60 * 1000);
-
-    // Clean old rate limits every hour
-    setInterval(() => {
-      const now = Date.now();
-      for (const [telegramId, attempts] of this.loginAttempts.entries()) {
-        if (attempts.lockedUntil && now > attempts.lockedUntil) {
-          this.loginAttempts.delete(telegramId);
-          console.log(
-            `[AuthService] Cleaned expired rate limit: ${telegramId}`
-          );
-        }
-      }
-    }, 60 * 60 * 1000);
-
-    console.log("[AuthService] Cleanup intervals started");
-  }
 }
 
 export default new AuthService();

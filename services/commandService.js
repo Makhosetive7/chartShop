@@ -12,7 +12,6 @@ import ExpenseService from "./ExpenseService.js";
 import FinancialService from "./FinancialService.js";
 import AuthService from "./AuthService.js";
 import InventoryService from "./InventoryService.js";
-import crypto from "crypto";
 
 class CommandService {
   async processCommand(telegramId, text) {
@@ -24,7 +23,7 @@ class CommandService {
     }
 
     // Check if user is in registration flow
-    const regStatus = AuthService.getRegistrationStatus(telegramId);
+    const regStatus = await AuthService.getRegistrationStatus(telegramId);
     if (regStatus && !command.startsWith("/")) {
       const result = await AuthService.processRegistrationStep(
         telegramId,
@@ -33,7 +32,7 @@ class CommandService {
       return result.message;
     }
 
-    const pinChangeStatus = AuthService.getPinChangeStatus(telegramId);
+    const pinChangeStatus = await AuthService.getPinChangeStatus(telegramId);
     if (pinChangeStatus && !command.startsWith("/")) {
       const result = await AuthService.processPinChange(telegramId, text);
       return result.message;
@@ -85,12 +84,12 @@ class CommandService {
       return await this.handleProfileEditPin(telegramId);
     }
 
-    if (!AuthService.isAuthenticated(telegramId)) {
+    if (!(await AuthService.isAuthenticated(telegramId))) {
       return `*Welcome to Chart Shop!*\n\nHi there! You need to be logged in.\n\n*To get started:*\n• Register: \`register\`\n• Login: \`login\`\n\nNeed help? Type *help*`;
     }
 
     // Update activity
-    AuthService.updateActivity(telegramId);
+    await AuthService.updateActivity(telegramId);
 
     const shop = await Shop.findOne({ telegramId, isActive: true });
     if (!shop) {
@@ -418,14 +417,8 @@ class CommandService {
           registeredAt: new Date(),
         });
 
-        // Auto-login
-        const sessionToken = crypto.randomBytes(32).toString("hex");
-        AuthService.activeSessions.set(telegramId, {
-          sessionToken,
-          loginTime: new Date(),
-          lastActivity: new Date(),
-          shopId: shop._id,
-        });
+        // Auto-login (persisted)
+        await AuthService.createLoginSession(telegramId, shop._id);
 
         return `*Registration Complete!*\n\n ${businessName} is ready!\n\n *Quick Start:*\n\n*Add Products:*\n• add bread 2.50 stock 50\n• list - View products\n\n*Record Sales:*\n• sell 2 bread 1 milk\n• daily - View report\n\n*Get Help:*\n• help - See all commands\n\n💡 _Start by adding some products!_`;
       }
@@ -441,7 +434,7 @@ class CommandService {
       }
 
       // If user is in registration flow, process the step
-      const regStatus = AuthService.getRegistrationStatus(telegramId);
+      const regStatus = await AuthService.getRegistrationStatus(telegramId);
       if (regStatus) {
         const result = await AuthService.processRegistrationStep(
           telegramId,
@@ -462,7 +455,7 @@ class CommandService {
   async handleLogin(telegramId, text) {
     try {
       // Check if already logged in
-      if (AuthService.isAuthenticated(telegramId)) {
+      if (await AuthService.isAuthenticated(telegramId)) {
         const shop = await Shop.findOne({ telegramId });
         return `*Already logged in*\n\n ${shop.businessName}\n\n*Quick Actions:*\n• sell - Record a sale\n• daily - View today's summary\n• products - Check inventory`;
       }
@@ -691,7 +684,7 @@ class CommandService {
   async handleStatus(telegramId) {
     try {
       // Check registration status
-      const regStatus = AuthService.getRegistrationStatus(telegramId);
+      const regStatus = await AuthService.getRegistrationStatus(telegramId);
       if (regStatus) {
         return `*Registration in progress*\n\nStep ${regStatus.stepNumber}/${
           regStatus.totalSteps
@@ -707,7 +700,7 @@ class CommandService {
       }
 
       // Check authentication status
-      if (AuthService.isAuthenticated(telegramId)) {
+      if (await AuthService.isAuthenticated(telegramId)) {
         const shop = await Shop.findOne({ telegramId });
         return `*Logged in*\n\n${shop.businessName}\n\nUse \`account\` for more details.`;
       }
