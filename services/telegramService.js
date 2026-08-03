@@ -12,10 +12,9 @@ class TelegramService {
       throw new Error("TELEGRAM_BOT_TOKEN is required");
     }
 
-    console.log(`Bot token loaded: ${this.botToken.substring(0, 10)}...`);
-    console.log('RAW TOKEN FROM ENV:', JSON.stringify(process.env.TELEGRAM_BOT_TOKEN));
     console.log(`Environment: ${this.environment}`);
     console.log(`Mode: ${this.usePolling ? 'Polling (Development)' : 'Webhook (Production)'}`);
+    console.log('Telegram bot token loaded');
 
     // Base Telegram API URL
     this.apiUrl = `https://api.telegram.org/bot${this.botToken}`;

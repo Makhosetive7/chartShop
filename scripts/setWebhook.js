@@ -21,7 +21,6 @@ async function setTelegramWebhook() {
   const webhookUrl = `${railwayUrl}/webhook/telegram`;
   
   console.log('Setting Telegram webhook...');
-  console.log(`Bot Token: ${token.substring(0, 10)}...`);
   console.log(`Webhook URL: ${webhookUrl}`);
   
   try {
