@@ -2,6 +2,7 @@ import Product from "../models/Product.js";
 import Sale from "../models/Sale.js";
 import Shop from "../models/Shop.js";
 import LayBye from "../models/LayBye.js";
+import Customer from "../models/Customer.js";
 import bcrypt from "bcryptjs";
 import PDFService from "./PDFService.js";
 import CancellationService from "./CancellationService.js";
@@ -10,6 +11,7 @@ import OrderService from "./OrderService.js";
 import ExpenseService from "./ExpenseService.js";
 import FinancialService from "./FinancialService.js";
 import AuthService from "./AuthService.js";
+import InventoryService from "./InventoryService.js";
 import crypto from "crypto";
 
 class CommandService {
@@ -293,27 +295,24 @@ class CommandService {
   }
 
   /**
-   * Helper method: Reserve stock for laybye
+   * Helper method: Check stock availability for laybye (model B — no reservation)
    */
   async reserveStockForLaybye(shopId, items) {
     try {
-      // Check if all items have enough stock
       for (const item of items) {
         if (item.product.trackStock && item.product.stock < item.quantity) {
           return {
             success: false,
-            message: `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}`,
+            message: `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}\n\n_Laybye does not reserve stock — ensure stock is available at completion._`,
           };
         }
       }
 
-      // Optional: Create a reserved stock field in Product model
-      // Or track in a separate collection
       return { success: true };
     } catch (error) {
       return {
         success: false,
-        message: `Stock reservation failed: ${error.message}`,
+        message: `Stock check failed: ${error.message}`,
       };
     }
   }
@@ -342,7 +341,6 @@ class CommandService {
 
     receipt += `*IMPORTANT NOTES*\n`;
     receipt += `Stock deducted immediately\n`;
-    receipt += `Profit recognized: $${sale.profit.toFixed(2)}\n`;
     receipt += `Customer balance increased\n`;
     receipt += `Payment due: ${new Date(
       Date.now() + 30 * 24 * 60 * 60 * 1000
@@ -361,7 +359,7 @@ class CommandService {
     receipt += `Start Date: ${new Date().toLocaleDateString()}\n`;
     receipt += `Due Date: ${laybye.dueDate.toLocaleDateString()}\n\n`;
 
-    receipt += `RESERVED ITEMS:\n`;
+    receipt += `ITEMS (not reserved):\n`;
     items.forEach((item, index) => {
       receipt += `${index + 1}. ${item.product.name} x ${item.quantity}\n`;
       receipt += `   Price: $${item.price.toFixed(2)} each\n`;
@@ -375,9 +373,9 @@ class CommandService {
     receipt += `Installments: ${laybye.installments.length}\n\n`;
 
     receipt += `*TERMS & CONDITIONS*\n`;
-    receipt += `Stock reserved (not deducted)\n`;
-    receipt += `No profit recognized yet\n`;
-    receipt += `Product will be released upon full payment\n`;
+    receipt += `Stock is NOT reserved — items stay sellable\n`;
+    receipt += `Stock deducted only when laybye is completed\n`;
+    receipt += `Product released upon full payment\n`;
     receipt += `Payments accepted: cash, bank, mobile\n`;
     receipt += `Make payments with: laybye pay ${customer.name} [amount]`;
 
@@ -2032,20 +2030,13 @@ class CommandService {
 
       let total = 0;
 
-      // Check stock
       for (const item of items) {
-        if (item.product.trackStock && item.product.stock < item.quantity) {
-          return `*INSUFFICIENT STOCK*\n\n${item.product.name}\nRequested: ${item.quantity}\nAvailable: ${item.product.stock}`;
-        }
         total += item.total;
       }
 
-      // Deduct stock
-      for (const item of items) {
-        if (item.product.trackStock) {
-          item.product.stock -= item.quantity;
-          await item.product.save();
-        }
+      const stockResult = await InventoryService.deductSaleItems(items);
+      if (!stockResult.success) {
+        return stockResult.message;
       }
 
       console.log(
@@ -2055,23 +2046,29 @@ class CommandService {
         total
       );
 
-      // Create sale with customer reference
-      const sale = await Sale.create({
-        shopId,
-        items: items.map((item) => ({
-          productId: item.product._id,
-          productName: item.product.name,
-          quantity: item.quantity,
-          price: item.price,
-          standardPrice: item.standardPrice,
-          isCustomPrice: item.isCustomPrice,
-          total: item.total,
-        })),
-        total,
-        customerId: customer._id,
-        customerName: customer.name,
-        customerPhone: customer.phone,
-      });
+      let sale;
+      try {
+        // Create sale with customer reference
+        sale = await Sale.create({
+          shopId,
+          items: items.map((item) => ({
+            productId: item.product._id,
+            productName: item.product.name,
+            quantity: item.quantity,
+            price: item.price,
+            standardPrice: item.standardPrice,
+            isCustomPrice: item.isCustomPrice,
+            total: item.total,
+          })),
+          total,
+          customerId: customer._id,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+        });
+      } catch (createError) {
+        await InventoryService.restoreSaleItems(items);
+        throw createError;
+      }
 
       console.log("[CommandService] Sale created:", sale._id);
 
@@ -2267,40 +2264,35 @@ class CommandService {
 
       if (typeof items === "string") return items; // Error message
 
-      // Check stock
-      for (const item of items) {
-        if (item.product.trackStock && item.product.stock < item.quantity) {
-          return `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}`;
-        }
-      }
-
-      // Deduct stock
-      for (const item of items) {
-        if (item.product.trackStock) {
-          item.product.stock -= item.quantity;
-          await item.product.save();
-        }
+      const stockResult = await InventoryService.deductSaleItems(items);
+      if (!stockResult.success) {
+        return stockResult.message;
       }
 
       // Calculate totals
       const total = items.reduce((sum, item) => sum + item.total, 0);
 
-      // Create sale
-      const sale = await Sale.create({
-        shopId,
-        type: "cash",
-        items: items.map((item) => ({
-          productId: item.product._id,
-          productName: item.product.name,
-          quantity: item.quantity,
-          price: item.price,
-          total: item.total,
-        })),
-        total,
-        status: "completed",
-        amountPaid: total,
-        balanceDue: 0,
-      });
+      let sale;
+      try {
+        sale = await Sale.create({
+          shopId,
+          type: "cash",
+          items: items.map((item) => ({
+            productId: item.product._id,
+            productName: item.product.name,
+            quantity: item.quantity,
+            price: item.price,
+            total: item.total,
+          })),
+          total,
+          status: "completed",
+          amountPaid: total,
+          balanceDue: 0,
+        });
+      } catch (createError) {
+        await InventoryService.restoreSaleItems(items);
+        throw createError;
+      }
 
       return this.generateCashSaleReceipt(sale, items);
     } catch (error) {
@@ -2338,54 +2330,50 @@ class CommandService {
       // Calculate totals
       const totalAmount = items.reduce((sum, item) => sum + item.total, 0);
 
-      // Check stock before proceeding
-      for (const item of items) {
-        if (item.product.trackStock && item.product.stock < item.quantity) {
-          return `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}`;
-        }
+      const stockResult = await InventoryService.deductSaleItems(items);
+      if (!stockResult.success) {
+        return stockResult.message;
       }
 
-      // DEDUCT STOCK IMMEDIATELY (Key difference from laybye)
-      for (const item of items) {
-        if (item.product.trackStock) {
-          item.product.stock -= item.quantity;
-          await item.product.save();
-        }
+      let sale;
+      try {
+        // Create credit sale
+        sale = await Sale.create({
+          shopId,
+          type: "credit",
+          customerId: customer._id,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          items: items.map((item) => ({
+            productId: item.product._id,
+            productName: item.product.name,
+            quantity: item.quantity,
+            price: item.price,
+            total: item.total,
+          })),
+          total: totalAmount,
+          amountPaid: 0,
+          balanceDue: totalAmount,
+          status: "completed",
+        });
+
+        // Update customer balance
+        customer.currentBalance += totalAmount;
+        customer.creditTransactions.push({
+          type: "credit",
+          amount: totalAmount,
+          description: `Credit sale: ${items
+            .map((i) => `${i.quantity}x ${i.product.name}`)
+            .join(", ")}`,
+          date: new Date(),
+          balanceBefore: customer.currentBalance - totalAmount,
+          balanceAfter: customer.currentBalance,
+        });
+        await customer.save();
+      } catch (createError) {
+        await InventoryService.restoreSaleItems(items);
+        throw createError;
       }
-
-      // Create credit sale
-      const sale = await Sale.create({
-        shopId,
-        type: "credit",
-        customerId: customer._id,
-        customerName: customer.name,
-        customerPhone: customer.phone,
-        items: items.map((item) => ({
-          productId: item.product._id,
-          productName: item.product.name,
-          quantity: item.quantity,
-          price: item.price,
-          total: item.total,
-        })),
-        total: totalAmount,
-        amountPaid: 0,
-        balanceDue: totalAmount,
-        status: "completed",
-      });
-
-      // Update customer balance
-      customer.currentBalance += totalAmount;
-      customer.creditTransactions.push({
-        type: "credit",
-        amount: totalAmount,
-        description: `Credit sale: ${items
-          .map((i) => `${i.quantity}x ${i.product.name}`)
-          .join(", ")}`,
-        date: new Date(),
-        balanceBefore: customer.currentBalance - totalAmount,
-        balanceAfter: customer.currentBalance,
-      });
-      await customer.save();
 
       // Generate receipt
       return this.generateCreditSaleReceipt(sale, customer, items);
@@ -2435,11 +2423,12 @@ class CommandService {
         )}\nDeposit: $${depositAmount.toFixed(2)}`;
       }
 
-      // DO NOT DEDUCT STOCK (Key difference from credit)
-      // Optionally reserve stock if needed
-      const reserveStock = await this.reserveStockForLaybye(shopId, items);
-      if (!reserveStock.success) {
-        return reserveStock.message;
+      // Model B: check availability now; deduct stock only on completion.
+      // Items stay sellable until the laybye is completed.
+      for (const item of items) {
+        if (item.product.trackStock && item.product.stock < item.quantity) {
+          return `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}\n\n_Laybye does not reserve stock — ensure stock is available at completion._`;
+        }
       }
 
       // Create laybye record
@@ -2469,19 +2458,21 @@ class CommandService {
               ]
             : [],
         status: "active",
-        reservedStock: true,
+        reservedStock: false,
         dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       });
 
-      // Update customer laybye history
-      customer.laybyeTransactions.push({
-        laybyeId: laybye._id,
-        amount: totalAmount,
-        deposit: depositAmount,
-        date: new Date(),
-        status: "active",
-      });
-      await customer.save();
+      // LayBye collection is source of truth; optional customer history if present
+      if (Array.isArray(customer.laybyeTransactions)) {
+        customer.laybyeTransactions.push({
+          laybyeId: laybye._id,
+          amount: totalAmount,
+          deposit: depositAmount,
+          date: new Date(),
+          status: "active",
+        });
+        await customer.save();
+      }
 
       return this.generateLayByeReceipt(laybye, customer, items);
     } catch (error) {
@@ -2555,40 +2546,59 @@ class CommandService {
    */
   async completeLayBye(shopId, laybye) {
     try {
-      for (const item of laybye.items) {
+      const itemsForStock = laybye.items.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        product: { _id: item.productId, trackStock: true },
+      }));
+
+      // Load products so non-tracked items skip deduct correctly
+      for (const item of itemsForStock) {
         const product = await Product.findById(item.productId);
-        if (product && product.trackStock) {
-          product.stock -= item.quantity;
-          await product.save();
+        if (!product) {
+          throw new Error(`Product not found for laybye item ${item.productId}`);
         }
+        item.product = product;
       }
 
-      // Create completed sale record
-      const sale = await Sale.create({
-        shopId,
-        type: "completed_laybye",
-        customerId: laybye.customerId,
-        customerName: laybye.customerName,
-        customerPhone: laybye.customerPhone,
-        items: laybye.items,
-        total: laybye.totalAmount,
-        amountPaid: laybye.amountPaid,
-        balanceDue: 0,
-        status: "completed",
-        laybyeId: laybye._id,
-      });
+      const stockResult = await InventoryService.deductSaleItems(itemsForStock);
+      if (!stockResult.success) {
+        throw new Error(stockResult.message.replace(/\*/g, ""));
+      }
 
-      // Update laybye status
-      laybye.status = "completed";
-      laybye.completedDate = new Date();
-      await laybye.save();
+      let sale;
+      try {
+        // Create completed sale record
+        sale = await Sale.create({
+          shopId,
+          type: "completed_laybye",
+          customerId: laybye.customerId,
+          customerName: laybye.customerName,
+          customerPhone: laybye.customerPhone,
+          items: laybye.items,
+          total: laybye.totalAmount,
+          amountPaid: laybye.amountPaid,
+          balanceDue: 0,
+          status: "completed",
+          laybyeId: laybye._id,
+        });
 
-      // Update customer
-      const customer = await Customer.findById(laybye.customerId);
-      if (customer) {
-        customer.totalSpent += laybye.totalAmount;
-        customer.totalVisits += 1;
-        await customer.save();
+        // Update laybye status
+        laybye.status = "completed";
+        laybye.completedDate = new Date();
+        laybye.reservedStock = false;
+        await laybye.save();
+
+        // Update customer
+        const customer = await Customer.findById(laybye.customerId);
+        if (customer) {
+          customer.totalSpent += laybye.totalAmount;
+          customer.totalVisits += 1;
+          await customer.save();
+        }
+      } catch (createError) {
+        await InventoryService.restoreSaleItems(itemsForStock);
+        throw createError;
       }
 
       return sale;
@@ -2660,7 +2670,7 @@ class CommandService {
     receipt += `Start Date: ${laybye.startDate.toLocaleDateString()}\n`;
     receipt += `Due Date: ${laybye.dueDate.toLocaleDateString()}\n\n`;
 
-    receipt += `ITEMS RESERVED\n`;
+    receipt += `ITEMS (held for customer — stock not reserved)\n`;
     items.forEach((item, index) => {
       receipt += `${index + 1}. ${item.productName} x ${item.quantity}\n`;
       receipt += `   Price: $${item.price.toFixed(2)} each\n`;
@@ -2674,8 +2684,8 @@ class CommandService {
     receipt += `Number of Installments: ${laybye.installments.length}\n\n`;
 
     receipt += `TERMS\n`;
-    receipt += `Items are reserved (stock not removed yet).\n`;
-    receipt += `Items will be collected after full payment.\n`;
+    receipt += `Stock is NOT reserved — items stay available to sell.\n`;
+    receipt += `Stock is deducted when the laybye is fully paid/completed.\n`;
     receipt += `Make payments using: laybye pay ${customer.name} [amount]\n`;
     receipt += `Complete when fully paid: laybye complete ${customer.name}\n`;
 
@@ -2693,7 +2703,7 @@ class CommandService {
 
     receipt += `PAYMENT DETAILS\n`;
     receipt += `Amount Paid: $${amount.toFixed(2)}\n`;
-    receipt += `Previous Balance: $${(laybye.balanceDue + amount).notfixed(
+    receipt += `Previous Balance: $${(laybye.balanceDue + amount).toFixed(
       2
     )}\n`;
     receipt += `New Balance: $${laybye.balanceDue.toFixed(2)}\n`;
@@ -2731,34 +2741,31 @@ class CommandService {
     });
 
     receipt += `\nNOTES\n`;
-    receipt += `Stock has now been removed from inventory.\n`;
+    receipt += `Stock has now been deducted from inventory.\n`;
     receipt += `Items are ready for collection.\n`;
 
     return receipt;
   }
 
   /**
-   * Reserve stock for laybye
+   * Check stock availability for laybye (model B — no soft reservation)
    */
   async reserveStockForLaybye(shopId, items) {
     try {
-      // Check if all items have enough stock
       for (const item of items) {
         if (item.product.trackStock && item.product.stock < item.quantity) {
           return {
             success: false,
-            message: `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}`,
+            message: `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}\n\n_Laybye does not reserve stock — ensure stock is available at completion._`,
           };
         }
       }
 
-      // Optional: You could implement a reserved stock system here
-      // For now, we just check availability
       return { success: true };
     } catch (error) {
       return {
         success: false,
-        message: `Stock reservation failed: ${error.message}`,
+        message: `Stock check failed: ${error.message}`,
       };
     }
   }

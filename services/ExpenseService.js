@@ -1,5 +1,13 @@
 import Expense from "../models/Expense.js";
 import Sale from "../models/Sale.js";
+import Shop from "../models/Shop.js";
+import {
+  DEFAULT_TIMEZONE,
+  getDayBounds,
+  getWeekBounds,
+  getMonthBounds,
+  getZonedYmd,
+} from "../utils/dateBounds.js";
 
 class ExpenseService {
   /**
@@ -95,36 +103,51 @@ class ExpenseService {
     }
   }
 
+  async getShopTimezone(shopId) {
+    const shop = await Shop.findById(shopId).select("settings.timezone");
+    return shop?.settings?.timezone || DEFAULT_TIMEZONE;
+  }
+
   /**
    * Get expenses for a specific period
    */
   async getExpenses(shopId, period = "daily", days = null) {
     try {
-      const startDate = new Date();
-      let endDate = new Date();
+      const timeZone = await this.getShopTimezone(shopId);
+      let startDate;
+      let endDate;
 
       switch (period) {
         case "today":
-        case "daily":
-          startDate.setHours(0, 0, 0, 0);
+        case "daily": {
+          ({ startDate, endDate } = getDayBounds(timeZone));
           break;
-        case "yesterday":
-          startDate.setDate(startDate.getDate() - 1);
-          startDate.setHours(0, 0, 0, 0);
-          endDate = new Date(startDate);
-          endDate.setHours(23, 59, 59, 999);
+        }
+        case "yesterday": {
+          const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          ({ startDate, endDate } = getDayBounds(timeZone, yesterday));
           break;
-        case "weekly":
-          startDate.setDate(startDate.getDate() - 7);
+        }
+        case "weekly": {
+          ({ startDate, endDate } = getWeekBounds(timeZone));
           break;
-        case "monthly":
-          startDate.setDate(startDate.getDate() - 30);
+        }
+        case "monthly": {
+          const { year, month } = getZonedYmd(new Date(), timeZone);
+          ({ startDate, endDate } = getMonthBounds(month - 1, year, timeZone));
           break;
-        case "custom":
+        }
+        case "custom": {
+          endDate = new Date();
+          startDate = new Date();
           if (days) {
             startDate.setDate(startDate.getDate() - days);
           }
           break;
+        }
+        default: {
+          ({ startDate, endDate } = getDayBounds(timeZone));
+        }
       }
 
       const expenses = await Expense.find({

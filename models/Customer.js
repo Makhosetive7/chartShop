@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const creditTransactionSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['credit', 'payment'],
+    enum: ['credit', 'payment', 'reversal'],
     required: true
   },
   amount: {
