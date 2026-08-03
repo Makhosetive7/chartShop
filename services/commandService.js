@@ -2,7 +2,7 @@ import Product from "../models/Product.js";
 import Sale from "../models/Sale.js";
 import Shop from "../models/Shop.js";
 import LayBye from "../models/LayBye.js";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import PDFService from "./PDFService.js";
 import CancellationService from "./CancellationService.js";
 import CustomerService from "./CustomerService.js";
@@ -466,7 +466,7 @@ class CommandService {
       // Check if already logged in
       if (AuthService.isAuthenticated(telegramId)) {
         const shop = await Shop.findOne({ telegramId });
-        return `*Already logged in*\n\n ${shop.shopName}\n\n*Quick Actions:*\n• sell - Record a sale\n• daily - View today's summary\n• products - Check inventory`;
+        return `*Already logged in*\n\n ${shop.businessName}\n\n*Quick Actions:*\n• sell - Record a sale\n• daily - View today's summary\n• products - Check inventory`;
       }
 
       // Old format: login 1234
@@ -698,12 +698,12 @@ class CommandService {
         return `*Registration in progress*\n\nStep ${regStatus.stepNumber}/${
           regStatus.totalSteps
         }: ${regStatus.stepName}\n\n${
-          regStatus.data.shopName
-            ? `Shop Name: ${regStatus.data.shopName}\n`
+          regStatus.data.businessName
+            ? `Business Name: ${regStatus.data.businessName}\n`
             : ""
         }${
-          regStatus.data.shopDescription
-            ? `Description: ${regStatus.data.shopDescription}\n`
+          regStatus.data.businessDescription
+            ? `Description: ${regStatus.data.businessDescription}\n`
             : ""
         }\nContinue where you left off, or type a different command to start over.`;
       }
@@ -711,7 +711,7 @@ class CommandService {
       // Check authentication status
       if (AuthService.isAuthenticated(telegramId)) {
         const shop = await Shop.findOne({ telegramId });
-        return `*Logged in*\n\n${shop.shopName}\n\nUse \`account\` for more details.`;
+        return `*Logged in*\n\n${shop.businessName}\n\nUse \`account\` for more details.`;
       }
 
       // Not registered or logged in

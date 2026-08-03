@@ -72,7 +72,7 @@ const shopSchema = new mongoose.Schema({
 });
 
 // Indexes for performance
-shopSchema.index({ shopName: 1 });
+shopSchema.index({ businessName: 1 });
 shopSchema.index({ telegramId: 1, isActive: 1 });
 
 // Methods

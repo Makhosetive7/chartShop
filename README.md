@@ -1,7 +1,7 @@
 # ChatShop Business Bot
 
 > **Complete Business Management System for SMEs**  
-> Manage your entire business - from sales and inventory to customer relationships and financial reporting - directly from Telegram and whatsapp.
+> Manage your entire business - from sales and inventory to customer relationships and financial reporting - directly from Telegram.
 
 ---
 
@@ -22,7 +22,7 @@
 
 ## Overview
 
-**ChatShop Business Bot** is a comprehensive Telegram and whatsapp-based business management system designed specifically for Small and Medium Enterprises (SMEs). Built with Node.js and MongoDB, it provides enterprise-grade features through a simple chat interface.
+**ChatShop Business Bot** is a Telegram-based business management system designed specifically for Small and Medium Enterprises (SMEs). Built with Node.js and MongoDB, it provides practical shop-ops features through a simple chat interface.
 
 ### Why ChatShop?
 
@@ -61,7 +61,7 @@
 - Flexible pricing for negotiations
 - Sales cancellation and refunds
 - Credit management for customers
-- Multi-user support with different access levels
+- PIN-based login per Telegram account
 - Low stock alerts and notifications
 
 ---
@@ -536,7 +536,7 @@ Built for small businesses worldwide
 **Technologies Used:**
 
 - [Node.js](https://nodejs.org/) - Runtime environment
-- [Telegraf](https://telegraf.js.org/) - Telegram bot framework
+- [Telegram Bot API](https://core.telegram.org/bots/api) - Messaging (via axios)
 - [MongoDB](https://www.mongodb.com/) - Database
 - [PDFKit](https://pdfkit.org/) - PDF generation
 - [Railway](https://railway.app/) - Hosting platform
