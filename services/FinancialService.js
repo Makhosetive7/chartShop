@@ -2,7 +2,15 @@ import Sale from '../models/Sale.js';
 import Customer from '../models/Customer.js';
 import Expense from '../models/Expense.js';
 import LayBye from '../models/LayBye.js';
+import Shop from '../models/Shop.js';
 import mongoose from 'mongoose';
+import {
+  DEFAULT_TIMEZONE,
+  getDayBounds,
+  getWeekBounds,
+  getMonthBounds,
+  getZonedYmd,
+} from '../utils/dateBounds.js';
 
 class FinancialService {
 
@@ -33,15 +41,21 @@ class FinancialService {
     return new mongoose.Types.ObjectId(id);
   }
 
-  parseMonthParameter(monthParam) {
-    const now = new Date();
-    const currentYear = now.getFullYear();
+  async getShopTimezone(shopId) {
+    const shop = await Shop.findById(shopId).select('settings.timezone');
+    return shop?.settings?.timezone || DEFAULT_TIMEZONE;
+  }
+
+  parseMonthParameter(monthParam, timeZone = DEFAULT_TIMEZONE) {
+    const nowParts = getZonedYmd(new Date(), timeZone);
+    const currentYear = nowParts.year;
+    const currentMonth = nowParts.month - 1; // 0-indexed
 
     if (!monthParam) {
       return {
-        month: now.getMonth(),
+        month: currentMonth,
         year: currentYear,
-        label: FinancialService.MONTH_LABELS[now.getMonth()]
+        label: FinancialService.MONTH_LABELS[currentMonth]
       };
     }
 
@@ -71,14 +85,9 @@ class FinancialService {
       label: FinancialService.MONTH_LABELS[month]
     };
   }
-  getMonthDateRange(month, year) {
-    const startDate = new Date(year, month, 1);
-    startDate.setHours(0, 0, 0, 0);
 
-    const endDate = new Date(year, month + 1, 0); // Last day of month
-    endDate.setHours(23, 59, 59, 999);
-
-    return { startDate, endDate };
+  getMonthDateRange(month, year, timeZone = DEFAULT_TIMEZONE) {
+    return getMonthBounds(month, year, timeZone);
   }
 
 
@@ -185,13 +194,11 @@ class FinancialService {
 
       const totalRevenue = cashSalesTotal + creditSalesTotal + completedLaybyesTotal;
 
-      const grossProfit = 
-        cashSales.reduce((sum, sale) => sum + (sale.profit || 0), 0) +
-        creditSales.reduce((sum, sale) => sum + (sale.profit || 0), 0) +
-        completedLaybyes.reduce((sum, sale) => sum + (sale.profit || 0), 0);
-
-      const netProfit = grossProfit - expensesTotal;
-      const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+      // Operating result = revenue − expenses.
+      // Cost of goods / true gross margin is not tracked until products have costPrice.
+      const operatingResult = totalRevenue - expensesTotal;
+      const profitMargin =
+        totalRevenue > 0 ? (operatingResult / totalRevenue) * 100 : 0;
 
       const activeLaybyes = await LayBye.find({ shopId, status: 'active' });
       const totalLaybyeDue = activeLaybyes.reduce((sum, lb) => sum + lb.balanceDue, 0);
@@ -235,10 +242,13 @@ class FinancialService {
         },
 
         profitability: {
-          grossProfit,
+          // Honest labels: no fake grossProfit from empty sale.profit fields
+          operatingResult,
           expenses: expensesTotal,
-          netProfit,
           profitMargin,
+          // Aliases kept for older callers
+          netProfit: operatingResult,
+          grossProfit: null,
         },
 
         outstanding: {
@@ -362,13 +372,14 @@ class FinancialService {
       report += `- Completed Laybyes: $${cashFlow.revenue.completedLaybyes.amount.toFixed(2)} (${cashFlow.revenue.completedLaybyes.count})\n`;
       report += `Total Revenue: $${cashFlow.revenue.total.toFixed(2)}\n\n`;
 
-      // PROFITABILITY
-      report += `PROFIT\n`;
+      // OPERATING RESULT (revenue − expenses; COGS not tracked yet)
+      report += `OPERATING RESULT\n`;
       report += `----------------------------------------\n\n`;
-      report += `- Gross Profit: $${cashFlow.profitability.grossProfit.toFixed(2)}\n`;
+      report += `- Total Revenue: $${cashFlow.revenue.total.toFixed(2)}\n`;
       report += `- Total Expenses: $${cashFlow.profitability.expenses.toFixed(2)}\n`;
-      report += `- Net Profit: $${cashFlow.profitability.netProfit.toFixed(2)}\n`;
-      report += `- Profit Margin: ${cashFlow.profitability.profitMargin.toFixed(1)}%\n\n`;
+      report += `- Operating Result: $${cashFlow.profitability.operatingResult.toFixed(2)}\n`;
+      report += `- Margin: ${cashFlow.profitability.profitMargin.toFixed(1)}%\n`;
+      report += `\n_Note: This is revenue minus expenses, not product margin (cost price not tracked)._\n\n`;
 
       // EXPENSE BREAKDOWN
       if (expenseBreakdown.success && expenseBreakdown.categories.length > 0) {
@@ -449,13 +460,10 @@ class FinancialService {
 
   async getMonthlyCashFlow(shopId, monthParam = null) {
     try {
-      // Parse the month parameter
-      const { month, year, label } = this.parseMonthParameter(monthParam);
-      
-      // Get date range for the specific month
-      const { startDate, endDate } = this.getMonthDateRange(month, year);
+      const timeZone = await this.getShopTimezone(shopId);
+      const { month, year, label } = this.parseMonthParameter(monthParam, timeZone);
+      const { startDate, endDate } = this.getMonthDateRange(month, year, timeZone);
 
-      // Check if requesting future month
       const now = new Date();
       if (startDate > now) {
         return {
@@ -464,19 +472,19 @@ class FinancialService {
         };
       }
 
-      // Generate the report with month-specific label
       const result = await this.generateCashFlowReport(shopId, startDate, endDate, 'monthly');
+      const nowParts = getZonedYmd(now, timeZone);
       
-      // Add month metadata to the result
       if (result.success) {
         result.monthInfo = {
           month,
           year,
           label,
-          isCurrentMonth: month === now.getMonth() && year === now.getFullYear(),
+          timeZone,
+          isCurrentMonth: month === nowParts.month - 1 && year === nowParts.year,
           daysInMonth: Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1,
-          daysElapsed: month === now.getMonth() && year === now.getFullYear() 
-            ? now.getDate() 
+          daysElapsed: month === nowParts.month - 1 && year === nowParts.year
+            ? nowParts.day
             : Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1
         };
       }
@@ -494,11 +502,12 @@ class FinancialService {
 
   async compareMonths(shopId, month1Param, month2Param) {
     try {
-      const month1 = this.parseMonthParameter(month1Param);
-      const month2 = this.parseMonthParameter(month2Param);
+      const timeZone = await this.getShopTimezone(shopId);
+      const month1 = this.parseMonthParameter(month1Param, timeZone);
+      const month2 = this.parseMonthParameter(month2Param, timeZone);
 
-      const range1 = this.getMonthDateRange(month1.month, month1.year);
-      const range2 = this.getMonthDateRange(month2.month, month2.year);
+      const range1 = this.getMonthDateRange(month1.month, month1.year, timeZone);
+      const range2 = this.getMonthDateRange(month2.month, month2.year, timeZone);
 
       const [cashFlow1, cashFlow2] = await Promise.all([
         this.calculateCashFlow(shopId, range1.startDate, range1.endDate),
@@ -556,17 +565,14 @@ class FinancialService {
   }
 
   async getDailyCashFlow(shopId) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const endDate = new Date();
-    return await this.generateCashFlowReport(shopId, today, endDate, 'daily');
+    const timeZone = await this.getShopTimezone(shopId);
+    const { startDate, endDate } = getDayBounds(timeZone);
+    return await this.generateCashFlowReport(shopId, startDate, endDate, 'daily');
   }
 
   async getWeeklyCashFlow(shopId) {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 7);
-    startDate.setHours(0, 0, 0, 0);
+    const timeZone = await this.getShopTimezone(shopId);
+    const { startDate, endDate } = getWeekBounds(timeZone);
     return await this.generateCashFlowReport(shopId, startDate, endDate, 'weekly');
   }
 }

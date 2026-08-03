@@ -67,9 +67,11 @@ const laybyeSchema = new mongoose.Schema({
     },
 
     notes: String,
+    // Model B: stock is checked at agreement, deducted only on completion.
+    // No soft reservation — sellable stock stays available until complete.
     reservedStock: {
         type: Boolean,
-        default: true
+        default: false
     },
 
     createdAt: {
