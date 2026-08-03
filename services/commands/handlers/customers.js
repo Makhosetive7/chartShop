@@ -2,6 +2,7 @@ import Sale from "../../../models/Sale.js";
 import CustomerService from "../../CustomerService.js";
 import InventoryService from "../../InventoryService.js";
 import { parseSaleItems } from "../parseSaleItems.js";
+import { buildSaleLineItems } from "../salePricing.js";
 import { generateCustomerReceipt } from "../helpers.js";
 import { escapeMarkdown } from "../../../utils/escapeMarkdown.js";
 
@@ -303,7 +304,7 @@ export async function processSaleWithCustomer(shopId, itemsText, customer) {
     const items = await parseSaleItems(shopId, itemsText);
     if (typeof items === "string") return items;
 
-    const total = items.reduce((sum, item) => sum + item.total, 0);
+    const { lineItems, total, costTotal, profit } = buildSaleLineItems(items);
 
     const stockResult = await InventoryService.deductSaleItems(items);
     if (!stockResult.success) {
@@ -321,19 +322,17 @@ export async function processSaleWithCustomer(shopId, itemsText, customer) {
     try {
       sale = await Sale.create({
         shopId,
-        items: items.map((item) => ({
-          productId: item.product._id,
-          productName: item.product.name,
-          quantity: item.quantity,
-          price: item.price,
-          standardPrice: item.standardPrice,
-          isCustomPrice: item.isCustomPrice,
-          total: item.total,
-        })),
+        type: "cash",
+        items: lineItems,
         total,
+        costTotal,
+        profit,
         customerId: customer._id,
         customerName: customer.name,
         customerPhone: customer.phone,
+        status: "completed",
+        amountPaid: total,
+        balanceDue: 0,
       });
     } catch (createError) {
       await InventoryService.restoreSaleItems(items);

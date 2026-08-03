@@ -30,7 +30,9 @@ PRODUCT MANAGEMENT
 ==================
 Add/Edit:
 • add bread 2.50 stock 100 - Add product
+• add bread 2.50 cost 1.20 stock 100 - With cost (margin)
 • price bread 2.75 - Update price
+• edit bread cost 1.20 - Set / update cost
 • stock +bread 80 - Update stock
 • stock +"sports shoes" 30
 • stock -bread 20 - Reduce stock

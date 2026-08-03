@@ -14,6 +14,12 @@ const productSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  /** Optional unit cost for margin / gross profit on sales */
+  costPrice: {
+    type: Number,
+    min: 0,
+    default: null,
+  },
   stock: {
     type: Number,
     default: 0,

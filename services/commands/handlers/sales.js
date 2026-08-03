@@ -6,6 +6,7 @@ import CustomerService from "../../CustomerService.js";
 import CancellationService from "../../CancellationService.js";
 import InventoryService from "../../InventoryService.js";
 import { parseSaleItems } from "../parseSaleItems.js";
+import { buildSaleLineItems } from "../salePricing.js";
 import {
   generateCashSaleReceipt,
   generateCreditSaleReceipt,
@@ -84,22 +85,17 @@ export async function handleCashSale(shopId, text) {
       return stockResult.message;
     }
 
-    // Calculate totals
-    const total = items.reduce((sum, item) => sum + item.total, 0);
+    const { lineItems, total, costTotal, profit } = buildSaleLineItems(items);
 
     let sale;
     try {
       sale = await Sale.create({
         shopId,
         type: "cash",
-        items: items.map((item) => ({
-          productId: item.product._id,
-          productName: item.product.name,
-          quantity: item.quantity,
-          price: item.price,
-          total: item.total,
-        })),
+        items: lineItems,
         total,
+        costTotal,
+        profit,
         status: "completed",
         amountPaid: total,
         balanceDue: 0,
@@ -143,8 +139,8 @@ export async function handleCreditSale(shopId, text) {
     const items = await parseSaleItems(shopId, itemsText);
     if (typeof items === "string") return items; // Error message
 
-    // Calculate totals
-    const totalAmount = items.reduce((sum, item) => sum + item.total, 0);
+    const { lineItems, total: totalAmount, costTotal, profit } =
+      buildSaleLineItems(items);
 
     const stockResult = await InventoryService.deductSaleItems(items);
     if (!stockResult.success) {
@@ -160,14 +156,10 @@ export async function handleCreditSale(shopId, text) {
         customerId: customer._id,
         customerName: customer.name,
         customerPhone: customer.phone,
-        items: items.map((item) => ({
-          productId: item.product._id,
-          productName: item.product.name,
-          quantity: item.quantity,
-          price: item.price,
-          total: item.total,
-        })),
+        items: lineItems,
         total: totalAmount,
+        costTotal,
+        profit,
         amountPaid: 0,
         balanceDue: totalAmount,
         status: "completed",

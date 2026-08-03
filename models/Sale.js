@@ -25,10 +25,6 @@ const saleSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
-    profit: { 
-    type: Number, 
-    default: 0 
-  },
   // for laybye
   installments: [
     {
@@ -46,12 +42,25 @@ const saleSchema = new mongoose.Schema({
       productName: String,
       quantity: Number,
       price: Number,
+      standardPrice: Number,
+      isCustomPrice: Boolean,
+      costPrice: Number,
+      costTotal: Number,
       total: Number,
     },
   ],
   total: {
     type: Number,
     required: true,
+  },
+  /** Sum of line costTotals when products had costPrice; else 0 */
+  costTotal: {
+    type: Number,
+    default: 0,
+  },
+  profit: {
+    type: Number,
+    default: 0,
   },
   isCancelled: {
     type: Boolean,

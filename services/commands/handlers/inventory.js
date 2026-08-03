@@ -8,21 +8,26 @@ export async function handleAddProduct(shopId, text) {
 
     // Regex to match quoted product names or single words
     const match = input.match(
-      /^(?:"([^"]+)"|(\S+))\s+([\d.]+)(?:\s+stock\s+(\d+))?(?:\s+threshold\s+(\d+))?$/i
+      /^(?:"([^"]+)"|(\S+))\s+([\d.]+)(?:\s+cost\s+([\d.]+))?(?:\s+stock\s+(\d+))?(?:\s+threshold\s+(\d+))?$/i
     );
 
     if (!match) {
-      return 'Invalid format.\n\nUse: add [product] [price]\nWith stock: add [product] [price] stock [qty]\nWith threshold: add [product] [price] stock [qty] threshold [num]\n\nExamples:\nadd bread 2.50\nadd "carex condoms" 1.50 stock 100\nadd "blue butterfly heels" 25.00 stock 20 threshold 5';
+      return 'Invalid format.\n\nUse: add [product] [price]\nWith cost: add [product] [price] cost [cost]\nWith stock: add [product] [price] stock [qty]\n\nExamples:\nadd bread 2.50\nadd bread 2.50 cost 1.20 stock 100\nadd "carex condoms" 1.50 stock 100';
     }
 
-    const name = match[1] || match[2]; // Group 1 is quoted, group 2 is unquoted
+    const name = match[1] || match[2];
     const price = parseFloat(match[3]);
-    const stock = match[4] ? parseInt(match[4]) : 0;
-    const lowStockThreshold = match[5] ? parseInt(match[5]) : 10;
-    const trackStock = !!match[4]; // If stock is provided, track it
+    const costPrice = match[4] != null ? parseFloat(match[4]) : null;
+    const stock = match[5] ? parseInt(match[5]) : 0;
+    const lowStockThreshold = match[6] ? parseInt(match[6]) : 10;
+    const trackStock = !!match[5];
 
     if (isNaN(price) || price <= 0) {
       return "Invalid price. Please use a positive number.\nExample: 2.50";
+    }
+
+    if (costPrice != null && (isNaN(costPrice) || costPrice < 0)) {
+      return "Invalid cost. Please use a number >= 0.\nExample: cost 1.20";
     }
 
     if (stock < 0) {
@@ -46,6 +51,7 @@ export async function handleAddProduct(shopId, text) {
       shopId,
       name,
       price,
+      costPrice,
       stock,
       lowStockThreshold,
       trackStock,
@@ -54,6 +60,10 @@ export async function handleAddProduct(shopId, text) {
     let response = `*Product added!*\n\n`;
     response += `Name: ${name}\n`;
     response += `Price: $${price.toFixed(2)}\n`;
+    if (costPrice != null) {
+      response += `Cost: $${costPrice.toFixed(2)}\n`;
+      response += `Unit margin: $${(price - costPrice).toFixed(2)}\n`;
+    }
     if (trackStock) {
       response += `Stock: ${stock}\n`;
       response += `Low Stock Alert: ${lowStockThreshold}`;
@@ -297,14 +307,14 @@ export async function handleEditProduct(shopId, text) {
     // Match: product-name field value (supports quoted product names and multi-word values)
     // New regex handles both quoted and unquoted product names, and captures all remaining text as value
     const match = input.match(
-      /^(?:"([^"]+)"|(\S+))\s+(price|stock|threshold|name)\s+(.+)$/i
+      /^(?:"([^"]+)"|(\S+))\s+(price|cost|stock|threshold|name)\s+(.+)$/i
     );
 
     if (!match) {
-      return 'Invalid format.\n\nUse: edit [product] [field] [value]\n\nAvailable fields:\n• price [amount]\n• stock [quantity]\n• threshold [quantity]\n• name [new-name]\n\nExamples:\n• edit bread price 3.00\n• edit "carex condoms" stock 100\n• edit milk threshold 10\n• edit bread name "White Bread"\n• edit "old name" name "New Product Name"';
+      return 'Invalid format.\n\nUse: edit [product] [field] [value]\n\nAvailable fields:\n• price [amount]\n• cost [amount]\n• stock [quantity]\n• threshold [quantity]\n• name [new-name]\n\nExamples:\n• edit bread price 3.00\n• edit bread cost 1.20\n• edit "carex condoms" stock 100';
     }
 
-    const productName = match[1] || match[2]; // Group 1 is quoted, group 2 is unquoted
+    const productName = match[1] || match[2];
     const field = match[3].toLowerCase();
     let value = match[4].trim();
 
@@ -342,6 +352,20 @@ export async function handleEditProduct(shopId, text) {
         response = `*Price Updated!*\n\n${
           product.name
         }\nOld: $${oldValue.toFixed(2)}\nNew: $${newValue.toFixed(2)}`;
+        break;
+
+      case "cost":
+        newValue = parseFloat(value);
+        if (isNaN(newValue) || newValue < 0) {
+          return "Invalid cost. Must be >= 0.\nExample: 1.20";
+        }
+        oldValue = product.costPrice;
+        product.costPrice = newValue;
+        response = `*Cost Updated!*\n\n${product.name}\nOld: ${
+          oldValue == null ? "not set" : `$${Number(oldValue).toFixed(2)}`
+        }\nNew: $${newValue.toFixed(2)}\nUnit margin at sell price: $${(
+          product.price - newValue
+        ).toFixed(2)}`;
         break;
 
       case "stock":
@@ -478,6 +502,11 @@ export async function handleListProducts(shopId) {
       list += `${stockStatus} *${product.name}* - $${product.price.toFixed(
         2
       )}\n`;
+      if (product.costPrice != null) {
+        list += `   Cost: $${Number(product.costPrice).toFixed(2)} (margin $${(
+          product.price - product.costPrice
+        ).toFixed(2)})\n`;
+      }
 
       if (product.trackStock) {
         list += `   Stock: ${product.stock}`;

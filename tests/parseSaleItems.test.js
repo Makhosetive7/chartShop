@@ -35,6 +35,12 @@ describe("parseSaleItems", () => {
       price: 3.2,
       stock: 10,
     });
+    await createTestProduct(shop._id, {
+      name: "bread",
+      price: 2.5,
+      stock: 20,
+      costPrice: 1.0,
+    });
   });
 
   afterEach(async () => {
@@ -61,19 +67,15 @@ describe("parseSaleItems", () => {
     assert.equal(items[0].total, 1.75);
   });
 
-  it("parses multiple items when first has an explicit price", async () => {
-    // Bare integers after a product name are treated as custom price by the parser,
-    // so multi-item lines need an explicit unit price (or only one item).
-    const items = await parseSaleItems(
-      shop._id,
-      '2 milk 3.20 1 "brown bread"'
-    );
+  it("parses 2 milk 1 bread as two items (not custom price)", async () => {
+    const items = await parseSaleItems(shop._id, "2 milk 1 bread");
     assert.ok(Array.isArray(items), items);
     assert.equal(items.length, 2);
     assert.equal(items[0].productName, "milk");
     assert.equal(items[0].quantity, 2);
+    assert.equal(items[0].isCustomPrice, false);
     assert.equal(items[0].price, 3.2);
-    assert.equal(items[1].productName, "brown bread");
+    assert.equal(items[1].productName, "bread");
     assert.equal(items[1].quantity, 1);
   });
 
@@ -88,6 +90,13 @@ describe("parseSaleItems", () => {
     assert.equal(items[0].isCustomPrice, true);
     assert.equal(items[1].productName, "milk");
     assert.equal(items[1].quantity, 2);
+  });
+
+  it("includes costPrice from product when set", async () => {
+    const items = await parseSaleItems(shop._id, "2 bread");
+    assert.ok(Array.isArray(items), items);
+    assert.equal(items[0].costPrice, 1);
+    assert.equal(items[0].costTotal, 2);
   });
 
   it("returns an error string for unknown products", async () => {

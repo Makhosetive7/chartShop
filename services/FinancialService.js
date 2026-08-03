@@ -194,11 +194,29 @@ class FinancialService {
 
       const totalRevenue = cashSalesTotal + creditSalesTotal + completedLaybyesTotal;
 
-      // Operating result = revenue − expenses.
-      // Cost of goods / true gross margin is not tracked until products have costPrice.
+      const revenueSales = [...cashSales, ...creditSales, ...completedLaybyes];
+      const cogs = revenueSales.reduce(
+        (sum, sale) => sum + (sale.costTotal || 0),
+        0
+      );
+      const grossProfit = revenueSales.reduce(
+        (sum, sale) => sum + (sale.profit || 0),
+        0
+      );
+      const salesWithCost = revenueSales.filter(
+        (sale) => (sale.costTotal || 0) > 0
+      ).length;
+      const hasProductCosts = salesWithCost > 0;
+
+      // Operating result = revenue − expenses (always).
+      // Gross profit = revenue − COGS when costPrice was set on sold products.
       const operatingResult = totalRevenue - expensesTotal;
       const profitMargin =
         totalRevenue > 0 ? (operatingResult / totalRevenue) * 100 : 0;
+      const grossMarginPct =
+        hasProductCosts && totalRevenue > 0
+          ? (grossProfit / totalRevenue) * 100
+          : null;
 
       const activeLaybyes = await LayBye.find({ shopId, status: 'active' });
       const totalLaybyeDue = activeLaybyes.reduce((sum, lb) => sum + lb.balanceDue, 0);
@@ -242,13 +260,16 @@ class FinancialService {
         },
 
         profitability: {
-          // Honest labels: no fake grossProfit from empty sale.profit fields
           operatingResult,
           expenses: expensesTotal,
           profitMargin,
-          // Aliases kept for older callers
+          cogs,
+          grossProfit,
+          grossMarginPct,
+          hasProductCosts,
+          salesWithCost,
+          // Alias kept for older callers
           netProfit: operatingResult,
-          grossProfit: null,
         },
 
         outstanding: {
@@ -372,14 +393,25 @@ class FinancialService {
       report += `- Completed Laybyes: $${cashFlow.revenue.completedLaybyes.amount.toFixed(2)} (${cashFlow.revenue.completedLaybyes.count})\n`;
       report += `Total Revenue: $${cashFlow.revenue.total.toFixed(2)}\n\n`;
 
-      // OPERATING RESULT (revenue − expenses; COGS not tracked yet)
+      // OPERATING RESULT (revenue − expenses)
       report += `OPERATING RESULT\n`;
       report += `----------------------------------------\n\n`;
       report += `- Total Revenue: $${cashFlow.revenue.total.toFixed(2)}\n`;
       report += `- Total Expenses: $${cashFlow.profitability.expenses.toFixed(2)}\n`;
       report += `- Operating Result: $${cashFlow.profitability.operatingResult.toFixed(2)}\n`;
       report += `- Margin: ${cashFlow.profitability.profitMargin.toFixed(1)}%\n`;
-      report += `\n_Note: This is revenue minus expenses, not product margin (cost price not tracked)._\n\n`;
+
+      if (cashFlow.profitability.hasProductCosts) {
+        report += `\nPRODUCT MARGIN (from cost price)\n`;
+        report += `----------------------------------------\n\n`;
+        report += `- COGS: $${cashFlow.profitability.cogs.toFixed(2)}\n`;
+        report += `- Gross Profit: $${cashFlow.profitability.grossProfit.toFixed(2)}\n`;
+        report += `- Gross Margin: ${cashFlow.profitability.grossMarginPct.toFixed(1)}%\n`;
+        report += `- Sales with cost set: ${cashFlow.profitability.salesWithCost}\n`;
+        report += `\n_Gross profit uses product costPrice when set; items without cost are treated as $0 cost._\n\n`;
+      } else {
+        report += `\n_Set product cost with: add bread 2.50 cost 1.20 — or edit bread cost 1.20 — to unlock product margin._\n\n`;
+      }
 
       // EXPENSE BREAKDOWN
       if (expenseBreakdown.success && expenseBreakdown.categories.length > 0) {
