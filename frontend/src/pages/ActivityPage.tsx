@@ -40,15 +40,19 @@ const Header = styled.div`
 
 const Stats = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: ${({ theme }) => theme.space[3]};
   margin-bottom: ${({ theme }) => theme.space[4]};
+
+  @media (min-width: 560px) {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
 `;
 
 const Stat = styled.div`
   background: ${({ theme }) => theme.colors.surface};
   border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.lg};
+  border-radius: 0;
   box-shadow: ${({ theme }) => theme.shadows.card};
   padding: ${({ theme }) => theme.space[4]};
   text-align: center;
@@ -63,8 +67,11 @@ const StatLabel = styled.div`
 `;
 
 const StatValue = styled.div`
+  font-family: ${({ theme }) => theme.fonts.heading};
   font-weight: ${({ theme }) => theme.fontWeights.bold};
   font-size: 1.3rem;
+  color: ${({ theme }) => theme.colors.maroon};
+  letter-spacing: -0.03em;
 `;
 
 const Toolbar = styled.div`
@@ -81,10 +88,10 @@ const SearchField = styled.label`
   align-items: center;
   gap: 8px;
   min-width: min(280px, 100%);
-  padding: 8px 12px;
+  padding: 10px 14px;
   border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.md};
-  background: ${({ theme }) => theme.colors.surface};
+  border-radius: 0;
+  background: ${({ theme }) => theme.colors.cream};
 
   svg {
     color: ${({ theme }) => theme.colors.textMuted};
@@ -120,7 +127,7 @@ const List = styled.ul`
 const Item = styled.li`
   background: ${({ theme }) => theme.colors.surface};
   border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.lg};
+  border-radius: 0;
   box-shadow: ${({ theme }) => theme.shadows.card};
   padding: 14px 16px;
 `;
@@ -148,7 +155,7 @@ const ChannelPill = styled.span<{ $channel: string }>`
   align-items: center;
   gap: 5px;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: 0;
   font-size: 0.75rem;
   font-weight: ${({ theme }) => theme.fontWeights.semibold};
   text-transform: capitalize;
@@ -190,7 +197,7 @@ const Detail = styled.div`
 
 const Bubble = styled.div<{ $tone: 'in' | 'out' }>`
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: 0;
   font-size: 0.88rem;
   line-height: 1.45;
   white-space: pre-wrap;
@@ -438,7 +445,7 @@ export function ActivityPage() {
                       marginTop: 10,
                       border: 'none',
                       background: 'transparent',
-                      color: '#E31258',
+                      color: '#8B1E3A',
                       fontWeight: 600,
                       fontSize: '0.82rem',
                       cursor: 'pointer',

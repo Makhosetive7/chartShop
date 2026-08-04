@@ -33,12 +33,20 @@ type ReportTab = 'daily' | 'weekly' | 'monthly' | 'best' | 'profit';
 const Header = styled.div`
   text-align: center;
   margin-bottom: ${({ theme }) => theme.space[5]};
+  min-width: 0;
 `;
 
 const TabsRow = styled.div`
   display: flex;
-  justify-content: center;
   margin-bottom: ${({ theme }) => theme.space[4]};
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
+  > * {
+    width: 100%;
+    max-width: 100%;
+  }
 `;
 
 const Toolbar = styled.div`
@@ -48,22 +56,33 @@ const Toolbar = styled.div`
   justify-content: center;
   gap: ${({ theme }) => theme.space[3]};
   margin-bottom: ${({ theme }) => theme.space[4]};
+  width: 100%;
+  min-width: 0;
 `;
 
 const KpiGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: ${({ theme }) => theme.space[3]};
   margin-bottom: ${({ theme }) => theme.space[4]};
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 `;
 
 const Kpi = styled.div`
   background: ${({ theme }) => theme.colors.surface};
   border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.lg};
+  border-radius: 0;
   box-shadow: ${({ theme }) => theme.shadows.card};
-  padding: ${({ theme }) => theme.space[4]};
+  padding: 14px;
   text-align: center;
+  min-width: 0;
+
+  @media (min-width: 720px) {
+    padding: ${({ theme }) => theme.space[4]};
+  }
 `;
 
 const KpiLabel = styled.div`
@@ -74,18 +93,34 @@ const KpiLabel = styled.div`
 `;
 
 const KpiValue = styled.div`
+  font-family: ${({ theme }) => theme.fonts.heading};
   font-weight: ${({ theme }) => theme.fontWeights.bold};
-  font-size: 1.25rem;
-  letter-spacing: -0.02em;
+  font-size: clamp(1rem, 4vw, 1.25rem);
+  letter-spacing: -0.03em;
+  color: ${({ theme }) => theme.colors.maroon};
+  overflow-wrap: anywhere;
+  line-height: 1.2;
 `;
 
 const ReportBody = styled.pre`
   margin: 0;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   font-family: ${({ theme }) => theme.fonts.body};
   line-height: 1.55;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   color: ${({ theme }) => theme.colors.textPrimary};
+  padding: ${({ theme }) => theme.space[3]};
+  border-radius: 0;
+  background: ${({ theme }) => theme.colors.cream};
+  max-width: 100%;
+  overflow-x: auto;
+
+  @media (min-width: 720px) {
+    font-size: 0.95rem;
+    padding: ${({ theme }) => theme.space[4]};
+  }
 `;
 
 const Hint = styled.p`

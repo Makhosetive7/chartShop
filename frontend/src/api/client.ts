@@ -24,7 +24,10 @@ api.interceptors.response.use(
       localStorage.removeItem('chartshop_token');
       localStorage.removeItem('chartshop_shop');
       const path = window.location.pathname;
-      const isPublic = path === '/' || path.startsWith('/login');
+      const isPublic =
+        path === '/' ||
+        path.startsWith('/login') ||
+        path.startsWith('/register');
       if (!isPublic) {
         window.location.assign('/login');
       }

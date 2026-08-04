@@ -159,6 +159,7 @@ export function CustomersPage() {
                   <Button
                     type="button"
                     $variant="ghost"
+                    $size="sm"
                     onClick={() => setSelectedId(c.id)}
                   >
                     Open

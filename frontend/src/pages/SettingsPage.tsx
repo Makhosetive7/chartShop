@@ -5,11 +5,9 @@ import { format } from 'date-fns';
 import styled from 'styled-components';
 import {
   Building2,
-  Clock3,
   KeyRound,
   LogOut,
   Shield,
-  UserRound,
 } from 'lucide-react';
 import {
   fetchProfile,
@@ -19,6 +17,7 @@ import {
 } from '@/api/reports';
 import { getErrorMessage } from '@/api/types';
 import { useAuth } from '@/auth';
+import { BrandMark } from '@/components/ui/BrandMark';
 import {
   Page,
   PageTitle,
@@ -34,62 +33,164 @@ import {
   Badge,
 } from '@/components/ui/primitives';
 
-const Header = styled.div`
-  text-align: center;
+const Header = styled.header`
   margin-bottom: ${({ theme }) => theme.space[5]};
 `;
 
-const CardTitle = styled.h2`
-  margin: 0 0 ${({ theme }) => theme.space[2]};
-  font-family: ${({ theme }) => theme.fonts.heading};
-  font-size: 1.1rem;
+const Hero = styled.div`
+  position: relative;
+  overflow: hidden;
+  border-radius: 0;
+  padding: clamp(1.25rem, 4vw, 1.85rem);
+  margin-bottom: ${({ theme }) => theme.space[5]};
+  color: white;
+  background:
+    radial-gradient(circle at 14% 20%, rgba(245, 160, 122, 0.35), transparent 42%),
+    radial-gradient(circle at 88% 80%, rgba(196, 59, 90, 0.28), transparent 40%),
+    linear-gradient(150deg, #6a1530 0%, #4a0e1c 50%, #2f0812 100%);
+  box-shadow: ${({ theme }) => theme.shadows.soft};
+`;
+
+const HeroTop = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+`;
+
+const ShopBlock = styled.div`
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  min-width: 0;
 `;
 
-const CardHint = styled.p`
-  margin: 0 0 ${({ theme }) => theme.space[4]};
-  color: ${({ theme }) => theme.colors.textSecondary};
-  font-size: 0.88rem;
-`;
+const ShopMeta = styled.div`
+  min-width: 0;
 
-const InfoGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: ${({ theme }) => theme.space[3]};
-`;
-
-const InfoItem = styled.div`
-  padding: 12px 14px;
-  border-radius: ${({ theme }) => theme.radii.md};
-  background: ${({ theme }) => theme.colors.background};
-  border: 1px solid ${({ theme }) => theme.colors.border};
+  strong {
+    display: block;
+    font-family: ${({ theme }) => theme.fonts.heading};
+    font-size: clamp(1.15rem, 3vw, 1.45rem);
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+  }
 
   span {
     display: block;
-    font-size: 0.75rem;
-    color: ${({ theme }) => theme.colors.textMuted};
-    margin-bottom: 4px;
-    font-weight: ${({ theme }) => theme.fontWeights.medium};
+    margin-top: 4px;
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.72);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: min(70vw, 320px);
+  }
+`;
+
+const HeroGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+
+  @media (min-width: 720px) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+`;
+
+const HeroStat = styled.div`
+  padding: 12px 14px;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+
+  span {
+    display: block;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.62);
+    margin-bottom: 6px;
+    font-weight: ${({ theme }) => theme.fontWeights.semibold};
   }
 
   strong {
-    color: ${({ theme }) => theme.colors.textPrimary};
+    display: block;
+    font-size: 0.95rem;
     font-weight: ${({ theme }) => theme.fontWeights.semibold};
     word-break: break-word;
+    line-height: 1.3;
   }
+`;
+
+const Stack = styled.div`
+  display: grid;
+  gap: ${({ theme }) => theme.space[4]};
+`;
+
+const SectionHead = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: ${({ theme }) => theme.space[4]};
+`;
+
+const IconBadge = styled.div`
+  width: 40px;
+  height: 40px;
+  border-radius: 0;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: ${({ theme }) => theme.colors.peachSoft};
+  color: ${({ theme }) => theme.colors.maroon};
+`;
+
+const SectionCopy = styled.div`
+  min-width: 0;
+
+  h2 {
+    margin: 0 0 4px;
+    font-size: 1.15rem;
+    color: ${({ theme }) => theme.colors.maroon};
+  }
+
+  p {
+    margin: 0;
+    color: ${({ theme }) => theme.colors.textSecondary};
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+`;
+
+const Command = styled.code`
+  display: inline-block;
+  margin-top: 8px;
+  padding: 5px 10px;
+  border-radius: 0;
+  background: ${({ theme }) => theme.colors.cream};
+  border: 1px solid ${({ theme }) => theme.colors.border};
+  color: ${({ theme }) => theme.colors.maroon};
+  font-size: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 `;
 
 const FormActions = styled.div`
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: ${({ theme }) => theme.space[4]};
+  margin-top: ${({ theme }) => theme.space[5]};
 `;
 
-const DangerZone = styled(Card)`
-  border-color: ${({ theme }) => theme.colors.dangerTint};
+const SessionCard = styled(Card)`
+  background: linear-gradient(
+    145deg,
+    ${({ theme }) => theme.colors.peachSoft},
+    ${({ theme }) => theme.colors.primaryTint}
+  );
+  border-color: ${({ theme }) => theme.colors.borderStrong};
 `;
 
 type ProfilePayload = {
@@ -205,8 +306,8 @@ export function SettingsPage() {
   function onPin(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (pins.newPin.length < 4) {
-      setError('New PIN must be at least 4 characters.');
+    if (!/^\d{4}$/.test(pins.newPin)) {
+      setError('New PIN must be exactly 4 digits.');
       return;
     }
     if (pins.newPin !== pins.confirmPin) {
@@ -221,195 +322,194 @@ export function SettingsPage() {
     window.location.assign('/');
   }
 
+  const shopName = profile?.businessName || shop?.businessName || 'Your shop';
+
   return (
     <Page>
       <Header>
-        <PageTitle style={{ marginBottom: 8 }}>Settings</PageTitle>
-        <PageLead style={{ marginBottom: 0 }}>
-          Shop profile and security — same options as chat profile commands.
+        <PageTitle>Settings</PageTitle>
+        <PageLead>
+          Keep the shop profile and PIN in sync across web, Telegram, and WhatsApp.
         </PageLead>
       </Header>
 
       {error ? <ErrorBanner>{error}</ErrorBanner> : null}
       {ok ? <SuccessBanner>{ok}</SuccessBanner> : null}
 
-      <Card>
-        <CardTitle>
-          <UserRound size={18} />
-          Account
-        </CardTitle>
-        <CardHint>
-          Live shop details from the same profile used by Telegram and WhatsApp.
-        </CardHint>
-        {profileQ.isLoading ? <p>Loading profile…</p> : null}
-        <InfoGrid>
-          <InfoItem>
-            <span>User ID</span>
-            <strong>{shop?.userId || '—'}</strong>
-          </InfoItem>
-          <InfoItem>
-            <span>Business</span>
-            <strong>{profile?.businessName || shop?.businessName || '—'}</strong>
-          </InfoItem>
-          <InfoItem>
-            <span>Status</span>
-            <strong>
-              {profile?.isLoggedIn || shop ? (
-                <Badge $tone="success">Logged in</Badge>
-              ) : (
-                <Badge $tone="warning">Logged out</Badge>
-              )}
-            </strong>
-          </InfoItem>
-          <InfoItem>
+      <Hero>
+        <HeroTop>
+          <ShopBlock>
+            <BrandMark size={48} />
+            <ShopMeta>
+              <strong>{shopName}</strong>
+              <span>{shop?.userId || 'No user id'}</span>
+            </ShopMeta>
+          </ShopBlock>
+          {profile?.isLoggedIn || shop ? (
+            <Badge $tone="success">Logged in</Badge>
+          ) : (
+            <Badge $tone="warning">Logged out</Badge>
+          )}
+        </HeroTop>
+        <HeroGrid>
+          <HeroStat>
             <span>Last login</span>
-            <strong>
-              {formatDate(profile?.lastLogin || shop?.lastLogin || null)}
-            </strong>
-          </InfoItem>
-          <InfoItem>
-            <span>Currency</span>
-            <strong>{settings.currency || 'USD'}</strong>
-          </InfoItem>
-          <InfoItem>
-            <span>Timezone</span>
-            <strong>{settings.timezone || '—'}</strong>
-          </InfoItem>
-          <InfoItem>
-            <span>Low-stock default</span>
-            <strong>{settings.lowStockAlert ?? 10}</strong>
-          </InfoItem>
-          <InfoItem>
+            <strong>{formatDate(profile?.lastLogin || shop?.lastLogin || null)}</strong>
+          </HeroStat>
+          <HeroStat>
             <span>Registered</span>
             <strong>{formatDate(profile?.registeredAt)}</strong>
-          </InfoItem>
-        </InfoGrid>
-      </Card>
+          </HeroStat>
+          <HeroStat>
+            <span>Currency</span>
+            <strong>{settings.currency || 'USD'}</strong>
+          </HeroStat>
+          <HeroStat>
+            <span>Low-stock alert</span>
+            <strong>{settings.lowStockAlert ?? 10}</strong>
+          </HeroStat>
+        </HeroGrid>
+      </Hero>
 
-      <Card>
-        <CardTitle>
-          <Building2 size={18} />
-          Business name
-        </CardTitle>
-        <CardHint>
-          Shown in the sidebar and on PDF reports. Chat:{' '}
-          <code>profile edit name &quot;…&quot;</code>
-        </CardHint>
-        <form onSubmit={onName}>
-          <Field>
-            Name
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your shop name"
-              required
-            />
-          </Field>
-          <FormActions>
-            <Button type="submit" disabled={saveName.isPending}>
-              {saveName.isPending ? 'Saving…' : 'Save name'}
-            </Button>
-          </FormActions>
-        </form>
-      </Card>
+      <Stack>
+        <Card>
+          <SectionHead>
+            <IconBadge>
+              <Building2 size={18} />
+            </IconBadge>
+            <SectionCopy>
+              <h2>Shop profile</h2>
+              <p>Name and description shown on reports and in the app header.</p>
+              <Command>profile edit name · profile edit description</Command>
+            </SectionCopy>
+          </SectionHead>
 
-      <Card>
-        <CardTitle>
-          <Clock3 size={18} />
-          Description
-        </CardTitle>
-        <CardHint>
-          Short note about what you sell. Chat:{' '}
-          <code>profile edit description &quot;…&quot;</code>
-        </CardHint>
-        <form onSubmit={onDesc}>
-          <Field>
-            Description
-            <TextArea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. Women’s clothing boutique"
-              required
-            />
-          </Field>
-          <FormActions>
-            <Button type="submit" disabled={saveDesc.isPending}>
-              {saveDesc.isPending ? 'Saving…' : 'Save description'}
-            </Button>
-          </FormActions>
-        </form>
-      </Card>
+          {profileQ.isLoading ? <p>Loading profile…</p> : null}
 
-      <Card>
-        <CardTitle>
-          <KeyRound size={18} />
-          Change PIN
-        </CardTitle>
-        <CardHint>
-          Used for web, Telegram, and WhatsApp login. Chat:{' '}
-          <code>profile edit pin</code>
-        </CardHint>
-        <form onSubmit={onPin}>
-          <Row>
+          <form onSubmit={onName}>
             <Field>
-              Current PIN
+              Business name
               <Input
-                type="password"
-                inputMode="numeric"
-                autoComplete="current-password"
-                value={pins.oldPin}
-                onChange={(e) => setPins({ ...pins, oldPin: e.target.value })}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Luna Spaza"
                 required
               />
             </Field>
+            <FormActions>
+              <Button type="submit" disabled={saveName.isPending}>
+                {saveName.isPending ? 'Saving…' : 'Save name'}
+              </Button>
+            </FormActions>
+          </form>
+
+          <form onSubmit={onDesc} style={{ marginTop: 28 }}>
             <Field>
-              New PIN
-              <Input
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                value={pins.newPin}
-                onChange={(e) => setPins({ ...pins, newPin: e.target.value })}
+              What you sell
+              <TextArea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. Groceries, airtime & household"
                 required
               />
             </Field>
-            <Field>
-              Confirm new PIN
-              <Input
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                value={pins.confirmPin}
-                onChange={(e) =>
-                  setPins({ ...pins, confirmPin: e.target.value })
-                }
-                required
-              />
-            </Field>
-          </Row>
-          <FormActions>
-            <Button type="submit" disabled={savePin.isPending}>
-              <span
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-              >
+            <FormActions>
+              <Button type="submit" disabled={saveDesc.isPending}>
+                {saveDesc.isPending ? 'Saving…' : 'Save description'}
+              </Button>
+            </FormActions>
+          </form>
+        </Card>
+
+        <Card>
+          <SectionHead>
+            <IconBadge>
+              <KeyRound size={18} />
+            </IconBadge>
+            <SectionCopy>
+              <h2>Security PIN</h2>
+              <p>
+                Same 4-digit PIN for web and chat. Keep it private — it unlocks the
+                till everywhere.
+              </p>
+              <Command>profile edit pin</Command>
+            </SectionCopy>
+          </SectionHead>
+
+          <form onSubmit={onPin}>
+            <Row>
+              <Field>
+                Current PIN
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="\d{4}"
+                  maxLength={4}
+                  autoComplete="current-password"
+                  value={pins.oldPin}
+                  onChange={(e) => setPins({ ...pins, oldPin: e.target.value })}
+                  placeholder="••••"
+                  required
+                />
+              </Field>
+              <Field>
+                New PIN
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="\d{4}"
+                  maxLength={4}
+                  autoComplete="new-password"
+                  value={pins.newPin}
+                  onChange={(e) => setPins({ ...pins, newPin: e.target.value })}
+                  placeholder="••••"
+                  required
+                />
+              </Field>
+              <Field>
+                Confirm PIN
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="\d{4}"
+                  maxLength={4}
+                  autoComplete="new-password"
+                  value={pins.confirmPin}
+                  onChange={(e) =>
+                    setPins({ ...pins, confirmPin: e.target.value })
+                  }
+                  placeholder="••••"
+                  required
+                />
+              </Field>
+            </Row>
+            <FormActions>
+              <Button type="submit" disabled={savePin.isPending}>
                 <Shield size={16} />
                 {savePin.isPending ? 'Updating…' : 'Update PIN'}
-              </span>
-            </Button>
-          </FormActions>
-        </form>
-      </Card>
+              </Button>
+            </FormActions>
+          </form>
+        </Card>
 
-      <DangerZone>
-        <CardTitle>
-          <LogOut size={18} />
-          Session
-        </CardTitle>
-        <CardHint>Sign out of this browser. Chat sessions stay separate.</CardHint>
-        <Button type="button" $variant="danger" onClick={() => void onLogout()}>
-          Log out
-        </Button>
-      </DangerZone>
+        <SessionCard>
+          <SectionHead>
+            <IconBadge>
+              <LogOut size={18} />
+            </IconBadge>
+            <SectionCopy>
+              <h2>Session</h2>
+              <p>
+                Sign out of this browser only. Telegram and WhatsApp sessions stay
+                open until you log out there.
+              </p>
+            </SectionCopy>
+          </SectionHead>
+          <Button type="button" $variant="danger" onClick={() => void onLogout()}>
+            Log out
+          </Button>
+        </SessionCard>
+      </Stack>
     </Page>
   );
 }

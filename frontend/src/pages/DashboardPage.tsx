@@ -26,70 +26,96 @@ import { ErrorBanner, Table } from '@/components/ui/primitives';
 
 const DAYS_OPTIONS = [7, 30, 90] as const;
 
-const TYPE_COLORS = ['#E31258', '#FF477E', '#B00E46', '#6366F1', '#F59E0B'];
+const TYPE_COLORS = ['#8B1E3A', '#C43B5A', '#E85A4F', '#F5A07A', '#F59E0B'];
+
+const Shell = styled.div`
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+`;
 
 const Header = styled.header`
   display: flex;
   flex-wrap: wrap;
   align-items: end;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   margin-bottom: ${({ theme }) => theme.space[5]};
+  min-width: 0;
 `;
 
 const Title = styled.h1`
   margin: 0 0 ${({ theme }) => theme.space[2]};
-  font-size: clamp(1.7rem, 3vw, 2.3rem);
+  font-size: clamp(1.45rem, 6vw, 2.3rem);
   font-family: ${({ theme }) => theme.fonts.heading};
   font-weight: ${({ theme }) => theme.fontWeights.bold};
+  letter-spacing: -0.035em;
+  color: ${({ theme }) => theme.colors.maroon};
+  overflow-wrap: anywhere;
 `;
 
 const Lead = styled.p`
   margin: 0;
   color: ${({ theme }) => theme.colors.textSecondary};
   max-width: 40rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
 `;
 
 const PeriodTabs = styled.div`
   display: inline-flex;
+  flex-shrink: 0;
   gap: 4px;
-  padding: 4px;
-  border-radius: 999px;
-  background: ${({ theme }) => theme.colors.surface};
-  border: 1px solid ${({ theme }) => theme.colors.border};
+  padding: 5px;
+  border-radius: 0;
+  background: ${({ theme }) => theme.colors.peachSoft};
 `;
 
 const PeriodBtn = styled.button<{ $active?: boolean }>`
   border: none;
-  border-radius: 999px;
-  padding: 8px 14px;
+  border-radius: 0;
+  padding: 8px 12px;
   cursor: pointer;
-  font-weight: ${({ theme }) => theme.fontWeights.medium};
+  font-weight: ${({ theme }) => theme.fontWeights.semibold};
   font-size: 0.85rem;
+  font-family: inherit;
   background: ${({ theme, $active }) =>
-    $active ? theme.colors.primary : 'transparent'};
-  color: ${({ theme, $active }) =>
-    $active ? theme.colors.surface : theme.colors.textSecondary};
+    $active ? theme.colors.surface : 'transparent'};
+  color: ${({ theme }) => theme.colors.maroon};
+  box-shadow: ${({ theme, $active }) => ($active ? theme.shadows.card : 'none')};
 
   &:hover {
-    color: ${({ theme, $active }) =>
-      $active ? theme.colors.surface : theme.colors.primaryDark};
+    background: ${({ theme, $active }) =>
+      $active ? theme.colors.surface : 'rgba(255, 255, 255, 0.45)'};
   }
 `;
 
 const KpiGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: ${({ theme }) => theme.space[3]};
   margin-bottom: ${({ theme }) => theme.space[5]};
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @media (min-width: 960px) {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
 `;
 
 const Kpi = styled(motion.div)`
   background: ${({ theme }) => theme.colors.surface};
   border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.lg};
+  border-radius: 0;
   box-shadow: ${({ theme }) => theme.shadows.card};
-  padding: ${({ theme }) => theme.space[4]};
+  padding: 14px;
+  min-width: 0;
+
+  @media (min-width: 720px) {
+    padding: ${({ theme }) => theme.space[4]};
+  }
 `;
 
 const KpiLabel = styled.div`
@@ -107,10 +133,13 @@ const KpiLabel = styled.div`
 `;
 
 const KpiValue = styled.div`
+  font-family: ${({ theme }) => theme.fonts.heading};
   font-weight: ${({ theme }) => theme.fontWeights.bold};
-  font-size: 1.45rem;
-  color: ${({ theme }) => theme.colors.textPrimary};
-  letter-spacing: -0.02em;
+  font-size: clamp(1.05rem, 4.2vw, 1.45rem);
+  color: ${({ theme }) => theme.colors.maroon};
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+  line-height: 1.15;
 `;
 
 const KpiHint = styled.div`
@@ -121,39 +150,46 @@ const KpiHint = styled.div`
 
 const ChartsGrid = styled.div`
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: ${({ theme }) => theme.space[4]};
   margin-bottom: ${({ theme }) => theme.space[4]};
 
-  @media (max-width: 960px) {
-    grid-template-columns: 1fr;
+  @media (min-width: 960px) {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
   }
 `;
 
 const PanelsGrid = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: ${({ theme }) => theme.space[4]};
   margin-bottom: ${({ theme }) => theme.space[4]};
 
-  @media (max-width: 960px) {
-    grid-template-columns: 1fr;
+  @media (min-width: 960px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 `;
 
 const Panel = styled.section`
   background: ${({ theme }) => theme.colors.surface};
   border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.lg};
+  border-radius: 0;
   box-shadow: ${({ theme }) => theme.shadows.card};
-  padding: ${({ theme }) => theme.space[5]};
+  padding: ${({ theme }) => theme.space[4]};
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+
+  @media (min-width: 720px) {
+    padding: ${({ theme }) => theme.space[5]};
+  }
 
   h2 {
     margin: 0 0 4px;
     font-family: ${({ theme }) => theme.fonts.heading};
     font-weight: ${({ theme }) => theme.fontWeights.semibold};
     font-size: 1.05rem;
+    color: ${({ theme }) => theme.colors.maroon};
   }
 `;
 
@@ -165,28 +201,45 @@ const PanelLead = styled.p`
 
 const HighlightStrip = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: ${({ theme }) => theme.space[3]};
   margin-bottom: ${({ theme }) => theme.space[4]};
+
+  @media (min-width: 560px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (min-width: 900px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 `;
 
 const Highlight = styled.div`
-  background: ${({ theme }) => theme.colors.primaryTint};
-  border-radius: ${({ theme }) => theme.radii.lg};
+  background: linear-gradient(
+    145deg,
+    ${({ theme }) => theme.colors.peachSoft},
+    ${({ theme }) => theme.colors.primaryTint}
+  );
+  border: 1px solid ${({ theme }) => theme.colors.border};
+  border-radius: 0;
   padding: ${({ theme }) => theme.space[4]};
+  min-width: 0;
 
   span {
     display: block;
     font-size: 0.78rem;
-    color: ${({ theme }) => theme.colors.primaryDark};
-    font-weight: ${({ theme }) => theme.fontWeights.medium};
+    color: ${({ theme }) => theme.colors.maroon};
+    font-weight: ${({ theme }) => theme.fontWeights.semibold};
     margin-bottom: 6px;
   }
 
   strong {
     display: block;
     font-size: 1rem;
-    color: ${({ theme }) => theme.colors.textPrimary};
+    color: ${({ theme }) => theme.colors.maroon};
+    font-family: ${({ theme }) => theme.fonts.heading};
+    letter-spacing: -0.02em;
+    overflow-wrap: anywhere;
   }
 
   em {
@@ -195,6 +248,7 @@ const Highlight = styled.div`
     font-style: normal;
     font-size: 0.8rem;
     color: ${({ theme }) => theme.colors.textSecondary};
+    overflow-wrap: anywhere;
   }
 `;
 
@@ -266,7 +320,7 @@ export function DashboardPage() {
   const error = overviewQ.error || salesQ.error || inventoryQ.error;
 
   return (
-    <div>
+    <Shell>
       <Header>
         <div>
           <Title>{shop?.businessName || 'Dashboard'}</Title>
@@ -468,7 +522,7 @@ export function DashboardPage() {
                       label: c.name,
                       value: c.totalSpent || 0,
                     }))}
-                    color="#B00E46"
+                    color="#8B1E3A"
                     formatValue={money}
                   />
                   <Table style={{ marginTop: 18 }}>
@@ -610,6 +664,6 @@ export function DashboardPage() {
           ) : null}
         </>
       ) : null}
-    </div>
+    </Shell>
   );
 }

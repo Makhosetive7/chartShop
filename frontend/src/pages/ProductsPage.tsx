@@ -40,7 +40,7 @@ const Summary = styled.div`
   font-size: 0.9rem;
 
   strong {
-    color: ${({ theme }) => theme.colors.textPrimary};
+    color: ${({ theme }) => theme.colors.maroon};
     font-weight: ${({ theme }) => theme.fontWeights.semibold};
   }
 `;
@@ -52,21 +52,30 @@ const Toolbar = styled.div`
   justify-content: center;
   gap: 12px;
   margin-bottom: ${({ theme }) => theme.space[4]};
+  width: 100%;
+  min-width: 0;
+
+  > * {
+    max-width: 100%;
+  }
 `;
 
 const HeaderBlock = styled.div`
   text-align: center;
   margin-bottom: ${({ theme }) => theme.space[5]};
+  min-width: 0;
 `;
 const SearchField = styled.label`
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: min(260px, 100%);
-  padding: 8px 12px;
+  flex: 1 1 180px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 10px 14px;
   border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.md};
-  background: ${({ theme }) => theme.colors.surface};
+  border-radius: 0;
+  background: ${({ theme }) => theme.colors.cream};
 
   svg {
     color: ${({ theme }) => theme.colors.textMuted};
@@ -97,6 +106,11 @@ const Actions = styled.div`
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+  max-width: 220px;
+
+  @media (min-width: 720px) {
+    max-width: none;
+  }
 `;
 
 const NameCell = styled.div`
@@ -427,6 +441,7 @@ export function ProductsPage() {
                       <Button
                         type="button"
                         $variant="ghost"
+                        $size="sm"
                         disabled={!p.trackStock}
                         onClick={() => void adjustStock(p, '+')}
                       >
@@ -435,6 +450,7 @@ export function ProductsPage() {
                       <Button
                         type="button"
                         $variant="ghost"
+                        $size="sm"
                         disabled={!p.trackStock}
                         onClick={() => void adjustStock(p, '-')}
                       >
@@ -446,6 +462,7 @@ export function ProductsPage() {
                     <Button
                       type="button"
                       $variant="danger"
+                      $size="sm"
                       onClick={() => void removeProduct(p)}
                     >
                       Delete

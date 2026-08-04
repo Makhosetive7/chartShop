@@ -1,11 +1,13 @@
 import { createContext } from 'react';
 import type { Shop } from '@/api/client';
+import type { RegisterInput } from '@/api/auth';
 
 export type AuthState = {
   token: string | null;
   shop: Shop | null;
   isAuthenticated: boolean;
   login: (userId: string, pin: string) => Promise<void>;
+  register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
   updateShop: (patch: Partial<Shop>) => void;
 };

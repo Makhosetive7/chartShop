@@ -1,30 +1,54 @@
 import styled from 'styled-components';
+import type { ReactNode, TableHTMLAttributes } from 'react';
+
+export { Button } from './Button';
+export type { ButtonProps } from './Button';
 
 export const Page = styled.div`
+  position: relative;
   width: 100%;
-  max-width: 1100px;
+  max-width: min(1100px, 100%);
   margin: 0 auto;
+  min-width: 0;
 `;
 
 export const PageTitle = styled.h1`
   margin: 0 0 ${({ theme }) => theme.space[2]};
   font-family: ${({ theme }) => theme.fonts.heading};
   font-weight: ${({ theme }) => theme.fontWeights.bold};
-  font-size: clamp(1.6rem, 3vw, 2rem);
+  font-size: clamp(1.35rem, 5vw, 2.15rem);
+  letter-spacing: -0.035em;
+  color: ${({ theme }) => theme.colors.maroon};
+  overflow-wrap: anywhere;
 `;
 
 export const PageLead = styled.p`
-  margin: 0 0 ${({ theme }) => theme.space[5]};
+  margin: 0 0 ${({ theme }) => theme.space[4]};
   color: ${({ theme }) => theme.colors.textSecondary};
+  line-height: 1.55;
+  max-width: 40rem;
+  font-size: 0.95rem;
+
+  @media (min-width: 720px) {
+    margin-bottom: ${({ theme }) => theme.space[5]};
+    font-size: 1rem;
+  }
 `;
 
 export const Card = styled.section`
   background: ${({ theme }) => theme.colors.surface};
   border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.lg};
+  border-radius: 0;
   box-shadow: ${({ theme }) => theme.shadows.card};
-  padding: ${({ theme }) => theme.space[5]};
+  padding: ${({ theme }) => theme.space[4]};
   margin-bottom: ${({ theme }) => theme.space[4]};
+  overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+
+  @media (min-width: 720px) {
+    padding: ${({ theme }) => theme.space[5]};
+  }
 `;
 
 export const Row = styled.div`
@@ -32,136 +56,224 @@ export const Row = styled.div`
   flex-wrap: wrap;
   gap: ${({ theme }) => theme.space[3]};
   align-items: end;
+  min-width: 0;
+  max-width: 100%;
 `;
 
 export const Field = styled.label`
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   font-size: 0.85rem;
-  font-weight: ${({ theme }) => theme.fontWeights.medium};
+  font-weight: ${({ theme }) => theme.fontWeights.semibold};
   color: ${({ theme }) => theme.colors.textPrimary};
-  flex: 1;
-  min-width: 140px;
+  flex: 1 1 140px;
+  min-width: 0;
+  max-width: 100%;
+`;
+
+const controlBase = `
+  border: 1px solid;
+  font: inherit;
+  color: inherit;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
 `;
 
 export const Input = styled.input`
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 10px 12px;
-  background: ${({ theme }) => theme.colors.surface};
+  ${controlBase}
+  width: 100%;
+  max-width: 100%;
+  border-color: ${({ theme }) => theme.colors.border};
+  border-radius: 0;
+  padding: 11px 13px;
+  background: ${({ theme }) => theme.colors.cream};
+
+  &::placeholder {
+    color: ${({ theme }) => theme.colors.textMuted};
+  }
 
   &:focus {
     outline: none;
     border-color: ${({ theme }) => theme.colors.borderStrong};
     box-shadow: 0 0 0 3px ${({ theme }) => theme.colors.primaryTint};
+    background: ${({ theme }) => theme.colors.surface};
   }
 `;
 
 export const Select = styled.select`
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 10px 12px;
-  background: ${({ theme }) => theme.colors.surface};
+  ${controlBase}
+  width: 100%;
+  max-width: 100%;
+  border-color: ${({ theme }) => theme.colors.border};
+  border-radius: 0;
+  padding: 11px 13px;
+  background: ${({ theme }) => theme.colors.cream};
 
   &:focus {
     outline: none;
     border-color: ${({ theme }) => theme.colors.borderStrong};
+    box-shadow: 0 0 0 3px ${({ theme }) => theme.colors.primaryTint};
+    background: ${({ theme }) => theme.colors.surface};
   }
 `;
 
 export const TextArea = styled.textarea`
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 10px 12px;
-  background: ${({ theme }) => theme.colors.surface};
-  min-height: 80px;
-  font: inherit;
+  ${controlBase}
+  width: 100%;
+  max-width: 100%;
+  border-color: ${({ theme }) => theme.colors.border};
+  border-radius: 0;
+  padding: 11px 13px;
+  background: ${({ theme }) => theme.colors.cream};
+  min-height: 88px;
+  resize: vertical;
 
   &:focus {
     outline: none;
     border-color: ${({ theme }) => theme.colors.borderStrong};
+    box-shadow: 0 0 0 3px ${({ theme }) => theme.colors.primaryTint};
+    background: ${({ theme }) => theme.colors.surface};
   }
 `;
 
-export const Button = styled.button<{ $variant?: 'primary' | 'ghost' | 'danger' }>`
-  border: none;
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 10px 14px;
-  font-weight: ${({ theme }) => theme.fontWeights.semibold};
-  cursor: pointer;
-  white-space: nowrap;
-
-  background: ${({ theme, $variant }) => {
-    if ($variant === 'ghost') return theme.colors.surface;
-    if ($variant === 'danger') return theme.colors.danger;
-    return theme.colors.primary;
-  }};
-  color: ${({ theme, $variant }) =>
-    $variant === 'ghost' ? theme.colors.textPrimary : theme.colors.surface};
-  border: 1px solid
-    ${({ theme, $variant }) =>
-      $variant === 'ghost' ? theme.colors.border : 'transparent'};
-
-  &:hover:not(:disabled) {
-    background: ${({ theme, $variant }) => {
-      if ($variant === 'ghost') return theme.colors.background;
-      if ($variant === 'danger') return theme.colors.danger;
-      return theme.colors.primaryLight;
-    }};
-  }
-
-  &:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-`;
-
-export const Table = styled.table`
+export const TableWrap = styled.div`
   width: 100%;
-  border-collapse: collapse;
-  font-size: 0.92rem;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  margin: 0 -4px;
+  padding: 0 4px 4px;
+  scrollbar-width: thin;
+  scrollbar-color: ${({ theme }) => theme.colors.borderStrong} transparent;
+
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: ${({ theme }) => theme.colors.borderStrong};
+    border-radius: 0;
+  }
+`;
+
+const TableEl = styled.table`
+  width: 100%;
+  min-width: 480px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.88rem;
+
+  @media (min-width: 720px) {
+    min-width: 0;
+    font-size: 0.92rem;
+  }
 
   th,
   td {
     text-align: left;
     padding: 10px 8px;
     border-bottom: 1px solid ${({ theme }) => theme.colors.border};
+    vertical-align: middle;
+    background: ${({ theme }) => theme.colors.surface};
+  }
+
+  @media (min-width: 720px) {
+    th,
+    td {
+      padding: 12px 10px;
+    }
   }
 
   th {
-    color: ${({ theme }) => theme.colors.textSecondary};
-    font-weight: ${({ theme }) => theme.fontWeights.medium};
-    font-size: 0.8rem;
+    color: ${({ theme }) => theme.colors.textMuted};
+    font-weight: ${({ theme }) => theme.fontWeights.semibold};
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  td {
+    white-space: nowrap;
+  }
+
+  td:has(button),
+  td:has(input) {
+    white-space: normal;
+  }
+
+  tbody tr:hover td {
+    background: ${({ theme }) => theme.colors.peachSoft};
+  }
+
+  /* Keep the first column readable while scrolling on small screens */
+  @media (max-width: 719px) {
+    th:first-child,
+    td:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      min-width: 120px;
+      max-width: 46vw;
+      white-space: normal;
+      box-shadow: 6px 0 12px -8px rgba(26, 10, 10, 0.18);
+    }
+
+    thead th:first-child {
+      z-index: 3;
+    }
+
+    tbody tr:hover td:first-child {
+      background: ${({ theme }) => theme.colors.peachSoft};
+    }
   }
 `;
+
+type TableProps = TableHTMLAttributes<HTMLTableElement> & {
+  children?: ReactNode;
+};
+
+export function Table({ children, style, className, ...rest }: TableProps) {
+  return (
+    <TableWrap style={style} className={className}>
+      <TableEl {...rest}>{children}</TableEl>
+    </TableWrap>
+  );
+}
 
 export const Badge = styled.span<{ $tone?: 'success' | 'warning' | 'danger' | 'info' }>`
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 0;
+  font-size: 0.72rem;
   font-weight: ${({ theme }) => theme.fontWeights.semibold};
   background: ${({ theme, $tone }) => {
     if ($tone === 'success') return theme.colors.successTint;
     if ($tone === 'warning') return theme.colors.warningTint;
     if ($tone === 'danger') return theme.colors.dangerTint;
-    return theme.colors.infoTint;
+    if ($tone === 'info') return theme.colors.infoTint;
+    return theme.colors.primaryTint;
   }};
   color: ${({ theme, $tone }) => {
     if ($tone === 'success') return theme.colors.success;
     if ($tone === 'warning') return theme.colors.warning;
     if ($tone === 'danger') return theme.colors.danger;
-    return theme.colors.info;
+    if ($tone === 'info') return theme.colors.info;
+    return theme.colors.maroon;
   }};
 `;
 
 export const ErrorBanner = styled.div`
   background: ${({ theme }) => theme.colors.dangerTint};
   color: ${({ theme }) => theme.colors.danger};
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 10px 12px;
+  border-radius: 0;
+  padding: 12px 14px;
   margin-bottom: ${({ theme }) => theme.space[4]};
   font-size: 0.9rem;
 `;
@@ -169,33 +281,92 @@ export const ErrorBanner = styled.div`
 export const SuccessBanner = styled.div`
   background: ${({ theme }) => theme.colors.successTint};
   color: ${({ theme }) => theme.colors.success};
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 10px 12px;
+  border-radius: 0;
+  padding: 12px 14px;
   margin-bottom: ${({ theme }) => theme.space[4]};
   font-size: 0.9rem;
 `;
 
 export const Tabs = styled.div`
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-wrap: nowrap;
+  gap: 6px;
   margin-bottom: ${({ theme }) => theme.space[4]};
+  padding: 6px;
+  border-radius: 0;
+  background: ${({ theme }) => theme.colors.peachSoft};
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 `;
 
 export const Tab = styled.button<{ $active?: boolean }>`
-  border: 1px solid
-    ${({ theme, $active }) =>
-      $active ? theme.colors.primary : theme.colors.border};
+  border: none;
+  flex: 0 0 auto;
   background: ${({ theme, $active }) =>
-    $active ? theme.colors.primaryTint : theme.colors.surface};
-  color: ${({ theme, $active }) =>
-    $active ? theme.colors.primaryDark : theme.colors.textSecondary};
-  border-radius: 999px;
-  padding: 8px 14px;
-  font-weight: ${({ theme }) => theme.fontWeights.medium};
+    $active ? theme.colors.surface : 'transparent'};
+  color: ${({ theme }) => theme.colors.maroon};
+  border-radius: 0;
+  padding: 9px 14px;
+  font-weight: ${({ theme }) => theme.fontWeights.semibold};
+  font-size: 0.84rem;
+  font-family: inherit;
   cursor: pointer;
+  box-shadow: ${({ theme, $active }) => ($active ? theme.shadows.card : 'none')};
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover {
+    background: ${({ theme, $active }) =>
+      $active ? theme.colors.surface : 'rgba(255, 255, 255, 0.45)'};
+  }
 `;
 
 export const Muted = styled.span`
   color: ${({ theme }) => theme.colors.textMuted};
+`;
+
+export const KpiGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: ${({ theme }) => theme.space[3]};
+  margin-bottom: ${({ theme }) => theme.space[5]};
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: ${({ theme }) => theme.space[4]};
+  }
+`;
+
+export const KpiCard = styled.div`
+  background: ${({ theme }) => theme.colors.surface};
+  border: 1px solid ${({ theme }) => theme.colors.border};
+  border-radius: 0;
+  box-shadow: ${({ theme }) => theme.shadows.card};
+  padding: ${({ theme }) => theme.space[4]};
+`;
+
+export const KpiLabel = styled.div`
+  font-size: 0.72rem;
+  font-weight: ${({ theme }) => theme.fontWeights.semibold};
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.textMuted};
+  margin-bottom: 8px;
+`;
+
+export const KpiValue = styled.div`
+  font-family: ${({ theme }) => theme.fonts.heading};
+  font-size: clamp(1.45rem, 2.5vw, 1.85rem);
+  font-weight: ${({ theme }) => theme.fontWeights.bold};
+  letter-spacing: -0.03em;
+  color: ${({ theme }) => theme.colors.maroon};
+  line-height: 1.1;
 `;

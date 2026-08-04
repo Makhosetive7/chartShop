@@ -3,19 +3,30 @@ import { createGlobalStyle } from 'styled-components';
 export const GlobalStyles = createGlobalStyle`
   *, *::before, *::after {
     box-sizing: border-box;
+    border-radius: 0 !important;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
   }
 
   html, body, #root {
     min-height: 100%;
+    max-width: 100%;
   }
 
   body {
     margin: 0;
+    overflow-x: hidden;
     font-family: ${({ theme }) => theme.fonts.body};
     font-weight: ${({ theme }) => theme.fontWeights.regular};
     color: ${({ theme }) => theme.colors.textPrimary};
     background: ${({ theme }) => theme.colors.background};
     -webkit-font-smoothing: antialiased;
+  }
+
+  img, svg, video, canvas {
+    max-width: 100%;
   }
 
   h1, h2, h3, h4 {
@@ -37,6 +48,11 @@ export const GlobalStyles = createGlobalStyle`
   }
 
   a {
-    color: ${({ theme }) => theme.colors.secondary};
+    color: ${({ theme }) => theme.colors.maroon};
+  }
+
+  ::selection {
+    background: ${({ theme }) => theme.colors.peach};
+    color: ${({ theme }) => theme.colors.maroon};
   }
 `;
