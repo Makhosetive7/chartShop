@@ -16,6 +16,28 @@ export async function login(userId: string, pin: string): Promise<LoginResponse>
   }
 }
 
+export type RegisterInput = {
+  userId: string;
+  businessName: string;
+  pin: string;
+  businessDescription?: string;
+};
+
+export async function register(input: RegisterInput): Promise<LoginResponse> {
+  try {
+    const { data } = await api.post<LoginResponse>('/auth/register', input);
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const message =
+        (error.response?.data as { error?: string } | undefined)?.error ||
+        'Registration failed';
+      return { success: false, token: '', shop: null as unknown as Shop, error: message };
+    }
+    throw error;
+  }
+}
+
 export async function logout(): Promise<void> {
   try {
     await api.post('/auth/logout');

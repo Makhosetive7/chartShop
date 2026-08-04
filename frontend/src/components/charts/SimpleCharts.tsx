@@ -2,15 +2,121 @@ import styled from 'styled-components';
 
 const Wrap = styled.div`
   width: 100%;
-  min-height: 220px;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 180px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+`;
+
+const ChartSvg = styled.svg`
+  display: block;
+  max-width: none;
 `;
 
 const Empty = styled.div`
   display: grid;
   place-items: center;
-  min-height: 220px;
+  min-height: 180px;
   color: ${({ theme }) => theme.colors.textMuted};
   font-size: 0.9rem;
+`;
+
+const HorzList = styled.div`
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+`;
+
+const HorzRow = styled.div`
+  min-width: 0;
+`;
+
+const HorzMeta = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 4px;
+  font-size: 0.82rem;
+  min-width: 0;
+`;
+
+const HorzLabel = styled.span`
+  color: ${({ theme }) => theme.colors.textPrimary};
+  font-weight: ${({ theme }) => theme.fontWeights.medium};
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const HorzValue = styled.span`
+  color: ${({ theme }) => theme.colors.textSecondary};
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+`;
+
+const Track = styled.div`
+  height: 8px;
+  background: ${({ theme }) => theme.colors.primaryTint};
+  overflow: hidden;
+`;
+
+const Fill = styled.div<{ $pct: number; $color: string }>`
+  width: ${({ $pct }) => `${$pct}%`};
+  height: 100%;
+  background: ${({ $color }) => $color};
+`;
+
+const DonutWrap = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+  min-width: 0;
+  width: 100%;
+`;
+
+const Legend = styled.div`
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 140px;
+  max-width: 100%;
+`;
+
+const LegendRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  min-width: 0;
+`;
+
+const Swatch = styled.span<{ $color: string }>`
+  width: 10px;
+  height: 10px;
+  background: ${({ $color }) => $color};
+  flex-shrink: 0;
+`;
+
+const LegendLabel = styled.span`
+  color: ${({ theme }) => theme.colors.textPrimary};
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const LegendPct = styled.span`
+  color: ${({ theme }) => theme.colors.textMuted};
+  flex-shrink: 0;
 `;
 
 type BarPoint = { label: string; value: number; secondary?: number };
@@ -25,22 +131,29 @@ type BarChartProps = {
 
 export function SimpleBarChart({
   data,
-  color = '#E31258',
-  secondaryColor = '#FFB3C7',
+  color = '#8B1E3A',
+  secondaryColor = '#F5A07A',
   height = 220,
   formatValue = (n) => String(n),
 }: BarChartProps) {
   const max = Math.max(...data.map((d) => Math.max(d.value, d.secondary || 0)), 1);
   const pad = { top: 16, right: 12, bottom: 36, left: 12 };
-  const width = Math.max(data.length * 42, 320);
+  const slot = data.length > 10 ? 36 : 42;
+  const width = Math.max(data.length * slot, 240);
   const innerH = height - pad.top - pad.bottom;
-  const barW = Math.min(28, (width - pad.left - pad.right) / data.length - 8);
+  const barW = Math.min(28, (width - pad.left - pad.right) / Math.max(data.length, 1) - 8);
 
   if (!data.length) return <Empty>No data for this period</Empty>;
 
   return (
     <Wrap>
-      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img">
+      <ChartSvg
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+        height={height}
+        role="img"
+        preserveAspectRatio="xMinYMid meet"
+      >
         {data.map((d, i) => {
           const x =
             pad.left +
@@ -56,7 +169,7 @@ export function SimpleBarChart({
                 y={y}
                 width={barW}
                 height={Math.max(h, 1)}
-                rx={6}
+                rx={0}
                 fill={color}
                 opacity={0.92}
               >
@@ -70,7 +183,7 @@ export function SimpleBarChart({
                   y={pad.top + innerH - (d.secondary / max) * innerH}
                   width={barW * 0.7}
                   height={Math.max((d.secondary / max) * innerH, 1)}
-                  rx={4}
+                  rx={0}
                   fill={secondaryColor}
                   opacity={0.85}
                 />
@@ -80,14 +193,14 @@ export function SimpleBarChart({
                 y={height - 12}
                 textAnchor="middle"
                 fontSize="11"
-                fill="#6B7280"
+                fill="#6B5B5B"
               >
                 {d.label}
               </text>
             </g>
           );
         })}
-      </svg>
+      </ChartSvg>
     </Wrap>
   );
 }
@@ -100,48 +213,26 @@ type HorzBarProps = {
 
 export function HorizontalBars({
   data,
-  color = '#E31258',
+  color = '#8B1E3A',
   formatValue = (n) => String(n),
 }: HorzBarProps) {
   const max = Math.max(...data.map((d) => d.value), 1);
   if (!data.length) return <Empty>No data for this period</Empty>;
 
   return (
-    <div style={{ display: 'grid', gap: 10 }}>
+    <HorzList>
       {data.map((d) => (
-        <div key={d.label}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: 12,
-              marginBottom: 4,
-              fontSize: '0.82rem',
-            }}
-          >
-            <span style={{ color: '#111827', fontWeight: 500 }}>{d.label}</span>
-            <span style={{ color: '#6B7280' }}>{formatValue(d.value)}</span>
-          </div>
-          <div
-            style={{
-              height: 8,
-              borderRadius: 999,
-              background: '#FFE4EC',
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                width: `${Math.max((d.value / max) * 100, 2)}%`,
-                height: '100%',
-                borderRadius: 999,
-                background: color,
-              }}
-            />
-          </div>
-        </div>
+        <HorzRow key={d.label}>
+          <HorzMeta>
+            <HorzLabel title={d.label}>{d.label}</HorzLabel>
+            <HorzValue>{formatValue(d.value)}</HorzValue>
+          </HorzMeta>
+          <Track>
+            <Fill $pct={Math.max((d.value / max) * 100, 2)} $color={color} />
+          </Track>
+        </HorzRow>
       ))}
-    </div>
+    </HorzList>
   );
 }
 
@@ -155,23 +246,20 @@ export function DonutChart({ data, centerLabel, centerValue }: DonutProps) {
   const total = data.reduce((s, d) => s + d.value, 0);
   if (!total) return <Empty>No sales mix yet</Empty>;
 
-  const size = 180;
-  const stroke = 22;
+  const size = 160;
+  const stroke = 20;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   let offset = 0;
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 20,
-        flexWrap: 'wrap',
-        justifyContent: 'center',
-      }}
-    >
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <DonutWrap>
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        style={{ flexShrink: 0, maxWidth: '100%' }}
+      >
         <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
           {data.map((d) => {
             const len = (d.value / total) * c;
@@ -204,7 +292,7 @@ export function DonutChart({ data, centerLabel, centerValue }: DonutProps) {
                 x="50%"
                 y="48%"
                 textAnchor="middle"
-                fontSize="18"
+                fontSize={centerValue.length > 8 ? 13 : 16}
                 fontWeight="700"
                 fill="#111827"
               >
@@ -217,7 +305,7 @@ export function DonutChart({ data, centerLabel, centerValue }: DonutProps) {
                 y="62%"
                 textAnchor="middle"
                 fontSize="11"
-                fill="#6B7280"
+                fill="#6B5B5B"
               >
                 {centerLabel}
               </text>
@@ -225,33 +313,15 @@ export function DonutChart({ data, centerLabel, centerValue }: DonutProps) {
           </g>
         )}
       </svg>
-      <div style={{ display: 'grid', gap: 8, minWidth: 140 }}>
+      <Legend>
         {data.map((d) => (
-          <div
-            key={d.label}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontSize: '0.85rem',
-            }}
-          >
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 999,
-                background: d.color,
-                flexShrink: 0,
-              }}
-            />
-            <span style={{ color: '#111827', flex: 1 }}>{d.label}</span>
-            <span style={{ color: '#6B7280' }}>
-              {Math.round((d.value / total) * 100)}%
-            </span>
-          </div>
+          <LegendRow key={d.label}>
+            <Swatch $color={d.color} />
+            <LegendLabel title={d.label}>{d.label}</LegendLabel>
+            <LegendPct>{Math.round((d.value / total) * 100)}%</LegendPct>
+          </LegendRow>
         ))}
-      </div>
-    </div>
+      </Legend>
+    </DonutWrap>
   );
 }

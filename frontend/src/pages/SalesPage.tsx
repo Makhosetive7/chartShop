@@ -241,7 +241,7 @@ export function SalesPage() {
             </Row>
           ))}
 
-          <Row>
+          <Row style={{ marginTop: 20, paddingTop: 4 }}>
             <Button type="button" $variant="ghost" onClick={() => setLines([...lines, emptyLine()])}>
               + Line
             </Button>

@@ -212,6 +212,7 @@ export function OrdersPage() {
                         key={ns}
                         type="button"
                         $variant="ghost"
+                        $size="sm"
                         onClick={async () => {
                           try {
                             await updateOrderStatus(o.id, ns);

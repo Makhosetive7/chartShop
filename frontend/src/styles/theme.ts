@@ -1,14 +1,18 @@
 export const theme = {
   colors: {
-    // Primary
-    primary: '#E31258',
-    primaryLight: '#FF477E',
-    primaryDark: '#B00E46',
-    primaryTint: '#FFE4EC',
+    // Primary — deep burgundy / coral system (101 GenAI–inspired)
+    primary: '#8B1E3A',
+    primaryLight: '#C43B5A',
+    primaryDark: '#4A0E1C',
+    primaryTint: '#F8E8EC',
 
-    // Secondary
-    secondary: '#6366F1',
-    secondaryLight: '#818CF8',
+    // Secondary accents
+    secondary: '#E85A4F',
+    secondaryLight: '#F5A07A',
+    peach: '#F5D5C0',
+    peachSoft: '#FAE8DC',
+    coral: '#E8705A',
+    cream: '#F7F1EB',
 
     // Status
     success: '#22C55E',
@@ -21,19 +25,24 @@ export const theme = {
     infoTint: '#DBEAFE',
 
     // Text
-    textPrimary: '#111827',
-    textSecondary: '#6B7280',
-    textMuted: '#9CA3AF',
+    textPrimary: '#1A0A0A',
+    textSecondary: '#6B5B5B',
+    textMuted: '#9A8A8A',
+    textOnDark: '#FFFFFF',
+    textOnDarkMuted: 'rgba(255, 255, 255, 0.72)',
 
     // Borders & backgrounds
-    border: '#F3D6E0',
-    borderStrong: '#E5B8C7',
-    background: '#FFF8FA',
+    border: '#E8D9D0',
+    borderStrong: '#D4BDB0',
+    background: '#F7F1EB',
     surface: '#FFFFFF',
+    ink: '#140808',
+    maroon: '#4A0E1C',
+    maroonDeep: '#3D0A16',
   },
   fonts: {
-    heading: '"Poppins", system-ui, sans-serif',
-    body: '"Inter", system-ui, sans-serif',
+    heading: '"Space Grotesk", system-ui, sans-serif',
+    body: '"Manrope", system-ui, sans-serif',
   },
   fontWeights: {
     regular: 400,
@@ -42,13 +51,16 @@ export const theme = {
     bold: 700,
   },
   radii: {
-    sm: '6px',
-    md: '10px',
-    lg: '16px',
+    sm: '0',
+    md: '0',
+    lg: '0',
+    xl: '0',
+    pill: '0',
   },
   shadows: {
-    soft: '0 10px 30px rgba(227, 18, 88, 0.08)',
-    card: '0 4px 16px rgba(17, 24, 39, 0.06)',
+    soft: '0 20px 50px rgba(74, 14, 28, 0.08)',
+    card: '0 8px 28px rgba(26, 10, 10, 0.06)',
+    float: '0 24px 60px rgba(74, 14, 28, 0.14)',
   },
   space: {
     1: '4px',

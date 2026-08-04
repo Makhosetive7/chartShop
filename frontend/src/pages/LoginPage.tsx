@@ -1,105 +1,16 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import styled from 'styled-components';
-import { motion } from 'framer-motion';
 import { useAuth } from '@/auth';
-
-const Page = styled.div`
-  min-height: calc(100vh - 200px);
-  display: grid;
-  place-items: center;
-  padding: ${({ theme }) => theme.space[5]};
-  background:
-    radial-gradient(circle at top left, rgba(227, 18, 88, 0.08), transparent 42%),
-    radial-gradient(circle at bottom right, rgba(99, 102, 241, 0.08), transparent 38%),
-    ${({ theme }) => theme.colors.background};
-`;
-
-const Card = styled(motion.form)`
-  width: min(420px, 100%);
-  background: ${({ theme }) => theme.colors.surface};
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.lg};
-  box-shadow: ${({ theme }) => theme.shadows.soft};
-  padding: ${({ theme }) => theme.space[6]};
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.space[4]};
-`;
-
-const Brand = styled.h1`
-  margin: 0;
-  font-size: 2.25rem;
-  font-family: ${({ theme }) => theme.fonts.heading};
-  font-weight: ${({ theme }) => theme.fontWeights.bold};
-  color: ${({ theme }) => theme.colors.primary};
-`;
-
-const Lead = styled.p`
-  margin: ${({ theme }) => theme.space[2]} 0 0;
-  color: ${({ theme }) => theme.colors.textSecondary};
-  font-weight: ${({ theme }) => theme.fontWeights.regular};
-`;
-
-const Label = styled.label`
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.space[2]};
-  font-size: 0.9rem;
-  font-weight: ${({ theme }) => theme.fontWeights.medium};
-  color: ${({ theme }) => theme.colors.textPrimary};
-`;
-
-const Input = styled.input`
-  border: 1px solid ${({ theme }) => theme.colors.border};
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 12px 14px;
-  background: ${({ theme }) => theme.colors.surface};
-  color: ${({ theme }) => theme.colors.textPrimary};
-
-  &::placeholder {
-    color: ${({ theme }) => theme.colors.textMuted};
-  }
-
-  &:focus {
-    outline: none;
-    border-color: ${({ theme }) => theme.colors.borderStrong};
-    box-shadow: 0 0 0 3px ${({ theme }) => theme.colors.primaryTint};
-  }
-`;
-
-const Button = styled.button`
-  border: none;
-  border-radius: ${({ theme }) => theme.radii.md};
-  padding: 12px 16px;
-  background: ${({ theme }) => theme.colors.primary};
-  color: ${({ theme }) => theme.colors.surface};
-  font-weight: ${({ theme }) => theme.fontWeights.semibold};
-  cursor: pointer;
-
-  &:hover:not(:disabled) {
-    background: ${({ theme }) => theme.colors.primaryLight};
-  }
-
-  &:active:not(:disabled) {
-    background: ${({ theme }) => theme.colors.primaryDark};
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-`;
-
-const ErrorText = styled.p`
-  margin: 0;
-  color: ${({ theme }) => theme.colors.danger};
-  background: ${({ theme }) => theme.colors.dangerTint};
-  border-radius: ${({ theme }) => theme.radii.sm};
-  padding: 8px 10px;
-  font-size: 0.9rem;
-`;
+import { ArrowButton } from '@/components/marketing/marketingPrimitives';
+import {
+  AuthShell,
+  AuthSwitchLink,
+  ErrorText,
+  Field,
+  Hint,
+  Input,
+} from '@/components/marketing/AuthShell';
 
 export function LoginPage() {
   const { isAuthenticated, login } = useAuth();
@@ -128,43 +39,58 @@ export function LoginPage() {
   }
 
   return (
-    <Page>
-      <Card
-        onSubmit={onSubmit}
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-      >
-        <div>
-          <Brand>ChartShop</Brand>
-          <Lead>Sign in with your channel user id and PIN.</Lead>
-        </div>
-        <Label>
-          User ID
-          <Input
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            placeholder="Telegram id or wa:phone"
-            autoComplete="username"
-            required
-          />
-        </Label>
-        <Label>
-          PIN
-          <Input
-            type="password"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            placeholder="4-digit PIN"
-            autoComplete="current-password"
-            required
-          />
-        </Label>
-        {error ? <ErrorText>{error}</ErrorText> : null}
-        <Button type="submit" disabled={pending}>
+    <AuthShell
+      eyebrow="Welcome back"
+      headline="Open the till again"
+      lead="Sign in with the same user ID and PIN you use in Telegram or WhatsApp."
+      showcaseTitle="Your shop picks up where you left off"
+      showcaseLead="Sales, stock, and credit stay synced — chat or web, same books."
+      preview={[
+        { label: 'sold 2 bread @ 18', value: '+ZiG 36' },
+        { label: 'Stock synced', value: '48 left' },
+        { label: 'Dashboard', value: 'live' },
+      ]}
+      footer={
+        <AuthSwitchLink
+          prompt="New shop?"
+          to="/register"
+          label="Register ChartShop"
+        />
+      }
+      onSubmit={onSubmit}
+      actions={
+        <ArrowButton type="submit" disabled={pending}>
           {pending ? 'Signing in…' : 'Sign in'}
-        </Button>
-      </Card>
-    </Page>
+        </ArrowButton>
+      }
+    >
+      <Field>
+        User ID
+        <Hint>Telegram id, wa:phone, or your web id</Hint>
+        <Input
+          value={userId}
+          onChange={(e) => setUserId(e.target.value)}
+          placeholder="e.g. 123456789 or wa:+27…"
+          autoComplete="username"
+          required
+        />
+      </Field>
+      <Field>
+        PIN
+        <Hint>4-digit PIN</Hint>
+        <Input
+          type="password"
+          inputMode="numeric"
+          pattern="\d{4}"
+          maxLength={4}
+          value={pin}
+          onChange={(e) => setPin(e.target.value)}
+          placeholder="••••"
+          autoComplete="current-password"
+          required
+        />
+      </Field>
+      {error ? <ErrorText>{error}</ErrorText> : null}
+    </AuthShell>
   );
 }

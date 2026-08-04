@@ -1,7 +1,12 @@
 import { useMemo, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import type { Shop } from '@/api/client';
-import { login as loginRequest, logout as logoutRequest } from '@/api/auth';
+import {
+  login as loginRequest,
+  logout as logoutRequest,
+  register as registerRequest,
+  type RegisterInput,
+} from '@/api/auth';
 import { AuthContext } from './auth-context';
 
 function readStoredShop(): Shop | null {
@@ -11,6 +16,11 @@ function readStoredShop(): Shop | null {
   } catch {
     return null;
   }
+}
+
+function persistSession(token: string, shop: Shop) {
+  localStorage.setItem('chartshop_token', token);
+  localStorage.setItem('chartshop_shop', JSON.stringify(shop));
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -24,8 +34,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!result.success || !result.token) {
       throw new Error(result.error || 'Login failed');
     }
-    localStorage.setItem('chartshop_token', result.token);
-    localStorage.setItem('chartshop_shop', JSON.stringify(result.shop));
+    persistSession(result.token, result.shop);
+    setToken(result.token);
+    setShop(result.shop);
+  }, []);
+
+  const register = useCallback(async (input: RegisterInput) => {
+    const result = await registerRequest(input);
+    if (!result.success || !result.token) {
+      throw new Error(result.error || 'Registration failed');
+    }
+    persistSession(result.token, result.shop);
     setToken(result.token);
     setShop(result.shop);
   }, []);
@@ -51,10 +70,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       shop,
       isAuthenticated: Boolean(token),
       login,
+      register,
       logout,
       updateShop,
     }),
-    [token, shop, login, logout, updateShop],
+    [token, shop, login, register, logout, updateShop],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
