@@ -1,26 +1,51 @@
-# ChatShop Business Bot
+# ChatShop / ChartShop
 
-> **Complete Business Management System for SMEs**  
-> Manage your entire business - from sales and inventory to customer relationships and financial reporting - directly from Telegram.
+> Business management for SMEs — Telegram & WhatsApp chat POS, plus a web dashboard.
+
+## Monorepo layout
+
+```
+chartShop/
+  backend/    # Express API + Telegram/WhatsApp bots (Node.js)
+  frontend/   # Vite + React + TypeScript web app
+```
+
+### Backend
+
+```bash
+cd backend
+cp .env.example .env   # if needed
+npm install
+npm run dev            # or npm start
+npm test
+```
+
+API base: `http://localhost:3000/api/v1`  
+Docs: `backend/scripts/WEB_API_V1.md`
+
+Railway / Nixpacks: set the service root directory to `backend`.
+
+### Frontend
+
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev            # http://localhost:5173
+```
+
+From the repo root you can also run:
+
+```bash
+npm run dev:backend
+npm run dev:frontend
+npm run test:backend
+npm run test:frontend
+```
 
 ---
 
-## Table of Contents
-
-- [Overview](#-overview)
-- [Key Features](#-key-features)
-- [Getting Started](#-getting-started)
-- [Complete Command Reference](#-complete-command-reference)
-- [Real-World Business Scenarios](#-real-world-business-scenarios)
-- [PDF Reports & Analytics](#-pdf-reports--analytics)
-- [Security & Data Protection](#-security--data-protection)
-- [Deployment](#-deployment)
-- [Support & Resources](#-support--resources)
-- [Contributing](#-contributing)
-
----
-
-## Overview
+## Overview (chat bot)
 
 **ChatShop Business Bot** is a Telegram-based business management system designed specifically for Small and Medium Enterprises (SMEs). Built with Node.js and MongoDB, it provides practical shop-ops features through a simple chat interface.
 

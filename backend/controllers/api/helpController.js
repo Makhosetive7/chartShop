@@ -1,0 +1,91 @@
+import { getHelpText } from "../../services/commands/handlers/help.js";
+import { stripMarkdown } from "../../utils/apiResponse.js";
+
+/** Catalog of REST endpoints mirroring Telegram/WhatsApp commands. */
+const ENDPOINTS = [
+  { method: "POST", path: "/auth/register", command: "register" },
+  { method: "POST", path: "/auth/login", command: "login" },
+  { method: "POST", path: "/auth/logout", command: "logout" },
+  { method: "GET", path: "/auth/me", command: "account / profile" },
+  { method: "GET", path: "/auth/status", command: "status" },
+  { method: "GET", path: "/auth/profile", command: "profile" },
+  {
+    method: "PATCH",
+    path: "/auth/profile/name",
+    command: "profile edit name",
+  },
+  {
+    method: "PATCH",
+    path: "/auth/profile/description",
+    command: "profile edit description",
+  },
+  { method: "PATCH", path: "/auth/profile/pin", command: "profile edit pin" },
+  { method: "GET", path: "/products", command: "list / products" },
+  { method: "POST", path: "/products", command: "add" },
+  { method: "GET", path: "/products/low-stock", command: "low stock" },
+  { method: "GET", path: "/products/:id", command: "product lookup" },
+  { method: "PATCH", path: "/products/:id", command: "edit / price / threshold" },
+  { method: "POST", path: "/products/:id/stock", command: "stock" },
+  { method: "DELETE", path: "/products/:id", command: "delete" },
+  { method: "POST", path: "/sales/cash", command: "sell" },
+  { method: "POST", path: "/sales/credit", command: "credit sale" },
+  { method: "POST", path: "/sales/to-customer", command: "sell to" },
+  { method: "GET", path: "/sales/recent", command: "cancel (list)" },
+  { method: "POST", path: "/sales/cancel/last", command: "cancel last" },
+  { method: "POST", path: "/sales/:id/cancel", command: "cancel sale N" },
+  { method: "GET", path: "/sales/refunds", command: "cancel refunds" },
+  { method: "POST", path: "/laybye", command: "laybye" },
+  { method: "POST", path: "/laybye/pay", command: "laybye pay" },
+  { method: "POST", path: "/laybye/complete", command: "laybye complete" },
+  { method: "GET", path: "/customers", command: "customers" },
+  { method: "POST", path: "/customers", command: "customer add" },
+  { method: "GET", path: "/customers/:id", command: "customer <name>" },
+  {
+    method: "GET",
+    path: "/customers/:id/history",
+    command: "customer history",
+  },
+  {
+    method: "GET",
+    path: "/customers/:id/credit-history",
+    command: "credit history",
+  },
+  { method: "POST", path: "/customers/:id/credit", command: "credit" },
+  { method: "POST", path: "/customers/:id/payment", command: "payment" },
+  { method: "GET", path: "/orders", command: "orders" },
+  { method: "POST", path: "/orders", command: "order" },
+  { method: "GET", path: "/orders/:id", command: "order details" },
+  {
+    method: "PATCH",
+    path: "/orders/:id/status",
+    command: "confirm/ready/complete/cancel order",
+  },
+  { method: "POST", path: "/expenses", command: "expense" },
+  { method: "GET", path: "/expenses", command: "expenses" },
+  {
+    method: "GET",
+    path: "/expenses/breakdown",
+    command: "expense breakdown",
+  },
+  { method: "GET", path: "/reports/daily", command: "daily" },
+  { method: "GET", path: "/reports/weekly", command: "weekly" },
+  { method: "GET", path: "/reports/monthly", command: "monthly" },
+  { method: "GET", path: "/reports/best-sellers", command: "best" },
+  { method: "GET", path: "/reports/profit", command: "profit" },
+  { method: "GET", path: "/reports/export", command: "export / pdf" },
+  { method: "GET", path: "/stats", command: "dashboard overview stats" },
+  { method: "GET", path: "/stats/products", command: "product analytics" },
+  { method: "GET", path: "/stats/customers", command: "customer analytics" },
+  { method: "GET", path: "/stats/sales", command: "sales analytics" },
+  { method: "GET", path: "/stats/inventory", command: "inventory analytics" },
+  { method: "GET", path: "/help", command: "help" },
+];
+
+export async function help(req, res) {
+  return res.json({
+    success: true,
+    basePath: "/api/v1",
+    endpoints: ENDPOINTS,
+    chatHelp: stripMarkdown(getHelpText()),
+  });
+}

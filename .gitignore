@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+**/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -9,11 +10,16 @@ yarn-error.log*
 .env.local
 .env.development
 .env.production
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
+backend/.env
+backend/.env.development
+backend/.env.production
+frontend/.env
+frontend/.env.local
 
 # Runtime data
+backend/reports/
+backend/logs/
 reports/
 logs/
 *.pid
@@ -30,6 +36,8 @@ logs/
 # Build
 dist/
 build/
+**/dist/
+**/coverage/
 
 # Testing
 coverage/
