@@ -108,7 +108,7 @@ const Content = styled.div`
   max-width: 100%;
   min-width: 0;
   margin: 0 auto;
-  padding-inline: clamp(12px, 3vw, 28px);
+  padding-inline: clamp(10px, 3vw, 28px);
   box-sizing: border-box;
 `;
 
@@ -116,7 +116,7 @@ const Header = styled.header`
   position: relative;
   z-index: 2;
   flex-shrink: 0;
-  padding: 12px 0 10px;
+  padding: 8px 0 8px;
   background: linear-gradient(
     180deg,
     rgba(247, 241, 235, 0.94) 0%,
@@ -132,15 +132,38 @@ const Header = styled.header`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 8px;
   }
 `;
 
 const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
+
+  @media (min-width: 560px) {
+    gap: 14px;
+  }
+`;
+
+const BrandSlot = styled.div`
+  flex-shrink: 0;
+  line-height: 0;
+
+  @media (max-width: 559px) {
+    /* Compact mark without layout shift from transform */
+    & > * {
+      width: 34px !important;
+      height: 34px !important;
+    }
+
+    svg,
+    img {
+      width: 34px !important;
+      height: 34px !important;
+    }
+  }
 `;
 
 const HeaderText = styled.div`
@@ -151,43 +174,73 @@ const HeaderText = styled.div`
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 10px;
-    font-size: 1.12rem;
+    gap: 6px;
+    font-size: 0.95rem;
+    line-height: 1.25;
     font-family: ${({ theme }) => theme.fonts.heading};
     font-weight: ${({ theme }) => theme.fontWeights.semibold};
     color: ${({ theme }) => theme.colors.textPrimary};
+
+    @media (min-width: 560px) {
+      gap: 10px;
+      font-size: 1.12rem;
+    }
   }
 
   p {
-    margin: 3px 0 0;
-    font-size: 0.84rem;
+    margin: 2px 0 0;
+    font-size: 0.72rem;
+    line-height: 1.35;
     color: ${({ theme }) => theme.colors.textSecondary};
-    white-space: nowrap;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-clamp: 2;
     overflow: hidden;
-    text-overflow: ellipsis;
+
+    @media (min-width: 560px) {
+      margin: 3px 0 0;
+      font-size: 0.84rem;
+      white-space: nowrap;
+      display: block;
+      -webkit-line-clamp: unset;
+      line-clamp: unset;
+      text-overflow: ellipsis;
+    }
   }
 `;
 
 const Online = styled.span`
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 9px;
+  gap: 4px;
+  padding: 2px 7px;
   border-radius: 0;
-  font-size: 0.66rem;
+  font-size: 0.58rem;
   font-weight: ${({ theme }) => theme.fontWeights.bold};
   letter-spacing: 0.05em;
   color: ${({ theme }) => theme.colors.success};
   background: ${({ theme }) => theme.colors.successTint};
   text-transform: uppercase;
 
+  @media (min-width: 560px) {
+    gap: 6px;
+    padding: 3px 9px;
+    font-size: 0.66rem;
+  }
+
   &::before {
     content: '';
-    width: 7px;
-    height: 7px;
+    width: 5px;
+    height: 5px;
     border-radius: 0;
     background: ${({ theme }) => theme.colors.success};
     animation: ${pulse} 1.6s ease-in-out infinite;
+
+    @media (min-width: 560px) {
+      width: 7px;
+      height: 7px;
+    }
   }
 `;
 
@@ -200,8 +253,8 @@ const NewChatBtn = styled.button`
   background: ${({ theme }) => theme.colors.surface};
   color: ${({ theme }) => theme.colors.textPrimary};
   border-radius: 0;
-  padding: 9px 12px;
-  font-size: 0.88rem;
+  padding: 7px 9px;
+  font-size: 0.78rem;
   font-weight: ${({ theme }) => theme.fontWeights.medium};
   cursor: pointer;
   white-space: nowrap;
@@ -217,6 +270,7 @@ const NewChatBtn = styled.button`
 
   @media (min-width: 520px) {
     padding: 9px 16px;
+    font-size: 0.88rem;
 
     span {
       display: inline;
@@ -238,17 +292,18 @@ const Thread = styled.div<{ $roomy?: boolean }>`
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 8px 0 12px;
+  padding: 4px 0 10px;
   display: flex;
   flex-direction: column;
   background: transparent;
   /* Room for fixed composer (+ chips when present) */
   padding-bottom: ${({ $roomy }) =>
     $roomy
-      ? 'calc(148px + env(safe-area-inset-bottom, 0px))'
-      : 'calc(88px + env(safe-area-inset-bottom, 0px))'};
+      ? 'calc(136px + env(safe-area-inset-bottom, 0px))'
+      : 'calc(80px + env(safe-area-inset-bottom, 0px))'};
 
   @media (min-width: 720px) {
+    padding: 8px 0 12px;
     padding-bottom: ${({ $roomy }) =>
       $roomy
         ? 'calc(168px + env(safe-area-inset-bottom, 0px))'
@@ -261,19 +316,28 @@ const ThreadInner = styled(Content)`
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   flex: 1;
   width: 100%;
   min-width: 0;
+
+  @media (min-width: 560px) {
+    gap: 12px;
+  }
 `;
 
 const DayDivider = styled.div`
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 12px;
-  margin: 10px 0 4px;
+  gap: 8px;
+  margin: 6px 0 2px;
   width: 100%;
+
+  @media (min-width: 560px) {
+    gap: 12px;
+    margin: 10px 0 4px;
+  }
 
   &::before {
     content: '';
@@ -296,14 +360,19 @@ const DayDivider = styled.div`
   }
 
   span {
-    padding: 5px 12px;
+    padding: 3px 8px;
     border-radius: 0;
     background: rgba(255, 255, 255, 0.72);
     color: ${({ theme }) => theme.colors.textSecondary};
-    font-size: 0.74rem;
+    font-size: 0.65rem;
     font-weight: ${({ theme }) => theme.fontWeights.semibold};
     letter-spacing: 0.01em;
     white-space: nowrap;
+
+    @media (min-width: 560px) {
+      padding: 5px 12px;
+      font-size: 0.74rem;
+    }
   }
 `;
 
@@ -314,12 +383,16 @@ const MsgRow = styled(motion.div)<{ $mine?: boolean }>`
   min-width: 0;
   align-items: flex-end;
   justify-content: ${({ $mine }) => ($mine ? 'flex-end' : 'flex-start')};
-  gap: 8px;
+  gap: 6px;
+
+  @media (min-width: 560px) {
+    gap: 8px;
+  }
 `;
 
 const BubbleAvatar = styled.div`
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   border-radius: 0;
   display: grid;
   place-items: center;
@@ -332,14 +405,29 @@ const BubbleAvatar = styled.div`
   color: #fff;
   margin-bottom: 2px;
   box-shadow: 0 4px 10px rgba(74, 14, 28, 0.22);
+
+  svg {
+    width: 11px;
+    height: 11px;
+  }
+
+  @media (min-width: 560px) {
+    width: 28px;
+    height: 28px;
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
 `;
 
 const Bubble = styled.div<{ $mine?: boolean; $activity?: boolean }>`
   /* Leave a clear opposite gutter so left/right bubbles read side-by-side */
   flex: 0 1 auto;
-  max-width: ${({ $mine }) => ($mine ? '78%' : 'calc(100% - 36px)')};
+  max-width: ${({ $mine }) => ($mine ? '82%' : 'calc(100% - 28px)')};
   min-width: 0;
-  padding: 11px 13px 8px;
+  padding: 8px 10px 6px;
   border-radius: 0;
   background: ${({ theme, $mine, $activity }) =>
     $mine
@@ -358,27 +446,37 @@ const Bubble = styled.div<{ $mine?: boolean; $activity?: boolean }>`
           : theme.colors.border};
   box-shadow: ${({ $mine }) =>
     $mine
-      ? '0 10px 24px rgba(74, 14, 28, 0.22)'
-      : '0 6px 18px rgba(26, 10, 10, 0.05)'};
+      ? '0 8px 18px rgba(74, 14, 28, 0.18)'
+      : '0 4px 12px rgba(26, 10, 10, 0.04)'};
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
-  font-size: 0.92rem;
-  line-height: 1.5;
+  font-size: 0.8rem;
+  line-height: 1.4;
 
   @media (min-width: 560px) {
     max-width: min(72%, 520px);
     font-size: 0.95rem;
+    line-height: 1.5;
     padding: 13px 15px 9px;
+    box-shadow: ${({ $mine }) =>
+      $mine
+        ? '0 10px 24px rgba(74, 14, 28, 0.22)'
+        : '0 6px 18px rgba(26, 10, 10, 0.05)'};
   }
 `;
 
 const Meta = styled.div<{ $mine?: boolean }>`
-  margin-top: 7px;
+  margin-top: 5px;
   text-align: ${({ $mine }) => ($mine ? 'right' : 'left')};
-  font-size: 0.68rem;
+  font-size: 0.6rem;
   color: ${({ theme, $mine }) =>
     $mine ? 'rgba(255,255,255,0.78)' : theme.colors.textMuted};
+
+  @media (min-width: 560px) {
+    margin-top: 7px;
+    font-size: 0.68rem;
+  }
 `;
 
 const Footer = styled.div`
@@ -387,7 +485,7 @@ const Footer = styled.div`
   right: 0;
   bottom: calc(64px + env(safe-area-inset-bottom, 0px));
   z-index: 45;
-  padding: 10px 0 12px;
+  padding: 8px 0 10px;
   background: rgba(247, 241, 235, 0.98);
   backdrop-filter: blur(18px);
   border-top: 1px solid ${({ theme }) => theme.colors.border};
@@ -404,13 +502,18 @@ const FooterInner = styled(Content)``;
 const Chips = styled.div`
   display: flex;
   flex-wrap: nowrap;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 6px;
+  margin-bottom: 8px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   max-width: 100%;
   padding-bottom: 2px;
+
+  @media (min-width: 560px) {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
 
   &::-webkit-scrollbar {
     display: none;
@@ -420,14 +523,14 @@ const Chips = styled.div`
 const Chip = styled.button`
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex: 0 0 auto;
   border: 1px solid ${({ theme }) => theme.colors.border};
   background: ${({ theme }) => theme.colors.surface};
   color: ${({ theme }) => theme.colors.textSecondary};
   border-radius: 0;
-  padding: 7px 12px;
-  font-size: 0.78rem;
+  padding: 5px 9px;
+  font-size: 0.7rem;
   font-weight: ${({ theme }) => theme.fontWeights.medium};
   cursor: pointer;
   transition:
@@ -435,6 +538,22 @@ const Chip = styled.button`
     background 0.15s ease,
     color 0.15s ease,
     transform 0.15s ease;
+
+  @media (min-width: 560px) {
+    gap: 6px;
+    padding: 7px 12px;
+    font-size: 0.78rem;
+  }
+
+  svg {
+    width: 11px;
+    height: 11px;
+
+    @media (min-width: 560px) {
+      width: 13px;
+      height: 13px;
+    }
+  }
 
   &:hover {
     border-color: ${({ theme }) => theme.colors.primary};
@@ -453,11 +572,11 @@ const Composer = styled.form`
 const InputShell = styled.div`
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 52px;
+  gap: 6px;
+  min-height: 44px;
   min-width: 0;
   max-width: 100%;
-  padding: 6px 6px 6px 14px;
+  padding: 4px 4px 4px 10px;
   border-radius: 0;
   border: 1.5px solid ${({ theme }) => theme.colors.maroon};
   background: #fff;
@@ -469,6 +588,7 @@ const InputShell = styled.div`
     box-shadow 0.15s ease;
 
   @media (min-width: 720px) {
+    gap: 8px;
     min-height: 56px;
     padding: 6px 6px 6px 16px;
   }
@@ -480,11 +600,15 @@ const InputShell = styled.div`
 `;
 
 const IconBtn = styled.span`
-  display: grid;
+  display: none;
   place-items: center;
   color: ${({ theme }) => theme.colors.primary};
   flex-shrink: 0;
   opacity: 0.7;
+
+  @media (min-width: 560px) {
+    display: grid;
+  }
 `;
 
 const Input = styled.textarea`
@@ -495,11 +619,18 @@ const Input = styled.textarea`
   outline: none;
   background: transparent;
   font: inherit;
-  font-size: 0.95rem;
-  line-height: 1.4;
-  padding: 10px 4px;
-  max-height: 120px;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  padding: 8px 2px;
+  max-height: 96px;
   color: ${({ theme }) => theme.colors.textPrimary};
+
+  @media (min-width: 560px) {
+    font-size: 0.95rem;
+    line-height: 1.4;
+    padding: 10px 4px;
+    max-height: 120px;
+  }
 
   &::placeholder {
     color: ${({ theme }) => theme.colors.textMuted};
@@ -507,8 +638,8 @@ const Input = styled.textarea`
 `;
 
 const SendBtn = styled.button`
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   border: none;
   border-radius: 0;
   background: linear-gradient(
@@ -526,6 +657,11 @@ const SendBtn = styled.button`
     transform 0.15s ease,
     box-shadow 0.15s ease,
     opacity 0.15s ease;
+
+  @media (min-width: 560px) {
+    width: 44px;
+    height: 44px;
+  }
 
   &:hover:not(:disabled) {
     transform: scale(1.06);
@@ -566,54 +702,78 @@ const Empty = styled(motion.div)`
   text-align: center;
   color: ${({ theme }) => theme.colors.textSecondary};
   max-width: 28rem;
-  padding: 28px 8px 24px;
+  padding: 16px 4px 18px;
   width: 100%;
   box-sizing: border-box;
+
+  @media (min-width: 560px) {
+    padding: 28px 8px 24px;
+  }
 
   .badge {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 12px;
-    margin-bottom: 16px;
+    padding: 4px 10px;
+    margin-bottom: 12px;
     border-radius: 0;
     background: ${({ theme }) => theme.colors.primaryTint};
     color: ${({ theme }) => theme.colors.primaryDark};
-    font-size: 0.78rem;
+    font-size: 0.7rem;
     font-weight: ${({ theme }) => theme.fontWeights.semibold};
+
+    @media (min-width: 560px) {
+      padding: 6px 12px;
+      margin-bottom: 16px;
+      font-size: 0.78rem;
+    }
   }
 
   strong {
     display: block;
     color: ${({ theme }) => theme.colors.textPrimary};
     font-family: ${({ theme }) => theme.fonts.heading};
-    font-size: clamp(1.2rem, 5vw, 1.45rem);
+    font-size: clamp(1.05rem, 4.5vw, 1.45rem);
     font-weight: ${({ theme }) => theme.fontWeights.semibold};
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     letter-spacing: -0.02em;
+
+    @media (min-width: 560px) {
+      margin-bottom: 10px;
+    }
   }
 
   p {
-    margin: 0 0 18px;
-    line-height: 1.55;
-    font-size: 0.92rem;
+    margin: 0 0 14px;
+    line-height: 1.45;
+    font-size: 0.82rem;
+
+    @media (min-width: 560px) {
+      margin: 0 0 18px;
+      line-height: 1.55;
+      font-size: 0.92rem;
+    }
   }
 `;
 
 const EmptyActions = styled.div`
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
   width: 100%;
+
+  @media (min-width: 560px) {
+    gap: 8px;
+  }
 `;
 
 const EmptyAction = styled.button`
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   text-align: left;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 8px 9px;
   border-radius: 0;
   border: 1px solid ${({ theme }) => theme.colors.border};
   background: rgba(255, 255, 255, 0.9);
@@ -625,34 +785,54 @@ const EmptyAction = styled.button`
     transform 0.15s ease,
     box-shadow 0.15s ease;
 
+  @media (min-width: 560px) {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
   span {
     display: grid;
-    gap: 2px;
+    gap: 1px;
     min-width: 0;
 
     strong {
       margin: 0;
-      font-size: 0.84rem;
+      font-size: 0.74rem;
       font-family: ${({ theme }) => theme.fonts.body};
       font-weight: ${({ theme }) => theme.fontWeights.semibold};
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+
+      @media (min-width: 560px) {
+        font-size: 0.84rem;
+      }
     }
 
     em {
       font-style: normal;
-      font-size: 0.72rem;
+      font-size: 0.64rem;
       color: ${({ theme }) => theme.colors.textMuted};
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+
+      @media (min-width: 560px) {
+        font-size: 0.72rem;
+      }
     }
   }
 
   svg {
     flex-shrink: 0;
+    width: 15px;
+    height: 15px;
     color: ${({ theme }) => theme.colors.primary};
+
+    @media (min-width: 560px) {
+      width: 18px;
+      height: 18px;
+    }
   }
 
   &:hover {
@@ -666,18 +846,28 @@ const Typing = styled(Bubble)`
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-width: 64px;
-  padding-block: 14px;
+  min-width: 52px;
+  padding-block: 10px;
+
+  @media (min-width: 560px) {
+    min-width: 64px;
+    padding-block: 14px;
+  }
 `;
 
 const Dot = styled.span<{ $delay: number }>`
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 0;
   background: ${({ theme }) => theme.colors.primary};
   opacity: 0.45;
   animation: ${bounceDot} 1.1s ease-in-out infinite;
   animation-delay: ${({ $delay }) => `${$delay}ms`};
+
+  @media (min-width: 560px) {
+    width: 7px;
+    height: 7px;
+  }
 `;
 
 const bubbleMotion = {
@@ -826,7 +1016,9 @@ export function ChatPage() {
         <Header>
           <Content>
             <HeaderLeft>
-              <BrandMark size={48} />
+              <BrandSlot>
+                <BrandMark size={48} />
+              </BrandSlot>
               <HeaderText>
                 <h1>
                   {shop?.businessName || 'ChartShop'}
@@ -834,8 +1026,8 @@ export function ChatPage() {
                 </h1>
                 <p>
                   {showingDemoFeed
-                    ? 'Demo activity log — browse sales, expenses, and commands across web, Telegram & WhatsApp'
-                    : 'Your shop assistant — same commands as Telegram & WhatsApp'}
+                    ? 'Demo activity log — sales & commands across channels'
+                    : 'Same commands as Telegram & WhatsApp'}
                 </p>
               </HeaderText>
             </HeaderLeft>
