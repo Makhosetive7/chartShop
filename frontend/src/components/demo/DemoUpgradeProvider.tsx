@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import styled from 'styled-components';
 import { X } from 'lucide-react';
 import { useAuth } from '@/auth';
@@ -26,25 +27,25 @@ const DemoUpgradeContext = createContext<DemoUpgradeApi | null>(null);
 const Scrim = styled.div`
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 200;
   background: rgba(20, 8, 8, 0.48);
   display: grid;
-  place-items: end center;
+  place-items: center;
   padding: 16px;
   padding-bottom: max(16px, env(safe-area-inset-bottom));
-
-  @media (min-width: 640px) {
-    place-items: center;
-  }
+  overflow-y: auto;
 `;
 
 const Panel = styled.div`
   width: min(420px, 100%);
+  max-height: min(90vh, 520px);
+  overflow-y: auto;
   background: ${({ theme }) => theme.colors.surface};
   border: 1px solid ${({ theme }) => theme.colors.border};
   box-shadow: ${({ theme }) => theme.shadows.card};
   padding: 22px 20px 18px;
   position: relative;
+  margin: auto;
 `;
 
 const Close = styled.button`
@@ -135,41 +136,46 @@ export function DemoUpgradeProvider({ children }: { children: ReactNode }) {
 
   const action = payload.action || 'save changes';
 
+  const dialog =
+    open && isDemo ? (
+      <Scrim
+        role="presentation"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) close();
+        }}
+      >
+        <Panel
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="demo-upgrade-title"
+        >
+          <Close type="button" aria-label="Close" onClick={close}>
+            <X size={18} />
+          </Close>
+          <Eyebrow>Demo shop</Eyebrow>
+          <Title id="demo-upgrade-title">Create a shop to {action}</Title>
+          <Body>
+            {payload.message ||
+              'This shared demo is read-only so everyone sees the same sample business. Register once with a username and PIN — then your sales, stock, and chat stay yours.'}
+          </Body>
+          <Actions>
+            <Button to="/register" variant="filled" onClick={close}>
+              Create your shop
+            </Button>
+            <GhostLink type="button" onClick={close}>
+              Keep browsing
+            </GhostLink>
+          </Actions>
+        </Panel>
+      </Scrim>
+    ) : null;
+
   return (
     <DemoUpgradeContext.Provider value={value}>
       {children}
-      {open && isDemo ? (
-        <Scrim
-          role="presentation"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) close();
-          }}
-        >
-          <Panel
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="demo-upgrade-title"
-          >
-            <Close type="button" aria-label="Close" onClick={close}>
-              <X size={18} />
-            </Close>
-            <Eyebrow>Demo shop</Eyebrow>
-            <Title id="demo-upgrade-title">Create a shop to {action}</Title>
-            <Body>
-              {payload.message ||
-                'This shared demo is read-only so everyone sees the same sample business. Register once with a username and PIN — then your sales, stock, and chat stay yours.'}
-            </Body>
-            <Actions>
-              <Button to="/register" variant="filled" onClick={close}>
-                Create your shop
-              </Button>
-              <GhostLink type="button" onClick={close}>
-                Keep browsing
-              </GhostLink>
-            </Actions>
-          </Panel>
-        </Scrim>
-      ) : null}
+      {dialog && typeof document !== 'undefined'
+        ? createPortal(dialog, document.body)
+        : null}
     </DemoUpgradeContext.Provider>
   );
 }
