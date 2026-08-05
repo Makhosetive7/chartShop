@@ -342,7 +342,7 @@ export function SettingsPage() {
             <BrandMark size={48} />
             <ShopMeta>
               <strong>{shopName}</strong>
-              <span>{shop?.userId || 'No user id'}</span>
+              <span>@{shop?.username || 'no username'}</span>
             </ShopMeta>
           </ShopBlock>
           {profile?.isLoggedIn || shop ? (

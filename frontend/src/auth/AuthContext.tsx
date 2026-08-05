@@ -29,8 +29,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
   const [shop, setShop] = useState<Shop | null>(() => readStoredShop());
 
-  const login = useCallback(async (userId: string, pin: string) => {
-    const result = await loginRequest(userId, pin);
+  const login = useCallback(async (username: string, pin: string) => {
+    const result = await loginRequest(username, pin);
     if (!result.success || !result.token) {
       throw new Error(result.error || 'Login failed');
     }

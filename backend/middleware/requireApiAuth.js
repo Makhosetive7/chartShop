@@ -4,7 +4,7 @@ import SessionStore from "../services/sessionStore.js";
 
 /**
  * Require Authorization: Bearer <sessionToken> for /api/v1 routes.
- * Sets req.userId, req.shopId, req.shop, req.sessionToken.
+ * Sets req.username, req.shopId, req.shop, req.sessionToken, req.channel, req.channelKey.
  */
 export async function requireApiAuth(req, res, next) {
   try {
@@ -27,9 +27,11 @@ export async function requireApiAuth(req, res, next) {
     }
 
     const now = Date.now();
-    const lastActivity = new Date(session.lastActivity || session.loginTime).getTime();
+    const lastActivity = new Date(
+      session.lastActivity || session.loginTime
+    ).getTime();
     if (now - lastActivity > AuthService.sessionTimeout) {
-      await SessionStore.deleteLoginSession(session.telegramId);
+      await SessionStore.deleteLoginSessionByToken(sessionToken);
       return res.status(401).json({
         success: false,
         error: "Session expired. Please login again.",
@@ -38,19 +40,29 @@ export async function requireApiAuth(req, res, next) {
 
     const shop = await Shop.findById(session.shopId);
     if (!shop) {
-      await SessionStore.deleteLoginSession(session.telegramId);
+      await SessionStore.deleteLoginSessionByToken(sessionToken);
       return res.status(401).json({
         success: false,
         error: "Shop not found for this session.",
       });
     }
 
-    await SessionStore.touchLoginSession(session.telegramId);
+    if (shop.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        error: "This shop account is disabled.",
+      });
+    }
 
-    req.userId = session.telegramId;
+    await SessionStore.touchLoginSessionByToken(sessionToken);
+
+    req.username = shop.username;
+    req.userId = shop.username; // backward-compatible alias
     req.shopId = shop._id;
     req.shop = shop;
     req.sessionToken = sessionToken;
+    req.channel = session.channel;
+    req.channelKey = session.channelKey;
     return next();
   } catch (error) {
     console.error("[requireApiAuth]", error);

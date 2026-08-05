@@ -15,12 +15,16 @@ export function publicShop(shop) {
   delete obj.pin;
   return {
     id: String(obj._id),
-    userId: obj.telegramId,
+    username: obj.username,
     businessName: obj.businessName,
     businessDescription: obj.businessDescription,
     isActive: obj.isActive,
     settings: obj.settings,
     lastLogin: obj.lastLogin,
     createdAt: obj.createdAt,
+    channels: {
+      telegramLinked: Boolean(obj.channels?.telegramChatId),
+      whatsappLinked: Boolean(obj.channels?.whatsappPhone),
+    },
   };
 }

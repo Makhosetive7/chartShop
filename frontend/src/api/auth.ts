@@ -1,9 +1,15 @@
 import axios from 'axios';
 import { api, type LoginResponse, type Shop } from './client';
 
-export async function login(userId: string, pin: string): Promise<LoginResponse> {
+export async function login(
+  username: string,
+  pin: string,
+): Promise<LoginResponse> {
   try {
-    const { data } = await api.post<LoginResponse>('/auth/login', { userId, pin });
+    const { data } = await api.post<LoginResponse>('/auth/login', {
+      username,
+      pin,
+    });
     return data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -17,7 +23,7 @@ export async function login(userId: string, pin: string): Promise<LoginResponse>
 }
 
 export type RegisterInput = {
-  userId: string;
+  username: string;
   businessName: string;
   pin: string;
   businessDescription?: string;

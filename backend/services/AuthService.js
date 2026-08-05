@@ -6,6 +6,10 @@ import SessionStore, {
   REGISTRATION_TTL_MS,
   PIN_CHANGE_TTL_MS,
 } from "./sessionStore.js";
+import {
+  normalizeUsername,
+  shopChannelQuery,
+} from "../utils/channelIdentity.js";
 
 class AuthService {
   constructor() {
@@ -13,43 +17,120 @@ class AuthService {
     this.registrationTimeout = REGISTRATION_TTL_MS;
     this.pinChangeTimeout = PIN_CHANGE_TTL_MS;
     this.maxAttempts = 5;
-    this.lockoutDuration = 15 * 60 * 1000; // 15 minutes
+    this.lockoutDuration = 15 * 60 * 1000;
+  }
+
+  // ==========================================
+  // SHOP / CHANNEL LOOKUP
+  // ==========================================
+
+  async findShopByUsername(username) {
+    const normalized = normalizeUsername(username);
+    if (!normalized) return null;
+    return Shop.findOne({ username: normalized });
+  }
+
+  async findShopByChannel(channel, channelKey) {
+    const query = shopChannelQuery(channel, channelKey);
+    if (!query) return null;
+    return Shop.findOne(query);
   }
 
   /**
-   * Start registration process
+   * Bind a messaging channel to a shop on first successful credential login.
+   * Refuses if this shop already has a different chat, or another shop owns this chat.
    */
-  async startRegistration(telegramId, userData = {}) {
+  async bindChannel(shop, channel, channelKey) {
+    if (channel !== "telegram" && channel !== "whatsapp") {
+      return { ok: true, shop };
+    }
+
+    const key = String(channelKey);
+    const field =
+      channel === "telegram" ? "telegramChatId" : "whatsappPhone";
+    const current = shop.channels?.[field];
+
+    if (current && current !== key) {
+      return {
+        ok: false,
+        message:
+          `*Channel already linked*\n\n` +
+          `This shop is already linked to a different ${channel} account.\n\n` +
+          `Log in from the linked chat, or contact support to unlink.`,
+      };
+    }
+
+    const takenQuery = shopChannelQuery(channel, key);
+    const taken = await Shop.findOne({
+      ...takenQuery,
+      _id: { $ne: shop._id },
+    });
+    if (taken) {
+      return {
+        ok: false,
+        message:
+          `*Chat already linked*\n\n` +
+          `This ${channel} chat is already linked to another shop (*${taken.username}*).`,
+      };
+    }
+
+    if (!current) {
+      shop.channels = shop.channels || {};
+      shop.channels[field] = key;
+      await shop.save();
+    }
+
+    return { ok: true, shop };
+  }
+
+  async openChannelSession(shop, channel, channelKey) {
+    const sessionToken = this.generateSessionToken();
+    const key = channel === "web" ? sessionToken : String(channelKey);
+
+    await SessionStore.upsertLoginSession({
+      channel,
+      channelKey: key,
+      sessionToken,
+      shopId: shop._id,
+      loginTime: new Date(),
+    });
+
+    return { sessionToken, channelKey: key };
+  }
+
+  // ==========================================
+  // REGISTRATION
+  // ==========================================
+
+  async startRegistration(channel, channelKey) {
     try {
-      const existingShop = await Shop.findOne({ telegramId });
-      if (existingShop) {
+      const linked = await this.findShopByChannel(channel, channelKey);
+      if (linked) {
         return {
           success: false,
           message:
-            "*You already have an account!*\n\n" +
-            `Business: ${existingShop.businessName}\n\n` +
-            "Use /login to access your account.",
+            "*This chat is already linked*\n\n" +
+            `Shop: *${linked.businessName}* (@${linked.username})\n\n` +
+            "Use `login <username> <pin>` or `login <pin>` to sign in.",
         };
       }
 
-      await SessionStore.upsertRegistration(telegramId, {
-        step: "business_name",
-        data: { telegramId },
+      await SessionStore.upsertRegistration(channel, channelKey, {
+        step: "username",
+        data: { channel, channelKey: String(channelKey) },
         startTime: new Date(),
       });
 
       return {
         success: true,
-        step: "business_name",
+        step: "username",
         message:
           "*Welcome! Let's set up your business*\n\n" +
-          "*Step 1 of 3: Business Name*\n\n" +
-          "What is your business name?\n\n" +
-          "*Examples:*\n" +
-          "• Mike's Electronics\n" +
-          "• City Pharmacy\n" +
-          "• Corner Store\n\n" +
-          "_(Type your business name below)_",
+          "*Step 1 of 4: Username*\n\n" +
+          "Choose a username you will use on web, Telegram, and WhatsApp.\n\n" +
+          "*Rules:* 3–32 characters, letters, numbers, underscore only.\n\n" +
+          "*Examples:* `tinasales`, `corner_shop`, `mikes_electronics`\n\n" +
+          "_(Type your username below)_",
       };
     } catch (error) {
       console.error("[AuthService] Start registration error:", error);
@@ -60,12 +141,9 @@ class AuthService {
     }
   }
 
-  /**
-   * Process registration steps
-   */
-  async processRegistrationStep(telegramId, input) {
+  async processRegistrationStep(channel, channelKey, input) {
     try {
-      const session = await SessionStore.getRegistration(telegramId);
+      const session = await SessionStore.getRegistration(channel, channelKey);
 
       if (!session) {
         return {
@@ -76,10 +154,9 @@ class AuthService {
         };
       }
 
-      // Check timeout
       const started = new Date(session.startTime).getTime();
       if (Date.now() - started > this.registrationTimeout) {
-        await SessionStore.deleteRegistration(telegramId);
+        await SessionStore.deleteRegistration(channel, channelKey);
         return {
           success: false,
           message:
@@ -88,19 +165,29 @@ class AuthService {
       }
 
       switch (session.step) {
+        case "username":
+          return await this.handleUsernameStep(channel, channelKey, input, session);
         case "business_name":
-          return await this.handleBusinessNameStep(telegramId, input, session);
-
-        case "business_description":
-          return await this.handleBusinessDescriptionStep(
-            telegramId,
+          return await this.handleBusinessNameStep(
+            channel,
+            channelKey,
             input,
             session
           );
-
+        case "business_description":
+          return await this.handleBusinessDescriptionStep(
+            channel,
+            channelKey,
+            input,
+            session
+          );
         case "pin_setup":
-          return await this.handlePinSetupStep(telegramId, input, session);
-
+          return await this.handlePinSetupStep(
+            channel,
+            channelKey,
+            input,
+            session
+          );
         default:
           return {
             success: false,
@@ -117,23 +204,62 @@ class AuthService {
     }
   }
 
-  /**
-   * Step 1: Business Name
-   */
-  async handleBusinessNameStep(telegramId, businessName, session) {
-    const trimmedName = businessName.trim();
+  async handleUsernameStep(channel, channelKey, usernameInput, session) {
+    const validation = this.validateUsername(usernameInput);
+    if (!validation.valid) {
+      return {
+        success: false,
+        step: "username",
+        message: `*${validation.message}*\n\n_Please enter a valid username:_`,
+      };
+    }
 
-    // Validate business name
+    const username = normalizeUsername(usernameInput);
+    const existing = await this.findShopByUsername(username);
+    if (existing) {
+      return {
+        success: false,
+        step: "username",
+        message:
+          "*Username already taken*\n\n" +
+          `"${username}" is already registered.\n\n` +
+          "_Please choose a different username:_",
+      };
+    }
+
+    const nextData = { ...(session.data || {}), username };
+    await SessionStore.upsertRegistration(channel, channelKey, {
+      step: "business_name",
+      data: nextData,
+      startTime: session.startTime,
+    });
+
+    return {
+      success: true,
+      step: "business_name",
+      message:
+        `*"${username}" is available!*\n\n` +
+        "*Step 2 of 4: Business Name*\n\n" +
+        "What is your business name?\n\n" +
+        "*Examples:*\n" +
+        "• Mike's Electronics\n" +
+        "• City Pharmacy\n" +
+        "• Corner Store\n\n" +
+        "_(Type your business name below)_",
+    };
+  }
+
+  async handleBusinessNameStep(channel, channelKey, businessName, session) {
+    const trimmedName = businessName.trim();
     const validation = this.validateBusinessName(trimmedName);
     if (!validation.valid) {
       return {
         success: false,
         step: "business_name",
-        message: `❌ *${validation.message}*\n\n_Please enter a valid business name:_`,
+        message: `*${validation.message}*\n\n_Please enter a valid business name:_`,
       };
     }
 
-    // Check if name already exists
     const existing = await Shop.findOne({
       businessName: { $regex: new RegExp(`^${trimmedName}$`, "i") },
     });
@@ -153,11 +279,8 @@ class AuthService {
       };
     }
 
-    // Save and proceed to next step
     const nextData = { ...(session.data || {}), businessName: trimmedName };
-    session.data = nextData;
-    session.step = "business_description";
-    await SessionStore.upsertRegistration(telegramId, {
+    await SessionStore.upsertRegistration(channel, channelKey, {
       step: "business_description",
       data: nextData,
       startTime: session.startTime,
@@ -168,24 +291,23 @@ class AuthService {
       step: "business_description",
       message:
         `*"${trimmedName}" is available!*\n\n` +
-        "*Step 2 of 3: Business Description*\n\n" +
+        "*Step 3 of 4: Business Description*\n\n" +
         "Briefly describe what you sell.\n\n" +
         "*Examples:*\n" +
         "• Electronics and gadgets\n" +
         "• Pharmacy and health products\n" +
-        "• General goods and groceries\n" +
-        "• Clothing and accessories\n\n" +
+        "• General goods and groceries\n\n" +
         "_(Type your description below)_",
     };
   }
 
-  /**
-   * Step 2: Business Description
-   */
-  async handleBusinessDescriptionStep(telegramId, description, session) {
+  async handleBusinessDescriptionStep(
+    channel,
+    channelKey,
+    description,
+    session
+  ) {
     const trimmedDescription = description.trim();
-
-    // Validate description
     const validation = this.validateBusinessDescription(trimmedDescription);
     if (!validation.valid) {
       return {
@@ -195,14 +317,11 @@ class AuthService {
       };
     }
 
-    // Save and proceed to PIN setup
     const nextData = {
       ...(session.data || {}),
       businessDescription: trimmedDescription,
     };
-    session.data = nextData;
-    session.step = "pin_setup";
-    await SessionStore.upsertRegistration(telegramId, {
+    await SessionStore.upsertRegistration(channel, channelKey, {
       step: "pin_setup",
       data: nextData,
       startTime: session.startTime,
@@ -213,23 +332,18 @@ class AuthService {
       step: "pin_setup",
       message:
         "*Great description!*\n\n" +
-        "*Step 3 of 3: Create PIN*\n\n" +
+        "*Step 4 of 4: Create PIN*\n\n" +
         "Create a 4-digit PIN to secure your account.\n\n" +
         "*Important:*\n" +
         "• Use exactly 4 digits\n" +
         "• Avoid simple PINs like 1234 or 0000\n" +
-        "• Remember this PIN - you'll need it to login\n\n" +
+        "• Same username + PIN work on web, Telegram, and WhatsApp\n\n" +
         "_(Enter your 4-digit PIN)_",
     };
   }
 
-  /**
-   * Step 3: PIN Setup and Complete Registration
-   */
-  async handlePinSetupStep(telegramId, pin, session) {
+  async handlePinSetupStep(channel, channelKey, pin, session) {
     const trimmedPin = pin.trim();
-
-    // Validate PIN
     const validation = this.validatePin(trimmedPin);
     if (!validation.valid) {
       return {
@@ -241,91 +355,181 @@ class AuthService {
       };
     }
 
-    // Hash the PIN
-    const hashedPin = await bcrypt.hash(trimmedPin, 12);
-
-    // Create the shop
-    const shop = new Shop({
-      telegramId: session.data.telegramId,
+    const result = await this.registerAccount({
+      username: session.data.username,
       businessName: session.data.businessName,
       businessDescription: session.data.businessDescription,
-      pin: hashedPin,
-      isActive: true,
-      registeredAt: new Date(),
-      settings: {
-        currency: "USD",
-        timezone: "Africa/Harare",
-        lowStockAlert: 10,
-      },
+      pin: trimmedPin,
+      channel,
+      channelKey,
     });
 
-    await shop.save();
+    await SessionStore.deleteRegistration(channel, channelKey);
 
-    // Clear registration session
-    await SessionStore.deleteRegistration(telegramId);
-
-    // Auto-login
-    const sessionToken = this.generateSessionToken();
-    await SessionStore.upsertLoginSession(telegramId, {
-      sessionToken,
-      shopId: shop._id,
-      loginTime: new Date(),
-    });
+    if (!result.success) {
+      return result;
+    }
 
     return {
       success: true,
       completed: true,
+      sessionToken: result.sessionToken,
+      shop: result.shop,
       message:
-        "🎉 *Registration Complete!*\n\n" +
+        "*Registration Complete!*\n\n" +
         `Welcome to *${session.data.businessName}*!\n\n` +
+        `Username: \`${session.data.username}\`\n\n` +
+        "Use this username + PIN on web, Telegram, and WhatsApp.\n\n" +
         "*Quick Start:*\n" +
-        "• /help - See all commands\n\n" +
-        "_You're now logged in and ready to go!_",
-      shop: shop.toObject(),
+        "• help - See all commands\n\n" +
+        "_You're logged in and ready to go!_",
     };
   }
 
   /**
-   * Get registration status
+   * One-shot or API registration. Optionally binds the current messaging channel.
    */
-  async getRegistrationStatus(telegramId) {
-    const session = await SessionStore.getRegistration(telegramId);
+  async registerAccount({
+    username,
+    businessName,
+    businessDescription = "General merchandise",
+    pin,
+    channel = null,
+    channelKey = null,
+  }) {
+    const usernameValidation = this.validateUsername(username);
+    if (!usernameValidation.valid) {
+      return { success: false, message: usernameValidation.message };
+    }
+
+    const nameValidation = this.validateBusinessName(businessName);
+    if (!nameValidation.valid) {
+      return { success: false, message: nameValidation.message };
+    }
+
+    const descValidation = this.validateBusinessDescription(businessDescription);
+    if (!descValidation.valid) {
+      return { success: false, message: descValidation.message };
+    }
+
+    const pinValidation = this.validatePin(pin);
+    if (!pinValidation.valid) {
+      return { success: false, message: pinValidation.message };
+    }
+
+    const normalized = normalizeUsername(username);
+    const existingUser = await this.findShopByUsername(normalized);
+    if (existingUser) {
+      return {
+        success: false,
+        message: "Username already taken.",
+      };
+    }
+
+    if (channel && channelKey && channel !== "web") {
+      const linked = await this.findShopByChannel(channel, channelKey);
+      if (linked) {
+        return {
+          success: false,
+          message: "This chat is already linked to a shop.",
+        };
+      }
+    }
+
+    const hashedPin = await bcrypt.hash(pin, 12);
+    const channels = {};
+    if (channel === "telegram" && channelKey) {
+      channels.telegramChatId = String(channelKey);
+    }
+    if (channel === "whatsapp" && channelKey) {
+      channels.whatsappPhone = String(channelKey);
+    }
+
+    let shop;
+    try {
+      shop = await Shop.create({
+        username: normalized,
+        businessName: businessName.trim(),
+        businessDescription: businessDescription.trim(),
+        pin: hashedPin,
+        channels,
+        isActive: true,
+        registeredAt: new Date(),
+        settings: {
+          currency: "USD",
+          timezone: "Africa/Harare",
+          lowStockAlert: 10,
+        },
+      });
+    } catch (error) {
+      if (error?.code === 11000) {
+        return {
+          success: false,
+          message: "Username or channel is already registered.",
+        };
+      }
+      throw error;
+    }
+
+    const sessionChannel = channel || "web";
+    const { sessionToken } = await this.openChannelSession(
+      shop,
+      sessionChannel,
+      channelKey
+    );
+
+    return {
+      success: true,
+      sessionToken,
+      shop: shop.toObject(),
+      message: "Registration complete.",
+    };
+  }
+
+  async getRegistrationStatus(channel, channelKey) {
+    const session = await SessionStore.getRegistration(channel, channelKey);
     if (!session) return null;
 
     const stepNames = {
+      username: "Username",
       business_name: "Business Name",
       business_description: "Business Description",
       pin_setup: "PIN Setup",
     };
 
     const stepNumbers = {
-      business_name: 1,
-      business_description: 2,
-      pin_setup: 3,
+      username: 1,
+      business_name: 2,
+      business_description: 3,
+      pin_setup: 4,
     };
 
     return {
       currentStep: session.step,
       stepName: stepNames[session.step],
       stepNumber: stepNumbers[session.step],
-      totalSteps: 3,
+      totalSteps: 4,
       data: {
+        username: session.data.username || null,
         businessName: session.data.businessName || null,
         businessDescription: session.data.businessDescription || null,
       },
     };
   }
 
-  /**
-   * Login with PIN
-   */
-  async login(telegramId, pin) {
-    try {
-      // Find shop first (needed for DB-backed lockout)
-      const shop = await Shop.findOne({ telegramId });
+  // ==========================================
+  // LOGIN / LOGOUT
+  // ==========================================
 
-      // Check rate limiting against shop fields
-      const rateLimitCheck = await this.checkRateLimit(shop, telegramId);
+  /**
+   * Universal login: username + PIN.
+   * Messaging channels bind on first successful login.
+   */
+  async loginWithCredentials({ username, pin, channel, channelKey }) {
+    try {
+      const shop = await this.findShopByUsername(username);
+
+      const rateLimitCheck = await this.checkRateLimit(shop);
       if (!rateLimitCheck.allowed) {
         return rateLimitCheck;
       }
@@ -335,17 +539,15 @@ class AuthService {
           success: false,
           message:
             "*Account not found*\n\n" +
-            "No business registered with this Telegram account.\n\n" +
-            "New user? Use /register to create your business.",
+            "No shop with that username.\n\n" +
+            "New user? Use `register` to create your business.",
         };
       }
 
-      // Verify PIN
       const validPin = await bcrypt.compare(pin, shop.pin);
       if (!validPin) {
         await this.recordFailedAttempt(shop);
         const attemptsLeft = this.maxAttempts - (shop.loginAttempts || 0);
-
         return {
           success: false,
           message:
@@ -361,39 +563,38 @@ class AuthService {
         };
       }
 
-      // Create session
-      const sessionToken = this.generateSessionToken();
-      await SessionStore.upsertLoginSession(telegramId, {
-        sessionToken,
-        shopId: shop._id,
-        loginTime: new Date(),
-      });
+      if (channel === "telegram" || channel === "whatsapp") {
+        const bind = await this.bindChannel(shop, channel, channelKey);
+        if (!bind.ok) {
+          return { success: false, message: bind.message };
+        }
+      }
 
-      // Update shop — clear lockout + mark active
+      const { sessionToken } = await this.openChannelSession(
+        shop,
+        channel,
+        channelKey
+      );
+
       shop.lastLogin = new Date();
       shop.loginAttempts = 0;
       shop.lockedUntil = null;
-      shop.isActive = true;
       await shop.save();
 
-      // Get greeting
       const greeting = this.getTimeBasedGreeting();
 
       return {
         success: true,
         sessionToken,
+        shop: shop.toObject(),
         message:
           `${greeting}\n\n` +
-          `Welcome back to *${shop.businessName}*\n\n` +
-          `Last login: ${
-            shop.lastLogin ? this.formatLastLogin(shop.lastLogin) : "First time"
-          }\n\n` +
+          `Welcome back to *${shop.businessName}* (@${shop.username})\n\n` +
           "*Quick Actions:*\n" +
-          "• /sell - Record a sale\n" +
-          "• /daily - View today's report\n" +
-          "• /profile - Manage your profile\n" +
-          "• /help - See all commands",
-        shop: shop.toObject(),
+          "• sell - Record a sale\n" +
+          "• daily - View today's report\n" +
+          "• profile - Manage your profile\n" +
+          "• help - See all commands",
       };
     } catch (error) {
       console.error("[AuthService] Login error:", error);
@@ -405,11 +606,58 @@ class AuthService {
   }
 
   /**
-   * Logout
+   * PIN-only login — only when this channel is already linked to a shop.
    */
-  async logout(telegramId) {
+  async loginWithPinOnly({ pin, channel, channelKey }) {
+    const shop = await this.findShopByChannel(channel, channelKey);
+    if (!shop) {
+      return {
+        success: false,
+        message:
+          "*Chat not linked yet*\n\n" +
+          "Sign in with your username and PIN to link this chat:\n\n" +
+          "`login your_username 1234`",
+      };
+    }
+
+    return this.loginWithCredentials({
+      username: shop.username,
+      pin,
+      channel,
+      channelKey,
+    });
+  }
+
+  /** @deprecated Prefer loginWithCredentials / loginWithPinOnly */
+  async login(usernameOrChannelKey, pin, channelCtx) {
+    if (channelCtx?.channel) {
+      if (this.validateUsername(usernameOrChannelKey).valid) {
+        return this.loginWithCredentials({
+          username: usernameOrChannelKey,
+          pin,
+          channel: channelCtx.channel,
+          channelKey: channelCtx.channelKey,
+        });
+      }
+      return this.loginWithPinOnly({
+        pin,
+        channel: channelCtx.channel,
+        channelKey: channelCtx.channelKey,
+      });
+    }
+
+    // API-style: first arg is username, channel defaults to web
+    return this.loginWithCredentials({
+      username: usernameOrChannelKey,
+      pin,
+      channel: "web",
+      channelKey: null,
+    });
+  }
+
+  async logout(channel, channelKey) {
     try {
-      const session = await SessionStore.getLoginSession(telegramId);
+      const session = await SessionStore.getLoginSession(channel, channelKey);
 
       if (!session) {
         return {
@@ -418,21 +666,23 @@ class AuthService {
         };
       }
 
-      const shop = await Shop.findOne({ telegramId });
+      const shop = session.shopId
+        ? await Shop.findById(session.shopId)
+        : await this.findShopByChannel(channel, channelKey);
+
       if (shop) {
         shop.lastLogout = new Date();
-        shop.isActive = false;
         await shop.save();
       }
 
-      await SessionStore.deleteLoginSession(telegramId);
+      await SessionStore.deleteLoginSession(channel, channelKey);
 
       return {
         success: true,
         message:
           "*Logged out successfully!*\n\n" +
           (shop ? `Goodbye from *${shop.businessName}*!\n\n` : "") +
-          "Use /login to access your account again.",
+          "Use `login <username> <pin>` to access your account again.",
       };
     } catch (error) {
       console.error("[AuthService] Logout error:", error);
@@ -443,30 +693,50 @@ class AuthService {
     }
   }
 
-  /**
-   * Get business profile data
-   */
-  async getProfile(telegramId) {
+  async logoutByToken(sessionToken) {
+    const session = await SessionStore.getLoginSessionByToken(sessionToken);
+    if (!session) {
+      return {
+        success: false,
+        message: "Not logged in.",
+      };
+    }
+    return this.logout(session.channel, session.channelKey);
+  }
+
+  // ==========================================
+  // PROFILE
+  // ==========================================
+
+  async getProfile(channel, channelKey) {
     try {
-      const shop = await Shop.findOne({ telegramId });
+      const shop =
+        (await this.getAuthenticatedShop(channel, channelKey)) ||
+        (await this.findShopByChannel(channel, channelKey));
 
       if (!shop) {
         return {
           success: false,
-          message: "*Profile not found*\n\nNo account found for this user.",
+          message: "*Profile not found*\n\nNo account found for this chat.",
         };
       }
 
-      const session = await SessionStore.getLoginSession(telegramId);
-      const isLoggedIn = !!session;
+      const session = await SessionStore.getLoginSession(channel, channelKey);
+      const isLoggedIn = Boolean(session);
 
       let profileMessage = "*Your Profile*\n\n";
+      profileMessage += `*Username:* ${shop.username}\n`;
       profileMessage += `*Business Name:* ${shop.businessName}\n`;
       profileMessage += `*Description:* ${
         shop.businessDescription || "Not set"
       }\n`;
       profileMessage += `*PIN:* ${shop.pin ? "••••" : "Not set"}\n\n`;
-
+      profileMessage += `*Telegram:* ${
+        shop.channels?.telegramChatId ? "Linked" : "Not linked"
+      }\n`;
+      profileMessage += `*WhatsApp:* ${
+        shop.channels?.whatsappPhone ? "Linked" : "Not linked"
+      }\n\n`;
       profileMessage += `*Registered:* ${shop.registeredAt.toLocaleDateString()}\n`;
       profileMessage += `*Last Login:* ${
         shop.lastLogin ? this.formatLastLogin(shop.lastLogin) : "Never"
@@ -474,29 +744,25 @@ class AuthService {
       profileMessage += `*Status:* ${
         isLoggedIn ? "Logged In" : "Logged Out"
       }\n\n`;
-
-      if (shop.settings?.currency) {
-        profileMessage += `*Currency:* ${shop.settings.currency}\n`;
-      }
-      if (shop.settings?.timezone) {
-        profileMessage += `*Timezone:* ${shop.settings.timezone}\n`;
-      }
-
-      profileMessage += `\n*Edit Profile:*\n`;
+      profileMessage += `*Edit Profile:*\n`;
       profileMessage += `• /profile edit name "New Name"\n`;
       profileMessage += `• /profile edit description "New Description"\n`;
-      profileMessage += `• /profile edit pin\n\n`;
-      profileMessage += `*Commands:* Type /help for all commands`;
+      profileMessage += `• /profile edit pin\n`;
 
       return {
         success: true,
         message: profileMessage,
         profile: {
+          username: shop.username,
           businessName: shop.businessName,
           businessDescription: shop.businessDescription,
           registeredAt: shop.registeredAt,
           lastLogin: shop.lastLogin,
           isLoggedIn,
+          channels: {
+            telegramLinked: Boolean(shop.channels?.telegramChatId),
+            whatsappLinked: Boolean(shop.channels?.whatsappPhone),
+          },
         },
       };
     } catch (error) {
@@ -508,29 +774,40 @@ class AuthService {
     }
   }
 
-  /**
-   * Start PIN change process (requires old PIN first for security)
-   */
-  async startPinChange(telegramId) {
+  async getProfileByShop(shop, { isLoggedIn = true } = {}) {
+    return {
+      success: true,
+      profile: {
+        username: shop.username,
+        businessName: shop.businessName,
+        businessDescription: shop.businessDescription,
+        registeredAt: shop.registeredAt,
+        lastLogin: shop.lastLogin,
+        isLoggedIn,
+        channels: {
+          telegramLinked: Boolean(shop.channels?.telegramChatId),
+          whatsappLinked: Boolean(shop.channels?.whatsappPhone),
+        },
+      },
+    };
+  }
+
+  async startPinChange(channel, channelKey) {
     try {
-      // Must be logged in to change PIN
-      if (!(await this.isAuthenticated(telegramId))) {
+      if (!(await this.isAuthenticated(channel, channelKey))) {
         return {
           success: false,
-          message: "*Please login first*\n\nUse /login to access your account.",
+          message:
+            "*Please login first*\n\nUse `login <username> <pin>` to access your account.",
         };
       }
 
-      const shop = await Shop.findOne({ telegramId });
+      const shop = await this.getAuthenticatedShop(channel, channelKey);
       if (!shop) {
-        return {
-          success: false,
-          message: "*Profile not found*",
-        };
+        return { success: false, message: "*Profile not found*" };
       }
 
-      // Start PIN change session
-      await SessionStore.upsertPinChange(telegramId, {
+      await SessionStore.upsertPinChange(channel, channelKey, {
         step: "old_pin",
         startTime: new Date(),
       });
@@ -553,12 +830,9 @@ class AuthService {
     }
   }
 
-  /**
-   * Process PIN change steps
-   */
-  async processPinChange(telegramId, input) {
+  async processPinChange(channel, channelKey, input) {
     try {
-      const session = await SessionStore.getPinChange(telegramId);
+      const session = await SessionStore.getPinChange(channel, channelKey);
 
       if (!session) {
         return {
@@ -568,19 +842,14 @@ class AuthService {
         };
       }
 
-      // Check for cancellation
       if (input.toLowerCase().trim() === "cancel") {
-        await SessionStore.deletePinChange(telegramId);
-        return {
-          success: false,
-          message: "*PIN change cancelled*",
-        };
+        await SessionStore.deletePinChange(channel, channelKey);
+        return { success: false, message: "*PIN change cancelled*" };
       }
 
-      // Check timeout (10 minutes)
       const started = new Date(session.startTime).getTime();
       if (Date.now() - started > this.pinChangeTimeout) {
-        await SessionStore.deletePinChange(telegramId);
+        await SessionStore.deletePinChange(channel, channelKey);
         return {
           success: false,
           message:
@@ -588,19 +857,14 @@ class AuthService {
         };
       }
 
-      const shop = await Shop.findOne({ telegramId });
+      const shop = await this.getAuthenticatedShop(channel, channelKey);
       if (!shop) {
-        await SessionStore.deletePinChange(telegramId);
-        return {
-          success: false,
-          message: "*Profile not found*",
-        };
+        await SessionStore.deletePinChange(channel, channelKey);
+        return { success: false, message: "*Profile not found*" };
       }
 
-      // Step 1: Verify old PIN
       if (session.step === "old_pin") {
         const oldPin = input.trim();
-
         if (!/^\d{4}$/.test(oldPin)) {
           return {
             success: false,
@@ -613,7 +877,6 @@ class AuthService {
           };
         }
 
-        // Verify old PIN
         const isValid = await bcrypt.compare(oldPin, shop.pin);
         if (!isValid) {
           return {
@@ -626,9 +889,7 @@ class AuthService {
           };
         }
 
-        // Move to new PIN step
-        session.step = "new_pin";
-        await SessionStore.upsertPinChange(telegramId, {
+        await SessionStore.upsertPinChange(channel, channelKey, {
           step: "new_pin",
           startTime: session.startTime,
         });
@@ -640,19 +901,12 @@ class AuthService {
             "*Current PIN Verified*\n\n" +
             "*Step 2 of 2: Enter New PIN*\n\n" +
             "Please choose a new 4-digit PIN.\n\n" +
-            "*Weak PIN examples to avoid:*\n" +
-            "• 1234, 4321\n" +
-            "• 0000, 1111\n" +
-            "• 0123, 3210\n\n" +
             "Type `cancel` to abort",
         };
       }
 
-      // Step 2: Set new PIN
       if (session.step === "new_pin") {
         const newPin = input.trim();
-
-        // Validate new PIN
         const validation = this.validatePin(newPin);
         if (!validation.valid) {
           return {
@@ -665,7 +919,6 @@ class AuthService {
           };
         }
 
-        // Check if same as old PIN
         const isSameAsOld = await bcrypt.compare(newPin, shop.pin);
         if (isSameAsOld) {
           return {
@@ -678,13 +931,9 @@ class AuthService {
           };
         }
 
-        // Hash and save new PIN
-        const hashedPin = await bcrypt.hash(newPin, 12);
-        shop.pin = hashedPin;
+        shop.pin = await bcrypt.hash(newPin, 12);
         await shop.save();
-
-        // Clear session
-        await SessionStore.deletePinChange(telegramId);
+        await SessionStore.deletePinChange(channel, channelKey);
 
         return {
           success: true,
@@ -692,8 +941,7 @@ class AuthService {
           message:
             "*PIN Changed Successfully!*\n\n" +
             "Your new PIN has been saved.\n\n" +
-            "Use your new PIN for future logins.\n\n" +
-            "*Security Tip:* Keep your PIN confidential!",
+            "Use your new PIN for future logins on all platforms.",
         };
       }
 
@@ -703,7 +951,7 @@ class AuthService {
       };
     } catch (error) {
       console.error("[AuthService] Process PIN change error:", error);
-      await SessionStore.deletePinChange(telegramId);
+      await SessionStore.deletePinChange(channel, channelKey);
       return {
         success: false,
         message: "Failed to process PIN change. Please try again.",
@@ -711,33 +959,29 @@ class AuthService {
     }
   }
 
-  /**
-   * Update business name
-   */
-  async updateBusinessName(telegramId, newName) {
+  async updateBusinessName(channel, channelKey, newName) {
     try {
-      // Must be logged in
-      if (!(await this.isAuthenticated(telegramId))) {
+      if (!(await this.isAuthenticated(channel, channelKey))) {
         return {
           success: false,
-          message: "*Please login first*\n\nUse /login to access your account.",
+          message:
+            "*Please login first*\n\nUse `login <username> <pin>` to access your account.",
         };
       }
 
       const trimmedName = newName.trim();
-
-      // Validate name
       const validation = this.validateBusinessName(trimmedName);
       if (!validation.valid) {
-        return {
-          success: false,
-          message: `*${validation.message}*`,
-        };
+        return { success: false, message: `*${validation.message}*` };
       }
 
-      // Check uniqueness (exclude current user)
+      const shop = await this.getAuthenticatedShop(channel, channelKey);
+      if (!shop) {
+        return { success: false, message: "*Profile not found*" };
+      }
+
       const existing = await Shop.findOne({
-        telegramId: { $ne: telegramId },
+        _id: { $ne: shop._id },
         businessName: new RegExp(`^${trimmedName}$`, "i"),
       });
 
@@ -751,15 +995,6 @@ class AuthService {
         };
       }
 
-      // Update name
-      const shop = await Shop.findOne({ telegramId });
-      if (!shop) {
-        return {
-          success: false,
-          message: "*Profile not found*",
-        };
-      }
-
       const oldName = shop.businessName;
       shop.businessName = trimmedName;
       await shop.save();
@@ -769,49 +1004,36 @@ class AuthService {
         message:
           "*Business Name Updated!*\n\n" +
           `Old Name: ${oldName}\n` +
-          `New Name: ${trimmedName}\n\n` +
-          "Your business name has been changed successfully!",
+          `New Name: ${trimmedName}`,
       };
     } catch (error) {
       console.error("[AuthService] Update business name error:", error);
       return {
         success: false,
-        message: "❌ Failed to update business name. Please try again.",
+        message: "Failed to update business name. Please try again.",
       };
     }
   }
 
-  /**
-   * Update business description
-   */
-  async updateBusinessDescription(telegramId, newDescription) {
+  async updateBusinessDescription(channel, channelKey, newDescription) {
     try {
-      // Must be logged in
-      if (!(await this.isAuthenticated(telegramId))) {
+      if (!(await this.isAuthenticated(channel, channelKey))) {
         return {
           success: false,
-          message: "*Please login first*\n\nUse /login to access your account.",
+          message:
+            "*Please login first*\n\nUse `login <username> <pin>` to access your account.",
         };
       }
 
       const trimmedDescription = newDescription.trim();
-
-      // Validate description
       const validation = this.validateBusinessDescription(trimmedDescription);
       if (!validation.valid) {
-        return {
-          success: false,
-          message: `*${validation.message}*`,
-        };
+        return { success: false, message: `*${validation.message}*` };
       }
 
-      // Update description
-      const shop = await Shop.findOne({ telegramId });
+      const shop = await this.getAuthenticatedShop(channel, channelKey);
       if (!shop) {
-        return {
-          success: false,
-          message: "*Profile not found*",
-        };
+        return { success: false, message: "*Profile not found*" };
       }
 
       const oldDescription = shop.businessDescription || "Not set";
@@ -823,8 +1045,7 @@ class AuthService {
         message:
           "*Business Description Updated!*\n\n" +
           `Old: ${oldDescription}\n` +
-          `New: ${trimmedDescription}\n\n` +
-          "Your business description has been updated!",
+          `New: ${trimmedDescription}`,
       };
     } catch (error) {
       console.error("[AuthService] Update description error:", error);
@@ -835,15 +1056,45 @@ class AuthService {
     }
   }
 
-  /**
-   * Get PIN change status (check if in progress)
-   */
-  async getPinChangeStatus(telegramId) {
-    const session = await SessionStore.getPinChange(telegramId);
-
-    if (!session) {
-      return null;
+  /** Profile updates for already-authenticated API (shop document). */
+  async updateBusinessNameForShop(shop, newName) {
+    const trimmedName = newName.trim();
+    const validation = this.validateBusinessName(trimmedName);
+    if (!validation.valid) {
+      return { success: false, message: validation.message };
     }
+
+    const existing = await Shop.findOne({
+      _id: { $ne: shop._id },
+      businessName: new RegExp(`^${trimmedName}$`, "i"),
+    });
+    if (existing) {
+      return {
+        success: false,
+        message: "Business name already taken.",
+      };
+    }
+
+    shop.businessName = trimmedName;
+    await shop.save();
+    return { success: true, message: "Business name updated.", shop };
+  }
+
+  async updateBusinessDescriptionForShop(shop, newDescription) {
+    const trimmedDescription = newDescription.trim();
+    const validation = this.validateBusinessDescription(trimmedDescription);
+    if (!validation.valid) {
+      return { success: false, message: validation.message };
+    }
+
+    shop.businessDescription = trimmedDescription;
+    await shop.save();
+    return { success: true, message: "Business description updated.", shop };
+  }
+
+  async getPinChangeStatus(channel, channelKey) {
+    const session = await SessionStore.getPinChange(channel, channelKey);
+    if (!session) return null;
 
     return {
       step: session.step,
@@ -855,124 +1106,126 @@ class AuthService {
   }
 
   // ==========================================
-  // SESSION & AUTHENTICATION METHODS
+  // SESSION
   // ==========================================
 
-  /**
-   * Check if user is authenticated (persisted session)
-   */
-  async isAuthenticated(telegramId) {
-    const session = await SessionStore.getLoginSession(telegramId);
+  async isAuthenticated(channel, channelKey) {
+    const session = await SessionStore.getLoginSession(channel, channelKey);
     if (!session) return false;
 
     const now = Date.now();
-    const lastActivity = new Date(session.lastActivity).getTime();
+    const lastActivity = new Date(
+      session.lastActivity || session.loginTime
+    ).getTime();
 
     if (now - lastActivity > this.sessionTimeout) {
-      await SessionStore.deleteLoginSession(telegramId);
+      await SessionStore.deleteLoginSession(channel, channelKey);
       return false;
     }
 
     return true;
   }
 
-  /**
-   * Create or refresh a login session (used by commandService auto-login paths)
-   */
-  async createLoginSession(telegramId, shopId) {
-    const sessionToken = this.generateSessionToken();
-    await SessionStore.upsertLoginSession(telegramId, {
-      sessionToken,
-      shopId,
-      loginTime: new Date(),
-    });
+  async createLoginSession(shopId, channel, channelKey) {
+    const shop = await Shop.findById(shopId);
+    if (!shop) throw new Error("Shop not found");
+    const { sessionToken } = await this.openChannelSession(
+      shop,
+      channel,
+      channelKey
+    );
     return sessionToken;
   }
 
-  /**
-   * Update session activity
-   */
-  async updateActivity(telegramId) {
-    await SessionStore.touchLoginSession(telegramId);
+  async updateActivity(channel, channelKey) {
+    await SessionStore.touchLoginSession(channel, channelKey);
   }
 
-  /**
-   * Get authenticated shop
-   */
-  async getAuthenticatedShop(telegramId) {
-    if (!(await this.isAuthenticated(telegramId))) {
+  async getAuthenticatedShop(channel, channelKey) {
+    if (!(await this.isAuthenticated(channel, channelKey))) {
       return null;
     }
-    return await Shop.findOne({ telegramId });
+    const session = await SessionStore.getLoginSession(channel, channelKey);
+    if (!session?.shopId) return null;
+    return Shop.findById(session.shopId);
   }
 
   // ==========================================
-  // VALIDATION METHODS
+  // VALIDATION
   // ==========================================
 
-  /**
-   * Validate business name
-   */
+  validateUsername(username) {
+    const normalized = normalizeUsername(username);
+    if (!normalized) {
+      return { valid: false, message: "Username cannot be empty" };
+    }
+    if (normalized.length < 3) {
+      return {
+        valid: false,
+        message: "Username must be at least 3 characters",
+      };
+    }
+    if (normalized.length > 32) {
+      return {
+        valid: false,
+        message: "Username must be at most 32 characters",
+      };
+    }
+    if (!/^[a-z0-9_]+$/.test(normalized)) {
+      return {
+        valid: false,
+        message:
+          "Username may only contain lowercase letters, numbers, and underscores",
+      };
+    }
+    return { valid: true };
+  }
+
   validateBusinessName(name) {
     if (!name || name.trim().length === 0) {
       return { valid: false, message: "Business name cannot be empty" };
     }
-
     const trimmed = name.trim();
-
     if (trimmed.length < 2) {
       return {
         valid: false,
         message: "Business name must be at least 2 characters",
       };
     }
-
     if (trimmed.length > 50) {
       return {
         valid: false,
         message: "Business name must be less than 50 characters",
       };
     }
-
     return { valid: true };
   }
 
-  /**
-   * Validate business description
-   */
   validateBusinessDescription(description) {
     if (!description || description.trim().length === 0) {
       return { valid: false, message: "Description cannot be empty" };
     }
-
     const trimmed = description.trim();
-
     if (trimmed.length < 10) {
       return {
         valid: false,
         message: "Description must be at least 10 characters",
       };
     }
-
     if (trimmed.length > 500) {
       return {
         valid: false,
         message: "Description must be less than 500 characters",
       };
     }
-
     return { valid: true };
   }
 
-  /**
-   * Validate PIN
-   */
   validatePin(pin) {
     if (!/^\d{4}$/.test(pin)) {
       return { valid: false, message: "PIN must be exactly 4 digits" };
     }
 
-    // Check for weak patterns
     const weakPatterns = [
       "0000",
       "1111",
@@ -1001,13 +1254,10 @@ class AuthService {
   }
 
   // ==========================================
-  // RATE LIMITING METHODS
+  // RATE LIMITING
   // ==========================================
 
-  /**
-   * Check rate limit using Shop.loginAttempts / lockedUntil
-   */
-  async checkRateLimit(shop, telegramId) {
+  async checkRateLimit(shop) {
     if (!shop) return { allowed: true };
 
     const now = new Date();
@@ -1024,12 +1274,10 @@ class AuthService {
           `Too many failed login attempts.\n\n` +
           `Try again in ${remainingMin} minute${
             remainingMin !== 1 ? "s" : ""
-          }.\n\n` +
-          "Contact support if you've forgotten your PIN.",
+          }.`,
       };
     }
 
-    // Clear expired lockout
     if (shop.lockedUntil && shop.lockedUntil <= now) {
       shop.loginAttempts = 0;
       shop.lockedUntil = null;
@@ -1039,47 +1287,32 @@ class AuthService {
     return { allowed: true };
   }
 
-  /**
-   * Record failed login attempt on the Shop document
-   */
   async recordFailedAttempt(shop) {
     if (!shop) return;
 
     shop.loginAttempts = (shop.loginAttempts || 0) + 1;
-
     if (shop.loginAttempts >= this.maxAttempts) {
       shop.lockedUntil = new Date(Date.now() + this.lockoutDuration);
     }
-
     await shop.save();
   }
 
   // ==========================================
-  // UTILITY METHODS
+  // UTILITY
   // ==========================================
 
-  /**
-   * Generate session token
-   */
   generateSessionToken() {
     return crypto.randomBytes(32).toString("hex");
   }
 
-  /**
-   * Get time-based greeting
-   */
   getTimeBasedGreeting() {
     const hour = new Date().getHours();
-
     if (hour < 12) return "Good morning!";
     if (hour < 17) return "Good afternoon!";
     if (hour < 21) return "Good evening!";
     return "Good night!";
   }
 
-  /**
-   * Format last login time
-   */
   formatLastLogin(lastLogin) {
     const now = new Date();
     const diff = now - new Date(lastLogin);
@@ -1093,7 +1326,6 @@ class AuthService {
     if (days < 7) return `${days} day${days !== 1 ? "s" : ""} ago`;
     return lastLogin.toLocaleDateString();
   }
-
 }
 
 export default new AuthService();

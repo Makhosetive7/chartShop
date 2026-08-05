@@ -2,6 +2,11 @@ import crypto from "crypto";
 import ActivityLog from "../models/ActivityLog.js";
 import Shop from "../models/Shop.js";
 import { stripMarkdown } from "../utils/apiResponse.js";
+import {
+  normalizeUsername,
+  resolveChannelIdentity,
+  shopChannelQuery,
+} from "../utils/channelIdentity.js";
 
 export function detectChannel(userId, explicit) {
   if (explicit) return explicit;
@@ -16,9 +21,22 @@ function truncate(text, max = 280) {
 }
 
 class ActivityService {
-  async resolveShopId(userId, shopId) {
+  async resolveShopId(userId, shopId, channel) {
     if (shopId) return shopId;
-    const shop = await Shop.findOne({ telegramId: userId }).select("_id");
+
+    const username = normalizeUsername(userId);
+    if (username && /^[a-z0-9_]{3,32}$/.test(username)) {
+      const byUsername = await Shop.findOne({ username }).select("_id");
+      if (byUsername) return byUsername._id;
+    }
+
+    const { channel: ch, channelKey } = resolveChannelIdentity(
+      userId,
+      channel
+    );
+    const query = shopChannelQuery(ch, channelKey);
+    if (!query) return null;
+    const shop = await Shop.findOne(query).select("_id");
     return shop?._id || null;
   }
 
@@ -34,7 +52,11 @@ class ActivityService {
     requestId = null,
   }) {
     try {
-      const resolvedShopId = await this.resolveShopId(userId, shopId);
+      const resolvedShopId = await this.resolveShopId(
+        userId,
+        shopId,
+        channel
+      );
       if (!resolvedShopId) {
         return null;
       }

@@ -56,7 +56,7 @@ function request(server, { method = "GET", path, body, token } = {}) {
 
 describe("API v1", () => {
   let server;
-  let userId;
+  let username;
   let pin;
   let shop;
 
@@ -79,18 +79,18 @@ describe("API v1", () => {
     pin = "4829";
     const created = await createTestShop({ pin });
     shop = created.shop;
-    userId = created.telegramId;
+    username = created.username;
   });
 
   afterEach(async () => {
-    await wipeShopData({ shopId: shop._id, telegramId: userId });
+    await wipeShopData({ shopId: shop._id, username });
   });
 
   it("login → create product → cash sale → daily", async () => {
     const bad = await request(server, {
       method: "POST",
       path: "/api/v1/auth/login",
-      body: { userId, pin: "0000" },
+      body: { username, pin: "0000" },
     });
     assert.equal(bad.status, 401);
     assert.equal(bad.body.success, false);
@@ -98,13 +98,14 @@ describe("API v1", () => {
     const login = await request(server, {
       method: "POST",
       path: "/api/v1/auth/login",
-      body: { userId, pin },
+      body: { username, pin },
     });
     assert.equal(login.status, 200);
     assert.equal(login.body.success, true);
     assert.ok(login.body.token);
     assert.equal(login.body.shop.businessName, shop.businessName);
     assert.equal(login.body.shop.pin, undefined);
+    assert.equal(login.body.shop.username, username);
 
     const token = login.body.token;
 
@@ -113,7 +114,7 @@ describe("API v1", () => {
       token,
     });
     assert.equal(me.status, 200);
-    assert.equal(me.body.shop.userId, userId);
+    assert.equal(me.body.shop.username, username);
 
     const created = await request(server, {
       method: "POST",
@@ -199,7 +200,7 @@ describe("API v1", () => {
     const login = await request(server, {
       method: "POST",
       path: "/api/v1/auth/login",
-      body: { userId, pin },
+      body: { username, pin },
     });
     assert.equal(login.status, 200);
     const token = login.body.token;
@@ -299,23 +300,28 @@ describe("API v1", () => {
   });
 
   it("registers a new shop via API", async () => {
-    const newUserId = `api-reg-${Date.now()}`;
+    const newUsername = `api_reg_${Date.now().toString(36)}`;
     const reg = await request(server, {
       method: "POST",
       path: "/api/v1/auth/register",
       body: {
-        userId: newUserId,
+        username: newUsername,
         businessName: `API Shop ${Date.now()}`,
         pin: "4829",
+        businessDescription: "General merchandise for API register test",
       },
     });
-    assert.equal(reg.status, 201);
+    assert.equal(
+      reg.status,
+      201,
+      `register failed: ${JSON.stringify(reg.body)}`
+    );
     assert.ok(reg.body.token);
-    assert.equal(reg.body.shop.userId, newUserId);
+    assert.equal(reg.body.shop.username, newUsername);
 
     await wipeShopData({
       shopId: reg.body.shop.id,
-      telegramId: newUserId,
+      username: newUsername,
     });
   });
 });

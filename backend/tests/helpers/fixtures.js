@@ -6,23 +6,50 @@ import Customer from "../../models/Customer.js";
 
 let counter = 0;
 
-export function uniqueTelegramId(prefix = "p4") {
+export function uniqueUsername(prefix = "shop") {
   counter += 1;
-  return `${prefix}_${Date.now()}_${counter}_${crypto.randomBytes(4).toString("hex")}`;
+  const suffix = `${Date.now().toString(36)}${counter}${crypto
+    .randomBytes(2)
+    .toString("hex")}`;
+  return `${prefix}_${suffix}`.slice(0, 32).toLowerCase();
+}
+
+/** @deprecated Use uniqueUsername — kept for older test call sites. */
+export function uniqueTelegramId(prefix = "p4") {
+  return uniqueUsername(prefix);
 }
 
 export async function createTestShop(overrides = {}) {
-  const telegramId = overrides.telegramId || uniqueTelegramId();
+  const username = normalizeOverrideUsername(
+    overrides.username || overrides.telegramId
+  );
   const pin = overrides.pin || "4829";
   const hashedPin = await bcrypt.hash(pin, 10);
 
+  const channels = {
+    telegramChatId: overrides.telegramChatId || null,
+    whatsappPhone: overrides.whatsappPhone || null,
+    ...(overrides.channels || {}),
+  };
+
+  // Convenience: if caller still passes telegramId as a chat id, link it.
+  if (overrides.telegramId && !overrides.username && !channels.telegramChatId) {
+    const raw = String(overrides.telegramId);
+    if (raw.startsWith("wa:")) {
+      channels.whatsappPhone = raw.slice(3);
+    } else if (/^\d+$/.test(raw)) {
+      channels.telegramChatId = raw;
+    }
+  }
+
   const shop = await Shop.create({
-    telegramId,
+    username,
     businessName: overrides.businessName || "Phase4 Test Shop",
     businessDescription:
       overrides.businessDescription ||
       "Phase four golden path test shop description",
     pin: hashedPin,
+    channels,
     isActive: true,
     settings: {
       currency: "USD",
@@ -32,7 +59,19 @@ export async function createTestShop(overrides = {}) {
     },
   });
 
-  return { shop, telegramId, pin };
+  return {
+    shop,
+    username: shop.username,
+    telegramId: shop.username, // legacy alias used by older tests
+    pin,
+  };
+}
+
+function normalizeOverrideUsername(value) {
+  if (value && /^[a-z0-9_]{3,32}$/i.test(String(value))) {
+    return String(value).toLowerCase();
+  }
+  return uniqueUsername();
 }
 
 export async function createTestProduct(shopId, overrides = {}) {

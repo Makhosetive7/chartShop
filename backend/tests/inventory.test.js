@@ -35,7 +35,7 @@ describe("InventoryService stock atomics", () => {
   });
 
   afterEach(async () => {
-    await wipeShopData({ shopId: shop._id, telegramId: shop.telegramId });
+    await wipeShopData({ shopId: shop._id, username: shop.username });
   });
 
   it("deducts stock when quantity is available", async () => {

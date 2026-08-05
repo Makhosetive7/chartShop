@@ -38,12 +38,16 @@ api.interceptors.response.use(
 
 export type Shop = {
   id: string;
-  userId: string;
+  username: string;
   businessName: string;
   businessDescription?: string;
   isActive?: boolean;
   settings?: Record<string, unknown>;
   lastLogin?: string;
+  channels?: {
+    telegramLinked?: boolean;
+    whatsappLinked?: boolean;
+  };
 };
 
 export type LoginResponse = {

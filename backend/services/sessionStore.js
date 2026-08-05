@@ -8,25 +8,38 @@ function ttlDate(msFromNow) {
   return new Date(Date.now() + msFromNow);
 }
 
+function identityFilter(channel, channelKey, type) {
+  return { channel, channelKey: String(channelKey), type };
+}
+
 /**
  * Mongo-backed auth session helpers (login / registration / PIN change).
+ * Keys are (channel, channelKey) so web + Telegram + WhatsApp can coexist.
  */
 class SessionStore {
-  async get(telegramId, type) {
-    return AuthSession.findOne({ telegramId, type });
+  async get(channel, channelKey, type) {
+    return AuthSession.findOne(identityFilter(channel, channelKey, type));
   }
 
-  async delete(telegramId, type) {
-    await AuthSession.deleteOne({ telegramId, type });
+  async delete(channel, channelKey, type) {
+    await AuthSession.deleteOne(identityFilter(channel, channelKey, type));
   }
 
-  async upsertLoginSession(telegramId, { sessionToken, shopId, loginTime }) {
+  async upsertLoginSession({
+    channel,
+    channelKey,
+    sessionToken,
+    shopId,
+    loginTime,
+  }) {
     const now = new Date();
+    const key = String(channelKey);
     return AuthSession.findOneAndUpdate(
-      { telegramId, type: "session" },
+      identityFilter(channel, key, "session"),
       {
         $set: {
-          telegramId,
+          channel,
+          channelKey: key,
           type: "session",
           sessionToken,
           shopId,
@@ -40,10 +53,10 @@ class SessionStore {
     );
   }
 
-  async touchLoginSession(telegramId) {
+  async touchLoginSession(channel, channelKey) {
     const now = new Date();
     return AuthSession.findOneAndUpdate(
-      { telegramId, type: "session" },
+      identityFilter(channel, channelKey, "session"),
       {
         lastActivity: now,
         expireAt: ttlDate(SESSION_TTL_MS),
@@ -52,8 +65,20 @@ class SessionStore {
     );
   }
 
-  async getLoginSession(telegramId) {
-    return this.get(telegramId, "session");
+  async touchLoginSessionByToken(sessionToken) {
+    const now = new Date();
+    return AuthSession.findOneAndUpdate(
+      { type: "session", sessionToken },
+      {
+        lastActivity: now,
+        expireAt: ttlDate(SESSION_TTL_MS),
+      },
+      { new: true }
+    );
+  }
+
+  async getLoginSession(channel, channelKey) {
+    return this.get(channel, channelKey, "session");
   }
 
   async getLoginSessionByToken(sessionToken) {
@@ -61,22 +86,29 @@ class SessionStore {
     return AuthSession.findOne({ type: "session", sessionToken });
   }
 
-  async deleteLoginSession(telegramId) {
-    return this.delete(telegramId, "session");
+  async deleteLoginSession(channel, channelKey) {
+    return this.delete(channel, channelKey, "session");
   }
 
-  async upsertRegistration(telegramId, { step, data, startTime }) {
+  async deleteLoginSessionByToken(sessionToken) {
+    if (!sessionToken) return;
+    await AuthSession.deleteOne({ type: "session", sessionToken });
+  }
+
+  async upsertRegistration(channel, channelKey, { step, data, startTime }) {
     const started =
       startTime instanceof Date
         ? startTime
         : startTime
           ? new Date(startTime)
           : new Date();
+    const key = String(channelKey);
 
     return AuthSession.findOneAndUpdate(
-      { telegramId, type: "registration" },
+      identityFilter(channel, key, "registration"),
       {
-        telegramId,
+        channel,
+        channelKey: key,
         type: "registration",
         step,
         data: data || {},
@@ -87,26 +119,28 @@ class SessionStore {
     );
   }
 
-  async getRegistration(telegramId) {
-    return this.get(telegramId, "registration");
+  async getRegistration(channel, channelKey) {
+    return this.get(channel, channelKey, "registration");
   }
 
-  async deleteRegistration(telegramId) {
-    return this.delete(telegramId, "registration");
+  async deleteRegistration(channel, channelKey) {
+    return this.delete(channel, channelKey, "registration");
   }
 
-  async upsertPinChange(telegramId, { step, startTime, data }) {
+  async upsertPinChange(channel, channelKey, { step, startTime, data }) {
     const started =
       startTime instanceof Date
         ? startTime
         : startTime
           ? new Date(startTime)
           : new Date();
+    const key = String(channelKey);
 
     return AuthSession.findOneAndUpdate(
-      { telegramId, type: "pin_change" },
+      identityFilter(channel, key, "pin_change"),
       {
-        telegramId,
+        channel,
+        channelKey: key,
         type: "pin_change",
         step,
         data: data || {},
@@ -117,18 +151,14 @@ class SessionStore {
     );
   }
 
-  async getPinChange(telegramId) {
-    return this.get(telegramId, "pin_change");
+  async getPinChange(channel, channelKey) {
+    return this.get(channel, channelKey, "pin_change");
   }
 
-  async deletePinChange(telegramId) {
-    return this.delete(telegramId, "pin_change");
+  async deletePinChange(channel, channelKey) {
+    return this.delete(channel, channelKey, "pin_change");
   }
 }
 
-export {
-  SESSION_TTL_MS,
-  REGISTRATION_TTL_MS,
-  PIN_CHANGE_TTL_MS,
-};
+export { SESSION_TTL_MS, REGISTRATION_TTL_MS, PIN_CHANGE_TTL_MS };
 export default new SessionStore();

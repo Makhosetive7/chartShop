@@ -39,12 +39,16 @@ export async function sendChatMessage(req, res) {
     }
 
     const requestId = crypto.randomUUID();
-    const response = await commandService.processCommand(req.userId, message);
+    const response = await commandService.processCommand(
+      req.channelKey || req.sessionToken,
+      message,
+      "web"
+    );
     const reply = normalizeReply(response);
 
     await ActivityService.logChatTurn({
       shopId: req.shopId,
-      userId: req.userId,
+      userId: req.username || req.userId,
       channel: "web",
       input: message,
       reply: reply.text,

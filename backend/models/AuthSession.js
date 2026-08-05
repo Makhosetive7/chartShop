@@ -2,11 +2,19 @@ import mongoose from "mongoose";
 
 /**
  * Persisted auth state: login sessions, registration flow, PIN change flow.
+ * Login sessions are per channel (web / telegram / whatsapp), not per shop alone.
  * Mongo TTL index on expireAt auto-deletes expired docs.
  */
 const authSessionSchema = new mongoose.Schema(
   {
-    telegramId: {
+    channel: {
+      type: String,
+      enum: ["telegram", "whatsapp", "web"],
+      required: true,
+      index: true,
+    },
+    /** Transport key: telegram chat id, wa phone, or web session key. */
+    channelKey: {
       type: String,
       required: true,
       index: true,
@@ -16,7 +24,6 @@ const authSessionSchema = new mongoose.Schema(
       enum: ["session", "registration", "pin_change"],
       required: true,
     },
-    // Login session
     sessionToken: String,
     shopId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -24,14 +31,12 @@ const authSessionSchema = new mongoose.Schema(
     },
     loginTime: Date,
     lastActivity: Date,
-    // Registration / PIN-change flow
     step: String,
     data: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
     startTime: Date,
-    // TTL field — Mongo deletes when expireAt < now
     expireAt: {
       type: Date,
       required: true,
@@ -40,8 +45,12 @@ const authSessionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-authSessionSchema.index({ telegramId: 1, type: 1 }, { unique: true });
+authSessionSchema.index(
+  { channel: 1, channelKey: 1, type: 1 },
+  { unique: true }
+);
 authSessionSchema.index({ sessionToken: 1 }, { sparse: true });
+authSessionSchema.index({ shopId: 1, type: 1 });
 authSessionSchema.index({ expireAt: 1 }, { expireAfterSeconds: 0 });
 
 export default mongoose.model("AuthSession", authSessionSchema);

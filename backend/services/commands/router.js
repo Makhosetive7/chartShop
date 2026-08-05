@@ -1,5 +1,5 @@
-import Shop from "../../models/Shop.js";
 import AuthService from "../AuthService.js";
+import { resolveChannelIdentity } from "../../utils/channelIdentity.js";
 
 import {
   handleRegister,
@@ -63,45 +63,69 @@ import {
 import { getHelpText } from "./handlers/help.js";
 
 /**
- * Single entry: match Telegram text → domain handler.
+ * Single entry: match chat/web text → domain handler.
+ * @param {string} actorId - telegram chat id, wa:<phone>, or web session key
+ * @param {string} text
+ * @param {string} [channelHint] - "telegram" | "whatsapp" | "web"
  */
-async function processCommand(telegramId, text) {
+async function processCommand(actorId, text, channelHint) {
+  const { channel, channelKey } = resolveChannelIdentity(actorId, channelHint);
+  const ctx = { channel, channelKey };
   const command = text.trim().toLowerCase();
 
-  if (command.startsWith("register") || command === "register") {
-    return await handleRegister(telegramId, text);
+  if (command === "help") {
+    return getHelpText();
   }
 
-  const regStatus = await AuthService.getRegistrationStatus(telegramId);
+  if (command.startsWith("register") || command === "register") {
+    return await handleRegister(ctx, text);
+  }
+
+  const regStatus = await AuthService.getRegistrationStatus(channel, channelKey);
   if (regStatus && !command.startsWith("/")) {
-    const result = await AuthService.processRegistrationStep(telegramId, text);
+    const result = await AuthService.processRegistrationStep(
+      channel,
+      channelKey,
+      text
+    );
     return result.message;
   }
 
-  const pinChangeStatus = await AuthService.getPinChangeStatus(telegramId);
+  const pinChangeStatus = await AuthService.getPinChangeStatus(
+    channel,
+    channelKey
+  );
   if (pinChangeStatus && !command.startsWith("/")) {
-    const result = await AuthService.processPinChange(telegramId, text);
+    const result = await AuthService.processPinChange(channel, channelKey, text);
     return result.message;
   }
 
   if (command.startsWith("login") || command === "login") {
-    return await handleLogin(telegramId, text);
+    return await handleLogin(ctx, text);
+  }
+
+  // Bare PIN while a linked chat is waiting after "login" prompt
+  if (
+    /^\d{4}$/.test(command) &&
+    !(await AuthService.isAuthenticated(channel, channelKey))
+  ) {
+    return await handleLogin(ctx, text);
   }
 
   if (command === "logout") {
-    return await handleLogout(telegramId);
+    return await handleLogout(ctx);
   }
 
   if (command === "account" || command === "profile") {
-    return await handleAccount(telegramId);
+    return await handleAccount(ctx);
   }
 
   if (command === "status") {
-    return await handleStatus(telegramId);
+    return await handleStatus(ctx);
   }
 
-  if (command === "/profile" || command === "profile") {
-    const result = await AuthService.getProfile(telegramId);
+  if (command === "/profile") {
+    const result = await AuthService.getProfile(channel, channelKey);
     return result.message;
   }
 
@@ -109,29 +133,37 @@ async function processCommand(telegramId, text) {
     command.startsWith("/profile edit name") ||
     command.startsWith("profile edit name")
   ) {
-    return await handleProfileEditName(telegramId, text);
+    return await handleProfileEditName(ctx, text);
   }
 
   if (
     command.startsWith("/profile edit description") ||
     command.startsWith("profile edit description")
   ) {
-    return await handleProfileEditDescription(telegramId, text);
+    return await handleProfileEditDescription(ctx, text);
   }
 
   if (command === "/profile edit pin" || command === "profile edit pin") {
-    return await handleProfileEditPin(telegramId);
+    return await handleProfileEditPin(ctx);
   }
 
-  if (!(await AuthService.isAuthenticated(telegramId))) {
-    return `*Welcome to Chart Shop!*\n\nHi there! You need to be logged in.\n\n*To get started:*\n• Register: \`register\`\n• Login: \`login\`\n\nNeed help? Type *help*`;
+  if (!(await AuthService.isAuthenticated(channel, channelKey))) {
+    return (
+      `*Welcome to Chart Shop!*\n\n` +
+      `Hi there! You need to be logged in.\n\n` +
+      `*To get started:*\n` +
+      `• Register: \`register\`\n` +
+      `• Login: \`login your_username 1234\`\n\n` +
+      `Same username + PIN work on web, Telegram, and WhatsApp.\n\n` +
+      `Need help? Type *help*`
+    );
   }
 
-  await AuthService.updateActivity(telegramId);
+  await AuthService.updateActivity(channel, channelKey);
 
-  const shop = await Shop.findOne({ telegramId, isActive: true });
-  if (!shop) {
-    return `*Session Error*\n\nPlease login again: \`login\``;
+  const shop = await AuthService.getAuthenticatedShop(channel, channelKey);
+  if (!shop || shop.isActive === false) {
+    return `*Session Error*\n\nPlease login again: \`login your_username 1234\``;
   }
 
   if (command.startsWith("sell to")) {
@@ -268,10 +300,6 @@ async function processCommand(telegramId, text) {
 
   if (command.startsWith("profit")) {
     return await handleProfitCalculation(shop._id, text);
-  }
-
-  if (command === "help") {
-    return getHelpText();
   }
 
   return `Unknown command. Type "help" for available commands.`;

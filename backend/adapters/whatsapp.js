@@ -3,8 +3,8 @@ import { handleInboundMessage } from "./inbound.js";
 
 /**
  * WhatsApp Cloud API adapter.
- * Shop identity uses `wa:<phone>` so it shares Auth/command routing
- * without colliding with numeric Telegram chat ids.
+ * Inbound actor id is `wa:<phone>`; AuthService stores phone on
+ * Shop.channels.whatsappPhone and resolves the shop by username login.
  */
 function getConfig() {
   return {

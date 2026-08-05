@@ -2,6 +2,8 @@
 
 > Business management for SMEs — Telegram & WhatsApp chat POS, plus a web dashboard.
 
+**One shop account. Same login everywhere.** Register once with a **username** and **4-digit PIN**, then use those credentials on web, Telegram, and WhatsApp. All three surfaces share the same products, sales, customers, and reports.
+
 ## Monorepo layout
 
 ```
@@ -45,14 +47,50 @@ npm run test:frontend
 
 ---
 
+## Authentication (web · Telegram · WhatsApp)
+
+| | |
+|---|---|
+| **Identity** | `username` (3–32 chars: `a-z`, `0-9`, `_`) |
+| **Secret** | 4-digit PIN |
+| **Account** | One `Shop` document in MongoDB |
+| **Channels** | Telegram chat id and WhatsApp phone are *linked metadata*, not separate logins |
+
+### How to sign in
+
+| Platform | Register | Login |
+|----------|----------|-------|
+| **Web** | `/register` — username, shop name, PIN | `/login` — username + PIN |
+| **Telegram / WhatsApp** | `register tinasales "My Shop" 4829` or `register` (step-by-step) | `login tinasales 4829` |
+| **Linked chat only** | — | `login 4829` (after that chat is already linked) |
+
+First successful `login <username> <pin>` on Telegram or WhatsApp **binds that chat** to the shop. After that, the same books appear on every platform. You can stay logged in on web + Telegram + WhatsApp at the same time; logout ends only that channel’s session.
+
+API auth uses `username` + `pin` and returns a Bearer token:
+
+```bash
+curl -s http://localhost:3000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"tinasales","pin":"4829"}'
+```
+
+Migrating an older DB that still used `telegramId` as the account key:
+
+```bash
+cd backend && node scripts/migrateUsernameAuth.js
+```
+
+---
+
 ## Overview (chat bot)
 
-**ChatShop Business Bot** is a Telegram-based business management system designed specifically for Small and Medium Enterprises (SMEs). Built with Node.js and MongoDB, it provides practical shop-ops features through a simple chat interface.
+**ChatShop Business Bot** is a Telegram- and WhatsApp-based business management system for SMEs, with a matching web dashboard. Built with Node.js and MongoDB, it provides practical shop-ops features through chat and the browser — same account on every channel.
 
 ### Why ChatShop?
 
 - **Zero Learning Curve** - Natural language commands
 - **Mobile-First** - Works on any smartphone
+- **Same account everywhere** - Web, Telegram, and WhatsApp share one shop
 - **Real-Time** - Instant updates and notifications
 - **Professional** - PDF reports for accountants and company owners
 - **Cost-Effective** - Free and open source
@@ -86,7 +124,7 @@ npm run test:frontend
 - Flexible pricing for negotiations
 - Sales cancellation and refunds
 - Credit management for customers
-- PIN-based login per Telegram account
+- Username + PIN login shared across web, Telegram, and WhatsApp
 - Low stock alerts and notifications
 
 ---
@@ -95,23 +133,29 @@ npm run test:frontend
 
 ### Prerequisites
 
-- Telegram account
+- Telegram and/or WhatsApp, or a browser for the web app
 - Internet connection
 - Basic business data (products, prices)
 
-### Quick Start (3 Steps)
+### Quick Start
 
-#### Access the Bot
+#### Option A — Web
+
+1. Open `http://localhost:5173/register` (with backend + frontend running)
+2. Choose a **username**, shop name, and **4-digit PIN**
+3. Sign in later at `/login` with the same credentials
+
+#### Option B — Telegram
 
 Visit: [@CHART_SHOP_bot](https://t.me/CHART_SHOP_Bot) or click [here](https://t.me/CHART_SHOP_Bot)
 
-#### Register Your Business
-
 ```
-register "My Shop Name" password(****)
+register tinasales "My Shop Name" 4829
 ```
 
-#### Add Products & Start Selling
+Or type `register` and follow the steps (username → shop name → description → PIN).
+
+#### Add products & sell
 
 ```
 add bread 2.50 stock 100
@@ -119,7 +163,9 @@ add milk 3.20 stock 50 threshold 10
 sell 2 bread 1 milk
 ```
 
-**That's it!** You're now running your business through Telegram.
+#### Use another platform
+
+On WhatsApp or web, sign in with the **same** `tinasales` + `4829` — you get the same shop data.
 
 ---
 
@@ -221,11 +267,16 @@ sell 2 bread 1 milk
 
 ### Account Management
 
-| Command       | Description                 | Example      |
-| ------------- | --------------------------- | ------------ |
-| `login [pin]` | Access your account         | `login 1234` |
-| `logout`      | Secure logout               | `logout`     |
-| `help`        | Show complete command guide | `help`       |
+| Command | Description | Example |
+| ------- | ----------- | ------- |
+| `register [username] "Shop" [pin]` | Create shop and link this chat | `register tinasales "My Shop" 4829` |
+| `register` | Step-by-step setup (username → shop → PIN) | `register` |
+| `login [username] [pin]` | Sign in and link this chat if needed | `login tinasales 4829` |
+| `login [pin]` | PIN-only (chat must already be linked) | `login 4829` |
+| `logout` | End this channel’s session | `logout` |
+| `account` / `profile` | View account (includes linked channels) | `account` |
+| `status` | Registration / login status | `status` |
+| `help` | Show command guide | `help` |
 
 ---
 
@@ -361,9 +412,11 @@ NET PROFIT: $1,075.00
 
 ### Access Control
 
-- **PIN-based Authentication**: Secure business access with 4-digit PIN
-- **Session Management**: Automatic logout after inactivity
-- **Data Encryption**: All data transmitted securely
+- **Username + PIN**: One credential pair for web, Telegram, and WhatsApp
+- **Channel linking**: First `login username pin` on a chat binds that transport to the shop
+- **Per-channel sessions**: Concurrent web + chat logins; logout is channel-local
+- **Session TTL**: Automatic expiry after inactivity
+- **Rate limiting**: Failed PIN attempts lock the account briefly
 
 ### Privacy Features
 
@@ -485,7 +538,7 @@ git push origin feature/amazing-feature
 
 ### For Business Owners
 
-- Telegram account (free)
+- Telegram, WhatsApp, and/or a web browser
 - Smartphone or computer
 - Internet connection
 - Basic business data (products, prices)
@@ -548,9 +601,10 @@ git push origin feature/amazing-feature
 
 ### Get Started in 3 Steps
 
-1. **Access**: Visit [@CHART_SHOP_bot](https://t.me/CHART_SHOP_bot)
-2. **Register**: `register "Your Business" 1234`
-3. **Start Selling**: `sell 2 bread 1 milk`
+1. **Register** on web or Telegram with a username + PIN  
+   (`register tinasales "Your Business" 4829`)
+2. **Add stock**: `add bread 2.50 stock 100`
+3. **Sell anywhere**: same account on web, Telegram, or WhatsApp
 
 ---
 
@@ -565,3 +619,4 @@ Built for small businesses worldwide
 - [MongoDB](https://www.mongodb.com/) - Database
 - [PDFKit](https://pdfkit.org/) - PDF generation
 - [Railway](https://railway.app/) - Hosting platform
+- [Vite](https://vitejs.dev/) / [React](https://react.dev/) - Web dashboard

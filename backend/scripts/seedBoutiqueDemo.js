@@ -5,8 +5,8 @@
  *   node scripts/seedBoutiqueDemo.js
  *
  * Login afterwards:
- *   userId: boutique_demo
- *   pin:    4829
+ *   username: boutique_demo
+ *   pin:      4829
  */
 import "dotenv/config";
 import mongoose from "mongoose";
@@ -83,7 +83,7 @@ async function main() {
   await mongoose.connect(uri);
   console.log("Connected to MongoDB");
 
-  const existing = await Shop.findOne({ telegramId: USER_ID });
+  const existing = await Shop.findOne({ username: USER_ID });
   if (existing) {
     const shopId = existing._id;
     await Promise.all([
@@ -100,11 +100,12 @@ async function main() {
   const registeredAt = addDays(new Date(), -(YEARS * 365 + 14));
 
   const shop = await Shop.create({
-    telegramId: USER_ID,
+    username: USER_ID,
     businessName: BUSINESS_NAME,
     businessDescription:
       "Women's clothing boutique — dresses, separates, and accessories.",
     pin: hashedPin,
+    channels: {},
     isActive: true,
     registeredAt,
     createdAt: registeredAt,
@@ -283,7 +284,7 @@ async function main() {
   console.log("\nSeed complete");
   console.log("────────────────────────────");
   console.log(`Shop:     ${BUSINESS_NAME}`);
-  console.log(`User ID:  ${USER_ID}`);
+  console.log(`Username: ${USER_ID}`);
   console.log(`PIN:      ${PIN}`);
   console.log(`Products: ${products.length}`);
   console.log(`Customers:${customers.length}`);

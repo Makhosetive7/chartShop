@@ -2,6 +2,8 @@
 
 Vite + React + TypeScript web dashboard for ChartShop.
 
+Uses the same **username + PIN** as Telegram and WhatsApp. Sign up at `/register`, sign in at `/login`. The API expects `{ username, pin }` on `/api/v1/auth/*` (see root README and `backend/scripts/WEB_API_V1.md`).
+
 ## Stack
 
 - Vite, React 19, TypeScript
@@ -31,10 +33,10 @@ npm run dev
 
 ## Scripts
 
-| Script | Purpose |
-|--------|---------|
-| `npm run dev` | Vite dev server |
-| `npm run build` | Production build |
-| `npm run test` | Vitest |
-| `npm run lint` | ESLint + oxlint |
-| `npm run format` | Prettier |
+| Script           | Purpose          |
+| ---------------- | ---------------- |
+| `npm run dev`    | Vite dev server  |
+| `npm run build`  | Production build |
+| `npm run test`   | Vitest           |
+| `npm run lint`   | ESLint + oxlint  |
+| `npm run format` | Prettier         |
