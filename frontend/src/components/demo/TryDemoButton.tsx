@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { X } from 'lucide-react';
@@ -15,26 +16,27 @@ type Props = {
 const Scrim = styled.div`
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 200;
   background: rgba(20, 8, 8, 0.48);
   display: grid;
-  place-items: end center;
+  place-items: center;
   padding: 16px;
   padding-bottom: max(16px, env(safe-area-inset-bottom));
-
-  @media (min-width: 640px) {
-    place-items: center;
-  }
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 `;
 
 const Panel = styled.div`
   width: min(480px, 100%);
-  overflow: hidden;
+  max-height: min(90vh, 640px);
+  overflow-x: hidden;
+  overflow-y: auto;
   background: ${({ theme }) => theme.colors.surface};
   border: 1px solid ${({ theme }) => theme.colors.border};
   box-shadow: ${({ theme }) => theme.shadows.card};
   padding: 16px 14px 14px;
   position: relative;
+  margin: auto;
 `;
 
 const Close = styled.button`
@@ -193,6 +195,81 @@ export function TryDemoButton({
     }
   }
 
+  const dialog =
+    open ? (
+      <Scrim
+        role="presentation"
+        onClick={(event) => {
+          if (event.target === event.currentTarget && !pending) setOpen(false);
+        }}
+      >
+        <Panel
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="demo-sector-title"
+        >
+          <Close
+            type="button"
+            aria-label="Close"
+            onClick={() => !pending && setOpen(false)}
+          >
+            <X size={18} />
+          </Close>
+          <Eyebrow>Try before you register</Eyebrow>
+          <Title id="demo-sector-title">Pick a shop sector</Title>
+          <Lead>
+            Sample tills by sector. Read-only — register when you want to save.
+          </Lead>
+
+          {loadingList ? (
+            <Lead>Loading demos…</Lead>
+          ) : (
+            <Grid>
+              {demos.map((demo) => (
+                <SectorBtn
+                  key={demo.id}
+                  type="button"
+                  $active={selected === demo.id}
+                  $disabled={!demo.available}
+                  disabled={!demo.available}
+                  onClick={() => setSelected(demo.id)}
+                >
+                  <strong>{demo.label}</strong>
+                  <span>
+                    {demo.blurb}
+                    {!demo.available ? ' (not seeded yet)' : ''}
+                  </span>
+                </SectorBtn>
+              ))}
+            </Grid>
+          )}
+
+          {error ? <ErrorText>{error}</ErrorText> : null}
+
+          <Actions>
+            <Button
+              type="button"
+              variant="filled"
+              size="sm"
+              disabled={pending || !selected || loadingList}
+              onClick={() => void confirm()}
+            >
+              {pending ? 'Opening demo…' : 'Enter demo'}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={pending}
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </Button>
+          </Actions>
+        </Panel>
+      </Scrim>
+    ) : null;
+
   return (
     <Fallback>
       <ArrowButton
@@ -204,79 +281,9 @@ export function TryDemoButton({
         {children}
       </ArrowButton>
 
-      {open ? (
-        <Scrim
-          role="presentation"
-          onClick={(event) => {
-            if (event.target === event.currentTarget && !pending) setOpen(false);
-          }}
-        >
-          <Panel
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="demo-sector-title"
-          >
-            <Close
-              type="button"
-              aria-label="Close"
-              onClick={() => !pending && setOpen(false)}
-            >
-              <X size={18} />
-            </Close>
-            <Eyebrow>Try before you register</Eyebrow>
-            <Title id="demo-sector-title">Pick a shop sector</Title>
-            <Lead>
-              Sample tills by sector. Read-only — register when you want to save.
-            </Lead>
-
-            {loadingList ? (
-              <Lead>Loading demos…</Lead>
-            ) : (
-              <Grid>
-                {demos.map((demo) => (
-                  <SectorBtn
-                    key={demo.id}
-                    type="button"
-                    $active={selected === demo.id}
-                    $disabled={!demo.available}
-                    disabled={!demo.available}
-                    onClick={() => setSelected(demo.id)}
-                  >
-                    <strong>{demo.label}</strong>
-                    <span>
-                      {demo.blurb}
-                      {!demo.available ? ' (not seeded yet)' : ''}
-                    </span>
-                  </SectorBtn>
-                ))}
-              </Grid>
-            )}
-
-            {error ? <ErrorText>{error}</ErrorText> : null}
-
-            <Actions>
-              <Button
-                type="button"
-                variant="filled"
-                size="sm"
-                disabled={pending || !selected || loadingList}
-                onClick={() => void confirm()}
-              >
-                {pending ? 'Opening demo…' : 'Enter demo'}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={pending}
-                onClick={() => setOpen(false)}
-              >
-                Cancel
-              </Button>
-            </Actions>
-          </Panel>
-        </Scrim>
-      ) : null}
+      {dialog && typeof document !== 'undefined'
+        ? createPortal(dialog, document.body)
+        : null}
     </Fallback>
   );
 }
