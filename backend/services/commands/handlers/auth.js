@@ -30,14 +30,23 @@ export async function handleRegister(ctx, text) {
       });
 
       if (!result.success) {
-        return `*Registration failed*\n\n${result.message}`;
+        const suggestions =
+          result.suggestions?.length > 0
+            ? `\n\n*Try:*\n${result.suggestions.map((s) => `• \`${s}\``).join("\n")}`
+            : "";
+        return `*Registration failed*\n\n${result.message}${suggestions}`;
       }
+
+      const codesBlock = AuthService.formatRecoveryCodesMessage(
+        result.recoveryCodes
+      );
 
       return (
         `*Registration Complete!*\n\n` +
         `${businessName} is ready!\n\n` +
         `Username: \`${username.toLowerCase()}\`\n\n` +
         `Use the same username + PIN on web, Telegram, and WhatsApp.\n\n` +
+        codesBlock +
         `*Quick Start:*\n\n` +
         `*Add Products:*\n• add bread 2.50 stock 50\n• list - View products\n\n` +
         `*Record Sales:*\n• sell 2 bread 1 milk\n• daily - View report\n\n` +
@@ -66,11 +75,12 @@ export async function handleRegister(ctx, text) {
     return (
       `*Registration Format*\n\n` +
       `*Quick Registration:*\n` +
-      `\`register your_username "Business Name" 1234\`\n\n` +
+      `\`register yourusername "Business Name" 1234\`\n\n` +
+      `*Username rules:* 3–15 lowercase letters, optional digits at the end (e.g. musa, musa7).\n\n` +
       `*Or Progressive Registration:*\n` +
       `Just type: \`register\`\n\n` +
       `*Examples:*\n` +
-      `• \`register tinasales "Family Bakery" 5678\`\n` +
+      `• \`register musa "Family Bakery" 5678\`\n` +
       `• \`register\` (step-by-step)\n\n` +
       `Same username + PIN work on web, Telegram, and WhatsApp.`
     );
@@ -313,6 +323,36 @@ export async function handleProfileEditName(ctx, text) {
   }
 }
 
+export async function handleProfileEditUsername(ctx, text) {
+  const { channel, channelKey } = ctx;
+  try {
+    const match = text.match(
+      /(?:\/)?profile\s+edit\s+username\s+([a-zA-Z0-9_]{2,32})$/i
+    );
+
+    if (!match) {
+      return (
+        "*Invalid Format*\n\n" +
+        "Use: `profile edit username newusername`\n\n" +
+        "*Rules:* 3–15 lowercase letters, optional digits at the end.\n\n" +
+        "*Examples:*\n" +
+        "• `profile edit username musa`\n" +
+        "• `profile edit username musa7`"
+      );
+    }
+
+    const result = await AuthService.updateUsername(
+      channel,
+      channelKey,
+      match[1]
+    );
+    return result.message;
+  } catch (error) {
+    console.error("[CommandService] Edit username error:", error);
+    return "Failed to update username. Please try again.";
+  }
+}
+
 export async function handleProfileEditDescription(ctx, text) {
   const { channel, channelKey } = ctx;
   try {
@@ -352,5 +392,44 @@ export async function handleProfileEditPin(ctx) {
   } catch (error) {
     console.error("[CommandService] Edit PIN error:", error);
     return "Failed to start PIN change. Please try again.";
+  }
+}
+
+/**
+ * recover <username> <code> <newPin>
+ * @param {{ channel: string, channelKey: string }} ctx
+ */
+export async function handleRecover(ctx, text) {
+  try {
+    const match = text.match(
+      /^recover\s+(\S+)\s+(\S+)\s+(\d{4})$/i
+    );
+    if (!match) {
+      return (
+        "*Recover account*\n\n" +
+        "Reset your PIN with a one-time recovery code:\n\n" +
+        "`recover yourusername cs-xxxx-xxxx 1234`\n\n" +
+        "Codes were shown once at signup (or in Settings). " +
+        "Losing your PIN and all codes may lock you out permanently."
+      );
+    }
+
+    const result = await AuthService.redeemRecoveryCode({
+      username: match[1],
+      code: match[2],
+      newPin: match[3],
+    });
+
+    if (!result.success) {
+      return `*Recovery failed*\n\n${result.message}`;
+    }
+
+    return (
+      `*PIN reset*\n\n${result.message}\n\n` +
+      `Sign in: \`login ${match[1].toLowerCase()} ${match[3]}\``
+    );
+  } catch (error) {
+    console.error("[CommandService] Recover error:", error);
+    return "Recovery failed. Please try again.";
   }
 }

@@ -54,13 +54,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applySession],
   );
 
-  const register = useCallback(
-    async (input: RegisterInput) => {
-      const result = await registerRequest(input);
-      if (!result.success || !result.token) {
-        throw new Error(result.error || 'Registration failed');
+  const register = useCallback(async (input: RegisterInput) => {
+    const result = await registerRequest(input);
+    if (!result.success || !result.token) {
+      const err = new Error(result.error || 'Registration failed') as Error & {
+        suggestions?: string[];
+      };
+      if (result.suggestions?.length) {
+        err.suggestions = result.suggestions;
       }
-      applySession(result.token, result.shop);
+      throw err;
+    }
+    // Defer session until the caller finishes the recovery-codes step.
+    return {
+      recoveryCodes: result.recoveryCodes || [],
+      token: result.token,
+      shop: result.shop,
+    };
+  }, []);
+
+  const establishSession = useCallback(
+    (nextToken: string, nextShop: Shop) => {
+      applySession(nextToken, nextShop);
     },
     [applySession],
   );
@@ -100,11 +115,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isDemo: Boolean(shop?.isDemo),
       login,
       register,
+      establishSession,
       enterDemo,
       logout,
       updateShop,
     }),
-    [token, shop, login, register, enterDemo, logout, updateShop],
+    [
+      token,
+      shop,
+      login,
+      register,
+      establishSession,
+      enterDemo,
+      logout,
+      updateShop,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

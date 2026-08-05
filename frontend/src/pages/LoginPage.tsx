@@ -60,11 +60,20 @@ export function LoginPage() {
         { label: 'Dashboard', value: 'live' },
       ]}
       footer={
-        <AuthSwitchLink
-          prompt="New shop?"
-          to="/register"
-          label="Register ChartShop"
-        />
+        <div>
+          <AuthSwitchLink
+            prompt="New shop?"
+            to="/register"
+            label="Register ChartShop"
+          />
+          <div>
+            <AuthSwitchLink
+              prompt="Forgot PIN?"
+              to="/recover"
+              label="Use a recovery code"
+            />
+          </div>
+        </div>
       }
       onSubmit={onSubmit}
       actions={

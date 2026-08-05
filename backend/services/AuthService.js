@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import Shop from "../models/Shop.js";
+import RecoveryCode from "../models/RecoveryCode.js";
 import SessionStore, {
   SESSION_TTL_MS,
   REGISTRATION_TTL_MS,
@@ -10,6 +11,18 @@ import {
   normalizeUsername,
   shopChannelQuery,
 } from "../utils/channelIdentity.js";
+import {
+  validateUsername as validateUsernamePolicy,
+  isUsernameShaped,
+  suggestUsernames,
+} from "../utils/usernamePolicy.js";
+import {
+  RECOVERY_CODE_COUNT,
+  generateRecoveryCodeBatch,
+  hashRecoveryCode,
+  normalizeRecoveryCode,
+  recoveryCodesMatch,
+} from "../utils/recoveryCodes.js";
 
 class AuthService {
   constructor() {
@@ -128,8 +141,8 @@ class AuthService {
           "*Welcome! Let's set up your business*\n\n" +
           "*Step 1 of 4: Username*\n\n" +
           "Choose a username you will use on web, Telegram, and WhatsApp.\n\n" +
-          "*Rules:* 3–32 characters, letters, numbers, underscore only.\n\n" +
-          "*Examples:* `tinasales`, `corner_shop`, `mikes_electronics`\n\n" +
+          "*Rules:* 3–15 characters, lowercase letters only, optional digits at the end.\n\n" +
+          "*Examples:* `musa`, `musa7`, `devking`\n\n" +
           "_(Type your username below)_",
       };
     } catch (error) {
@@ -207,22 +220,42 @@ class AuthService {
   async handleUsernameStep(channel, channelKey, usernameInput, session) {
     const validation = this.validateUsername(usernameInput);
     if (!validation.valid) {
+      const suggestions = await this.suggestAvailableUsernames(usernameInput);
+      const suggestionLines =
+        suggestions.length > 0
+          ? "\n*Try:*\n" +
+            suggestions.map((s) => `• \`${s}\``).join("\n") +
+            "\n\n"
+          : "\n\n";
       return {
         success: false,
         step: "username",
-        message: `*${validation.message}*\n\n_Please enter a valid username:_`,
+        suggestions,
+        message:
+          `*${validation.message}*` +
+          suggestionLines +
+          "_Please enter a valid username:_",
       };
     }
 
-    const username = normalizeUsername(usernameInput);
+    const username = validation.normalized;
     const existing = await this.findShopByUsername(username);
     if (existing) {
+      const suggestions = await this.suggestAvailableUsernames(username);
+      const suggestionLines =
+        suggestions.length > 0
+          ? "\n*Try:*\n" +
+            suggestions.map((s) => `• \`${s}\``).join("\n") +
+            "\n\n"
+          : "\n\n";
       return {
         success: false,
         step: "username",
+        suggestions,
         message:
           "*Username already taken*\n\n" +
-          `"${username}" is already registered.\n\n` +
+          `"${username}" is already registered.` +
+          suggestionLines +
           "_Please choose a different username:_",
       };
     }
@@ -370,16 +403,19 @@ class AuthService {
       return result;
     }
 
+    const codesBlock = this.formatRecoveryCodesMessage(result.recoveryCodes);
     return {
       success: true,
       completed: true,
       sessionToken: result.sessionToken,
       shop: result.shop,
+      recoveryCodes: result.recoveryCodes,
       message:
         "*Registration Complete!*\n\n" +
         `Welcome to *${session.data.businessName}*!\n\n` +
         `Username: \`${session.data.username}\`\n\n` +
         "Use this username + PIN on web, Telegram, and WhatsApp.\n\n" +
+        codesBlock +
         "*Quick Start:*\n" +
         "• help - See all commands\n\n" +
         "_You're logged in and ready to go!_",
@@ -399,7 +435,12 @@ class AuthService {
   }) {
     const usernameValidation = this.validateUsername(username);
     if (!usernameValidation.valid) {
-      return { success: false, message: usernameValidation.message };
+      const suggestions = await this.suggestAvailableUsernames(username);
+      return {
+        success: false,
+        message: usernameValidation.message,
+        suggestions,
+      };
     }
 
     const nameValidation = this.validateBusinessName(businessName);
@@ -417,12 +458,14 @@ class AuthService {
       return { success: false, message: pinValidation.message };
     }
 
-    const normalized = normalizeUsername(username);
+    const normalized = usernameValidation.normalized;
     const existingUser = await this.findShopByUsername(normalized);
     if (existingUser) {
+      const suggestions = await this.suggestAvailableUsernames(normalized);
       return {
         success: false,
         message: "Username already taken.",
+        suggestions,
       };
     }
 
@@ -463,9 +506,11 @@ class AuthService {
       });
     } catch (error) {
       if (error?.code === 11000) {
+        const suggestions = await this.suggestAvailableUsernames(normalized);
         return {
           success: false,
           message: "Username or channel is already registered.",
+          suggestions,
         };
       }
       throw error;
@@ -478,10 +523,21 @@ class AuthService {
       channelKey
     );
 
+    let recoveryCodes = [];
+    try {
+      const issued = await this.issueRecoveryCodesForShop(shop, {
+        revokeExisting: false,
+      });
+      recoveryCodes = issued.codes || [];
+    } catch (error) {
+      console.error("[AuthService] Recovery code issue on register:", error);
+    }
+
     return {
       success: true,
       sessionToken,
       shop: shop.toObject(),
+      recoveryCodes,
       message: "Registration complete.",
     };
   }
@@ -631,7 +687,8 @@ class AuthService {
   /** @deprecated Prefer loginWithCredentials / loginWithPinOnly */
   async login(usernameOrChannelKey, pin, channelCtx) {
     if (channelCtx?.channel) {
-      if (this.validateUsername(usernameOrChannelKey).valid) {
+      // Accept new + legacy usernames so grandfathered accounts still login.
+      if (isUsernameShaped(usernameOrChannelKey)) {
         return this.loginWithCredentials({
           username: usernameOrChannelKey,
           pin,
@@ -1092,6 +1149,136 @@ class AuthService {
     return { success: true, message: "Business description updated.", shop };
   }
 
+  /**
+   * Change login username (web + chat). Enforces the new registration policy.
+   * Sessions stay valid (keyed by shopId).
+   */
+  async updateUsernameForShop(shop, newUsername) {
+    if (shop?.isDemo) {
+      return {
+        success: false,
+        message: "Demo shops cannot change username.",
+      };
+    }
+
+    const validation = this.validateUsername(newUsername);
+    if (!validation.valid) {
+      const suggestions = await this.suggestAvailableUsernames(newUsername);
+      return {
+        success: false,
+        message: validation.message,
+        suggestions,
+      };
+    }
+
+    const normalized = validation.normalized;
+    if (normalized === normalizeUsername(shop.username)) {
+      return {
+        success: true,
+        message: "Username unchanged.",
+        shop,
+      };
+    }
+
+    const existing = await Shop.findOne({
+      _id: { $ne: shop._id },
+      username: normalized,
+    });
+    if (existing) {
+      const suggestions = await this.suggestAvailableUsernames(normalized);
+      return {
+        success: false,
+        message: "Username already taken.",
+        suggestions,
+      };
+    }
+
+    const previous = shop.username;
+    shop.username = normalized;
+    try {
+      await shop.save();
+    } catch (error) {
+      if (error?.code === 11000) {
+        const suggestions = await this.suggestAvailableUsernames(normalized);
+        return {
+          success: false,
+          message: "Username already taken.",
+          suggestions,
+        };
+      }
+      throw error;
+    }
+
+    return {
+      success: true,
+      message: `Username updated from @${previous} to @${normalized}.`,
+      shop,
+      previousUsername: previous,
+    };
+  }
+
+  async updateUsername(channel, channelKey, newUsername) {
+    try {
+      if (!(await this.isAuthenticated(channel, channelKey))) {
+        return {
+          success: false,
+          message:
+            "*Please login first*\n\nUse `login <username> <pin>` to access your account.",
+        };
+      }
+
+      const shop = await this.getAuthenticatedShop(channel, channelKey);
+      if (!shop) {
+        return { success: false, message: "*Profile not found*" };
+      }
+
+      if (shop.isDemo) {
+        return {
+          success: false,
+          message: "*Demo shops cannot change username.*",
+        };
+      }
+
+      const result = await this.updateUsernameForShop(shop, newUsername);
+      if (!result.success) {
+        const suggestionLines =
+          result.suggestions?.length > 0
+            ? "\n\n*Try:*\n" +
+              result.suggestions.map((s) => `• \`${s}\``).join("\n")
+            : "";
+        return {
+          success: false,
+          suggestions: result.suggestions,
+          message: `*${result.message}*${suggestionLines}`,
+        };
+      }
+
+      if (!result.previousUsername) {
+        return {
+          success: true,
+          shop: result.shop,
+          message: "*Username unchanged.*",
+        };
+      }
+
+      return {
+        success: true,
+        shop: result.shop,
+        message:
+          "*Username Updated!*\n\n" +
+          `Old: \`@${result.previousUsername}\`\n` +
+          `New: \`@${result.shop.username}\`\n\n` +
+          "Use the new username with your PIN on web, Telegram, and WhatsApp.",
+      };
+    } catch (error) {
+      console.error("[AuthService] Update username error:", error);
+      return {
+        success: false,
+        message: "Failed to update username. Please try again.",
+      };
+    }
+  }
+
   async getPinChangeStatus(channel, channelKey) {
     const session = await SessionStore.getPinChange(channel, channelKey);
     if (!session) return null;
@@ -1155,30 +1342,62 @@ class AuthService {
   // ==========================================
 
   validateUsername(username) {
-    const normalized = normalizeUsername(username);
-    if (!normalized) {
-      return { valid: false, message: "Username cannot be empty" };
-    }
-    if (normalized.length < 3) {
+    return validateUsernamePolicy(username);
+  }
+
+  async suggestAvailableUsernames(desired, count = 3) {
+    return suggestUsernames(
+      desired,
+      async (candidate) => Boolean(await this.findShopByUsername(candidate)),
+      count
+    );
+  }
+
+  /**
+   * Real-time availability check for registration UIs.
+   * @returns {{ available: boolean, username: string, valid: boolean, message?: string, suggestions?: string[] }}
+   */
+  async checkUsernameAvailability(usernameInput, { excludeShopId } = {}) {
+    const normalized = normalizeUsername(usernameInput);
+    const validation = this.validateUsername(usernameInput);
+
+    if (!validation.valid) {
+      const suggestions = await this.suggestAvailableUsernames(
+        normalized || usernameInput
+      );
       return {
+        available: false,
         valid: false,
-        message: "Username must be at least 3 characters",
+        username: normalized,
+        message: validation.message,
+        suggestions,
       };
     }
-    if (normalized.length > 32) {
+
+    const username = validation.normalized;
+    const existing = await this.findShopByUsername(username);
+    const isSelf =
+      existing &&
+      excludeShopId &&
+      String(existing._id) === String(excludeShopId);
+
+    if (existing && !isSelf) {
+      const suggestions = await this.suggestAvailableUsernames(username);
       return {
-        valid: false,
-        message: "Username must be at most 32 characters",
+        available: false,
+        valid: true,
+        username,
+        message: "Username already taken.",
+        suggestions,
       };
     }
-    if (!/^[a-z0-9_]+$/.test(normalized)) {
-      return {
-        valid: false,
-        message:
-          "Username may only contain lowercase letters, numbers, and underscores",
-      };
-    }
-    return { valid: true };
+
+    return {
+      available: true,
+      valid: true,
+      username,
+      suggestions: [],
+    };
   }
 
   validateBusinessName(name) {
@@ -1325,6 +1544,178 @@ class AuthService {
     if (hours < 24) return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
     if (days < 7) return `${days} day${days !== 1 ? "s" : ""} ago`;
     return lastLogin.toLocaleDateString();
+  }
+
+  // ==========================================
+  // RECOVERY CODES
+  // ==========================================
+
+  formatRecoveryCodesMessage(codes) {
+    if (!codes?.length) {
+      return (
+        "*Recovery codes:* unavailable — generate them in Settings on the web.\n\n"
+      );
+    }
+    const list = codes.map((c) => `• \`${c}\``).join("\n");
+    return (
+      "*Save these recovery codes now*\n" +
+      "They are shown *once*. If you lose your PIN and these codes, the account may be unrecoverable.\n\n" +
+      `${list}\n\n` +
+      "_Screenshot and store them offline, then delete this message if you can._\n\n" +
+      "Reset later: `recover yourusername cs-xxxx-xxxx 1234`\n\n"
+    );
+  }
+
+  /**
+   * Issue a new recovery-code batch. Plaintext returned once; only hashes stored.
+   * @returns {{ success: boolean, codes?: string[], remaining?: number, message?: string }}
+   */
+  async issueRecoveryCodesForShop(shop, { revokeExisting = true } = {}) {
+    if (!shop?._id) {
+      return { success: false, message: "Shop required." };
+    }
+    if (shop.isDemo) {
+      return { success: false, message: "Demo shops cannot use recovery codes." };
+    }
+
+    if (revokeExisting) {
+      await RecoveryCode.updateMany(
+        { shopId: shop._id, usedAt: null, revokedAt: null },
+        { $set: { revokedAt: new Date() } }
+      );
+    }
+
+    const batchId = crypto.randomBytes(12).toString("hex");
+    const codes = generateRecoveryCodeBatch(RECOVERY_CODE_COUNT);
+    const docs = codes.map((plain) => ({
+      shopId: shop._id,
+      codeHash: hashRecoveryCode(plain),
+      batchId,
+      createdAt: new Date(),
+      usedAt: null,
+      revokedAt: null,
+    }));
+
+    await RecoveryCode.insertMany(docs);
+
+    return {
+      success: true,
+      codes,
+      remaining: codes.length,
+      batchId,
+      message: "Recovery codes generated. Save them now — they will not be shown again.",
+    };
+  }
+
+  async getRecoveryCodeStatus(shopId) {
+    if (!shopId) {
+      return { hasCodes: false, remaining: 0, totalUnused: 0 };
+    }
+    const remaining = await RecoveryCode.countDocuments({
+      shopId,
+      usedAt: null,
+      revokedAt: null,
+    });
+    const latest = await RecoveryCode.findOne({ shopId })
+      .sort({ createdAt: -1 })
+      .select("createdAt")
+      .lean();
+
+    return {
+      hasCodes: remaining > 0,
+      remaining,
+      lastIssuedAt: latest?.createdAt || null,
+    };
+  }
+
+  /**
+   * Redeem one recovery code to set a new PIN. Invalidates all sessions.
+   */
+  async redeemRecoveryCode({ username, code, newPin }) {
+    const normalizedUser = normalizeUsername(username);
+    const normalizedCode = normalizeRecoveryCode(code);
+
+    if (!normalizedUser || !normalizedCode) {
+      return {
+        success: false,
+        message: "username and recovery code are required.",
+      };
+    }
+
+    const pinValidation = this.validatePin(newPin);
+    if (!pinValidation.valid) {
+      return { success: false, message: pinValidation.message };
+    }
+
+    const shop = await this.findShopByUsername(normalizedUser);
+    if (!shop || shop.isActive === false) {
+      return {
+        success: false,
+        message: "Invalid username or recovery code.",
+      };
+    }
+
+    if (shop.isDemo) {
+      return {
+        success: false,
+        message: "Demo shops cannot recover with codes.",
+      };
+    }
+
+    const rateLimitCheck = await this.checkRateLimit(shop);
+    if (!rateLimitCheck.allowed) {
+      return {
+        success: false,
+        message: rateLimitCheck.message?.replace(/\*/g, "") || "Too many attempts. Try again later.",
+      };
+    }
+
+    const candidates = await RecoveryCode.find({
+      shopId: shop._id,
+      usedAt: null,
+      revokedAt: null,
+    });
+
+    const codeHash = hashRecoveryCode(normalizedCode);
+    let matched = null;
+    for (const row of candidates) {
+      if (recoveryCodesMatch(row.codeHash, codeHash)) {
+        matched = row;
+        break;
+      }
+    }
+
+    if (!matched) {
+      await this.recordFailedAttempt(shop);
+      return {
+        success: false,
+        message: "Invalid username or recovery code.",
+      };
+    }
+
+    matched.usedAt = new Date();
+    await matched.save();
+
+    shop.pin = await bcrypt.hash(String(newPin).trim(), 12);
+    await shop.resetLoginAttempts();
+
+    await SessionStore.deleteLoginSessionsByShopId(shop._id);
+
+    const remaining = await RecoveryCode.countDocuments({
+      shopId: shop._id,
+      usedAt: null,
+      revokedAt: null,
+    });
+
+    return {
+      success: true,
+      remaining,
+      mustRegenerate: remaining === 0,
+      message:
+        remaining > 0
+          ? `PIN reset. ${remaining} recovery code${remaining === 1 ? "" : "s"} left. Sign in with your new PIN. Consider regenerating codes in Settings.`
+          : "PIN reset. You have no recovery codes left — sign in and generate a new set in Settings.",
+    };
   }
 }
 

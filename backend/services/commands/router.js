@@ -8,8 +8,10 @@ import {
   handleAccount,
   handleStatus,
   handleProfileEditName,
+  handleProfileEditUsername,
   handleProfileEditDescription,
   handleProfileEditPin,
+  handleRecover,
 } from "./handlers/auth.js";
 
 import {
@@ -104,6 +106,10 @@ async function processCommand(actorId, text, channelHint) {
     return await handleLogin(ctx, text);
   }
 
+  if (command.startsWith("recover") || command === "recover") {
+    return await handleRecover(ctx, text);
+  }
+
   // Bare PIN while a linked chat is waiting after "login" prompt
   if (
     /^\d{4}$/.test(command) &&
@@ -134,6 +140,13 @@ async function processCommand(actorId, text, channelHint) {
     command.startsWith("profile edit name")
   ) {
     return await handleProfileEditName(ctx, text);
+  }
+
+  if (
+    command.startsWith("/profile edit username") ||
+    command.startsWith("profile edit username")
+  ) {
+    return await handleProfileEditUsername(ctx, text);
   }
 
   if (

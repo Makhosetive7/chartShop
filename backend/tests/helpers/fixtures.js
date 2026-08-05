@@ -8,10 +8,20 @@ let counter = 0;
 
 export function uniqueUsername(prefix = "shop") {
   counter += 1;
+  const letters = String(prefix)
+    .toLowerCase()
+    .replace(/[^a-z]/g, "")
+    .slice(0, 8) || "shop";
   const suffix = `${Date.now().toString(36)}${counter}${crypto
     .randomBytes(2)
-    .toString("hex")}`;
-  return `${prefix}_${suffix}`.slice(0, 32).toLowerCase();
+    .toString("hex")}`
+    .replace(/[^a-z0-9]/g, "");
+  // New policy: letters then trailing digits, max 15. Digits-only suffix keeps it valid.
+  const digits = suffix.replace(/[^0-9]/g, "").slice(-6) || String(counter);
+  return `${letters.slice(0, 15 - Math.min(digits.length, 6))}${digits}`.slice(
+    0,
+    15
+  );
 }
 
 /** @deprecated Use uniqueUsername — kept for older test call sites. */
@@ -68,6 +78,7 @@ export async function createTestShop(overrides = {}) {
 }
 
 function normalizeOverrideUsername(value) {
+  // Tests may still create grandfathered shops with underscores via Shop.create.
   if (value && /^[a-z0-9_]{3,32}$/i.test(String(value))) {
     return String(value).toLowerCase();
   }

@@ -135,3 +135,14 @@ export async function updateProfilePin(oldPin: string, newPin: string) {
   const { data } = await api.patch('/auth/profile/pin', { oldPin, newPin });
   return data;
 }
+
+export async function updateProfileUsername(username: string) {
+  const { data } = await api.patch<{
+    success: boolean;
+    shop: Shop;
+    message?: string;
+    error?: string;
+    suggestions?: string[];
+  }>('/auth/profile/username', { username });
+  return data;
+}

@@ -83,8 +83,11 @@ const Form = styled.form`
   gap: ${({ theme }) => theme.space[4]};
 `;
 
-const FooterNote = styled.p`
+const FooterNote = styled.div`
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   font-size: 0.92rem;
   color: ${({ theme }) => theme.colors.textSecondary};
 
@@ -228,10 +231,10 @@ type AuthShellProps = {
   showcaseTitle: string;
   showcaseLead: string;
   preview: Array<{ label: string; value: string }>;
-  footer: ReactNode;
-  onSubmit: (event: FormEvent) => void;
+  footer?: ReactNode;
+  onSubmit?: (event: FormEvent) => void;
   children: ReactNode;
-  actions: ReactNode;
+  actions?: ReactNode;
 };
 
 export function AuthShell({
@@ -241,10 +244,10 @@ export function AuthShell({
   showcaseTitle,
   showcaseLead,
   preview,
-  footer,
+  footer = null,
   onSubmit,
   children,
-  actions,
+  actions = null,
 }: AuthShellProps) {
   return (
     <Page>
@@ -262,11 +265,16 @@ export function AuthShell({
             </div>
             <Lead>{lead}</Lead>
           </Intro>
-          <Form onSubmit={onSubmit}>
+          <Form
+            onSubmit={(event) => {
+              if (onSubmit) onSubmit(event);
+              else event.preventDefault();
+            }}
+          >
             {children}
             {actions}
           </Form>
-          <FooterNote>{footer}</FooterNote>
+          {footer ? <FooterNote>{footer}</FooterNote> : null}
         </FormPane>
 
         <Showcase>

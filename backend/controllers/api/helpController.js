@@ -16,10 +16,21 @@ const ENDPOINTS = [
   },
   {
     method: "PATCH",
+    path: "/auth/profile/username",
+    command: "profile edit username",
+  },
+  {
+    method: "PATCH",
     path: "/auth/profile/description",
     command: "profile edit description",
   },
   { method: "PATCH", path: "/auth/profile/pin", command: "profile edit pin" },
+  { method: "POST", path: "/auth/recovery/redeem", command: "recover" },
+  {
+    method: "POST",
+    path: "/auth/recovery/regenerate",
+    command: "settings recovery codes",
+  },
   { method: "GET", path: "/products", command: "list / products" },
   { method: "POST", path: "/products", command: "add" },
   { method: "GET", path: "/products/low-stock", command: "low stock" },

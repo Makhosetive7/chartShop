@@ -9,6 +9,7 @@ export function getHelpText() {
 • register your_username "Business Name" 1234 - Quick setup
 • login your_username 1234 - Login (links this chat on first use)
 • login 1234 - PIN-only (only after this chat is linked)
+• recover yourusername cs-xxxx-xxxx 1234 - Reset PIN with a recovery code
 • logout - End this channel's session
 • account - View account info
 • status - Check registration/login status
@@ -22,6 +23,7 @@ View:
 
 Edit:
 • profile edit name "New Name" - Change business name
+• profile edit username newusername - Change login username
 • profile edit description "New Desc" - Update description
 • profile edit pin - Change PIN (secure 2-step)
 

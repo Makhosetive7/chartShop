@@ -36,10 +36,10 @@ const {
 const { handleTelegramUpdate } = await import("../adapters/telegram.js");
 
 const TG_CHAT = `${Date.now()}`.slice(-9);
-const TG_USER = `e2e5_tg_${Date.now().toString(36)}`.slice(0, 32);
+const TG_USER = `e2e5tg${Date.now().toString().slice(-7)}`.slice(0, 15);
 const WA_PHONE = "263771234567";
 const WA = `wa:${WA_PHONE}`;
-const WA_USER = `e2e5_wa_${Date.now().toString(36)}`.slice(0, 32);
+const WA_USER = `e2e5wa${Date.now().toString().slice(-7)}`.slice(0, 15);
 const PIN = "4829";
 const results = [];
 

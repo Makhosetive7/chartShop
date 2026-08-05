@@ -95,6 +95,12 @@ class SessionStore {
     await AuthSession.deleteOne({ type: "session", sessionToken });
   }
 
+  /** End every login session for a shop (e.g. after PIN recovery). */
+  async deleteLoginSessionsByShopId(shopId) {
+    if (!shopId) return;
+    await AuthSession.deleteMany({ type: "session", shopId });
+  }
+
   async upsertRegistration(channel, channelKey, { step, data, startTime }) {
     const started =
       startTime instanceof Date
