@@ -27,6 +27,8 @@ import {
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
+import { TableSkeleton } from '@/components/ui/Skeleton';
+import { ProductsSummarySkeleton } from '@/components/skeletons/PageSkeletons';
 
 type FilterTab = 'all' | 'low' | 'out';
 
@@ -141,6 +143,7 @@ export function ProductsPage() {
     lowStockThreshold: '5',
   });
   const [stockEdit, setStockEdit] = useState<Record<string, string>>({});
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
 
   const productsQ = useQuery({
     queryKey: ['products', 'all'],
@@ -242,24 +245,31 @@ export function ProductsPage() {
   async function adjustStock(p: Product, op: '+' | '-') {
     const quantity = Number(stockEdit[p.id]);
     if (!Number.isFinite(quantity) || quantity <= 0) return;
+    const key = `${p.id}:${op}`;
     try {
+      setRowBusy(key);
       await updateStock(p.id, { op, quantity });
       setStockEdit((prev) => ({ ...prev, [p.id]: '' }));
       setOk(op === '+' ? `Added stock to ${p.name}` : `Reduced stock for ${p.name}`);
       invalidate();
     } catch (err) {
       setError(getErrorMessage(err));
+    } finally {
+      setRowBusy(null);
     }
   }
 
   async function removeProduct(p: Product) {
     if (!confirm(`Delete ${p.name}?`)) return;
     try {
+      setRowBusy(`del:${p.id}`);
       await deleteProduct(p.id, true);
       setOk(`Deleted ${p.name}`);
       invalidate();
     } catch (err) {
       setError(getErrorMessage(err));
+    } finally {
+      setRowBusy(null);
     }
   }
 
@@ -275,20 +285,24 @@ export function ProductsPage() {
       {error ? <ErrorBanner>{error}</ErrorBanner> : null}
       {ok ? <SuccessBanner>{ok}</SuccessBanner> : null}
 
-      <Summary>
-        <span>
-          Products <strong>{counts.total}</strong>
-        </span>
-        <span>
-          Stock value <strong>{money(counts.value)}</strong>
-        </span>
-        <span>
-          Low <strong>{counts.low}</strong>
-        </span>
-        <span>
-          Out <strong>{counts.out}</strong>
-        </span>
-      </Summary>
+      {productsQ.isLoading ? (
+        <ProductsSummarySkeleton />
+      ) : (
+        <Summary>
+          <span>
+            Products <strong>{counts.total}</strong>
+          </span>
+          <span>
+            Stock value <strong>{money(counts.value)}</strong>
+          </span>
+          <span>
+            Low <strong>{counts.low}</strong>
+          </span>
+          <span>
+            Out <strong>{counts.out}</strong>
+          </span>
+        </Summary>
+      )}
 
       <Card>
         <h2 style={{ marginTop: 0 }}>Add product</h2>
@@ -343,8 +357,8 @@ export function ProductsPage() {
                 }
               />
             </Field>
-            <Button type="submit" disabled={createM.isPending}>
-              {createM.isPending ? 'Saving…' : 'Add'}
+            <Button type="submit" loading={createM.isPending}>
+              {createM.isPending ? 'Adding…' : 'Add'}
             </Button>
           </Row>
         </form>
@@ -374,105 +388,115 @@ export function ProductsPage() {
       </Toolbar>
 
       <Card>
-        {productsQ.isLoading ? <p>Loading…</p> : null}
-        <Table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Price</th>
-              <th>Cost</th>
-              <th>Stock</th>
-              <th>Adjust</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((p) => {
-              const status = stockStatus(p);
-              return (
-                <tr key={p.id}>
-                  <td>
-                    <NameCell>
-                      {p.name}
-                      {status === 'out' ? (
-                        <Badge $tone="danger">Out</Badge>
-                      ) : null}
-                      {status === 'low' ? (
-                        <Badge $tone="warning">Low</Badge>
-                      ) : null}
-                    </NameCell>
-                  </td>
-                  <td>
-                    <CompactInput
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      defaultValue={p.price}
-                      key={`price-${p.id}-${p.price}`}
-                      onBlur={(e) => void savePrice(p, e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <CompactInput
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      defaultValue={p.costPrice ?? ''}
-                      key={`cost-${p.id}-${p.costPrice ?? 'x'}`}
-                      placeholder="—"
-                      onBlur={(e) => void saveCost(p, e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    {p.trackStock ? p.stock : '—'}
-                  </td>
-                  <td>
-                    <Actions>
-                      <QtyInput
+        {productsQ.isLoading ? (
+          <TableSkeleton
+            columns={6}
+            rows={8}
+            widths={['9rem', '5rem', '5rem', '3.5rem', '7rem', '4rem']}
+          />
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Price</th>
+                <th>Cost</th>
+                <th>Stock</th>
+                <th>Adjust</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((p) => {
+                const status = stockStatus(p);
+                return (
+                  <tr key={p.id}>
+                    <td>
+                      <NameCell>
+                        {p.name}
+                        {status === 'out' ? (
+                          <Badge $tone="danger">Out</Badge>
+                        ) : null}
+                        {status === 'low' ? (
+                          <Badge $tone="warning">Low</Badge>
+                        ) : null}
+                      </NameCell>
+                    </td>
+                    <td>
+                      <CompactInput
                         type="number"
-                        min="1"
-                        placeholder="qty"
-                        value={stockEdit[p.id] || ''}
-                        disabled={!p.trackStock}
-                        onChange={(e) =>
-                          setStockEdit({ ...stockEdit, [p.id]: e.target.value })
-                        }
+                        min="0"
+                        step="0.01"
+                        defaultValue={p.price}
+                        key={`price-${p.id}-${p.price}`}
+                        onBlur={(e) => void savePrice(p, e.target.value)}
                       />
+                    </td>
+                    <td>
+                      <CompactInput
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        defaultValue={p.costPrice ?? ''}
+                        key={`cost-${p.id}-${p.costPrice ?? 'x'}`}
+                        placeholder="—"
+                        onBlur={(e) => void saveCost(p, e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      {p.trackStock ? p.stock : '—'}
+                    </td>
+                    <td>
+                      <Actions>
+                        <QtyInput
+                          type="number"
+                          min="1"
+                          placeholder="qty"
+                          value={stockEdit[p.id] || ''}
+                          disabled={!p.trackStock}
+                          onChange={(e) =>
+                            setStockEdit({ ...stockEdit, [p.id]: e.target.value })
+                          }
+                        />
+                        <Button
+                          type="button"
+                          $variant="ghost"
+                          $size="sm"
+                          disabled={!p.trackStock}
+                          loading={rowBusy === `${p.id}:+`}
+                          onClick={() => void adjustStock(p, '+')}
+                        >
+                          +
+                        </Button>
+                        <Button
+                          type="button"
+                          $variant="ghost"
+                          $size="sm"
+                          disabled={!p.trackStock}
+                          loading={rowBusy === `${p.id}:-`}
+                          onClick={() => void adjustStock(p, '-')}
+                        >
+                          −
+                        </Button>
+                      </Actions>
+                    </td>
+                    <td>
                       <Button
                         type="button"
-                        $variant="ghost"
+                        $variant="danger"
                         $size="sm"
-                        disabled={!p.trackStock}
-                        onClick={() => void adjustStock(p, '+')}
+                        loading={rowBusy === `del:${p.id}`}
+                        onClick={() => void removeProduct(p)}
                       >
-                        +
+                        {rowBusy === `del:${p.id}` ? '…' : 'Delete'}
                       </Button>
-                      <Button
-                        type="button"
-                        $variant="ghost"
-                        $size="sm"
-                        disabled={!p.trackStock}
-                        onClick={() => void adjustStock(p, '-')}
-                      >
-                        −
-                      </Button>
-                    </Actions>
-                  </td>
-                  <td>
-                    <Button
-                      type="button"
-                      $variant="danger"
-                      $size="sm"
-                      onClick={() => void removeProduct(p)}
-                    >
-                      Delete
-                    </Button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        )}
         {!productsQ.isLoading && filtered.length === 0 ? (
           <p style={{ marginBottom: 0 }}>
             {products.length === 0 ? 'No products yet.' : 'No matching products.'}

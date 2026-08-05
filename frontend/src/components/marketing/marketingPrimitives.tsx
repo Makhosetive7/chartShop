@@ -40,6 +40,7 @@ type ArrowButtonProps = {
   onClick?: () => void;
   type?: 'button' | 'submit';
   disabled?: boolean;
+  loading?: boolean;
 };
 
 export function ArrowButton({
@@ -50,6 +51,7 @@ export function ArrowButton({
   onClick,
   type = 'button',
   disabled,
+  loading,
 }: ArrowButtonProps) {
   const mapped =
     variant === 'ghost' ? 'ghost' : variant === 'light' ? 'light' : 'filled';
@@ -69,7 +71,13 @@ export function ArrowButton({
     );
   }
   return (
-    <Button type={type} variant={mapped} disabled={disabled} onClick={onClick}>
+    <Button
+      type={type}
+      variant={mapped}
+      disabled={disabled}
+      loading={loading}
+      onClick={onClick}
+    >
       {children}
     </Button>
   );

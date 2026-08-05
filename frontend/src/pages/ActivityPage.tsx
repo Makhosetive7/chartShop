@@ -26,6 +26,10 @@ import {
   ErrorBanner,
   Badge,
 } from '@/components/ui/primitives';
+import {
+  ActivityListSkeleton,
+  ActivityStatsSkeleton,
+} from '@/components/skeletons/PageSkeletons';
 
 const CHANNELS = ['all', 'web', 'telegram', 'whatsapp', 'system'] as const;
 const ACTIONS = ['all', 'chat.turn', 'auth.login'] as const;
@@ -334,24 +338,28 @@ export function ActivityPage() {
         </PageLead>
       </Header>
 
-      <Stats>
-        <Stat>
-          <StatLabel>Loaded</StatLabel>
-          <StatValue>{counts.total}</StatValue>
-        </Stat>
-        <Stat>
-          <StatLabel>Web</StatLabel>
-          <StatValue>{counts.web}</StatValue>
-        </Stat>
-        <Stat>
-          <StatLabel>Telegram</StatLabel>
-          <StatValue>{counts.telegram}</StatValue>
-        </Stat>
-        <Stat>
-          <StatLabel>WhatsApp</StatLabel>
-          <StatValue>{counts.whatsapp}</StatValue>
-        </Stat>
-      </Stats>
+      {isLoading ? (
+        <ActivityStatsSkeleton />
+      ) : (
+        <Stats>
+          <Stat>
+            <StatLabel>Loaded</StatLabel>
+            <StatValue>{counts.total}</StatValue>
+          </Stat>
+          <Stat>
+            <StatLabel>Web</StatLabel>
+            <StatValue>{counts.web}</StatValue>
+          </Stat>
+          <Stat>
+            <StatLabel>Telegram</StatLabel>
+            <StatValue>{counts.telegram}</StatValue>
+          </Stat>
+          <Stat>
+            <StatLabel>WhatsApp</StatLabel>
+            <StatValue>{counts.whatsapp}</StatValue>
+          </Stat>
+        </Stats>
+      )}
 
       <Toolbar>
         <Tabs style={{ marginBottom: 0 }}>
@@ -390,7 +398,6 @@ export function ActivityPage() {
       </Toolbar>
 
       {error ? <ErrorBanner>Could not load activity.</ErrorBanner> : null}
-      {isLoading ? <p style={{ textAlign: 'center' }}>Loading activity…</p> : null}
 
       {!isLoading ? (
         <ResultCount>
@@ -398,6 +405,9 @@ export function ActivityPage() {
         </ResultCount>
       ) : null}
 
+      {isLoading ? (
+        <ActivityListSkeleton />
+      ) : (
       <List>
         {filtered.map((row) => {
           const day = dayKey(row.createdAt);
@@ -477,6 +487,7 @@ export function ActivityPage() {
           );
         })}
       </List>
+      )}
 
       {!isLoading && filtered.length === 0 ? (
         <Card>

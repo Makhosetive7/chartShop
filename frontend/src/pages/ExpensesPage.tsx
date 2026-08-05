@@ -19,6 +19,7 @@ import {
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
+import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 
 const PERIODS = ['daily', 'weekly', 'monthly'] as const;
 const CATEGORIES = [
@@ -145,8 +146,8 @@ export function ExpensesPage() {
                 <option value="other">other</option>
               </Select>
             </Field>
-            <Button type="submit" disabled={createM.isPending}>
-              Record
+            <Button type="submit" loading={createM.isPending}>
+              {createM.isPending ? 'Recording…' : 'Record'}
             </Button>
           </Row>
         </form>
@@ -166,52 +167,73 @@ export function ExpensesPage() {
       </Tabs>
 
       <Card>
-        <p>
-          Period total:{' '}
-          <strong>{money(listQ.data?.total)}</strong>
-        </p>
-        <Table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Description</th>
-              <th>Category</th>
-              <th>Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {expenses.map((ex) => (
-              <tr key={ex.id}>
-                <td>{ex.date ? new Date(ex.date).toLocaleString() : '—'}</td>
-                <td>{ex.description}</td>
-                <td>{ex.category}</td>
-                <td>{money(ex.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+        {listQ.isLoading ? (
+          <>
+            <Skeleton $w="10rem" $h="1rem" $mb="16px" />
+            <TableSkeleton
+              columns={4}
+              rows={6}
+              widths={['8rem', '10rem', '5rem', '4.5rem']}
+            />
+          </>
+        ) : (
+          <>
+            <p>
+              Period total:{' '}
+              <strong>{money(listQ.data?.total)}</strong>
+            </p>
+            <Table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th>Category</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expenses.map((ex) => (
+                  <tr key={ex.id}>
+                    <td>{ex.date ? new Date(ex.date).toLocaleString() : '—'}</td>
+                    <td>{ex.description}</td>
+                    <td>{ex.category}</td>
+                    <td>{money(ex.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </>
+        )}
       </Card>
 
       <Card>
         <h2 style={{ marginTop: 0 }}>Breakdown</h2>
-        <Table>
-          <thead>
-            <tr>
-              <th>Category</th>
-              <th>Count</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {breakdown.map(([cat, info]) => (
-              <tr key={cat}>
-                <td>{cat}</td>
-                <td>{info.count}</td>
-                <td>{money(info.total)}</td>
+        {breakdownQ.isLoading ? (
+          <TableSkeleton
+            columns={3}
+            rows={5}
+            widths={['7rem', '3.5rem', '5rem']}
+          />
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Count</th>
+                <th>Total</th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {breakdown.map(([cat, info]) => (
+                <tr key={cat}>
+                  <td>{cat}</td>
+                  <td>{info.count}</td>
+                  <td>{money(info.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
       </Card>
     </Page>
   );

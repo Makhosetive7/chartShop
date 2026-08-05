@@ -1,7 +1,13 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import styled from 'styled-components';
-import { ArrowRight } from 'lucide-react';
+import styled, { keyframes } from 'styled-components';
+import { ArrowRight, Loader2 } from 'lucide-react';
+
+const spin = keyframes`
+  to {
+    transform: rotate(360deg);
+  }
+`;
 
 const HEIGHT = {
   md: 48,
@@ -151,6 +157,10 @@ const IconBox = styled.span<{ $tone: Tone; $size: Size }>`
   }
 `;
 
+const SpinnerIcon = styled(Loader2)`
+  animation: ${spin} 0.75s linear infinite;
+`;
+
 function mapVariant(
   variant: 'primary' | 'ghost' | 'danger' | 'filled' | 'light' | undefined,
 ): Tone {
@@ -169,6 +179,8 @@ type CommonProps = {
   size?: Size;
   $size?: Size;
   disabled?: boolean;
+  /** Shows a spinner in the icon slot and disables the control */
+  loading?: boolean;
   className?: string;
 };
 
@@ -196,18 +208,25 @@ function ArrowFace({
   children,
   tone,
   size,
+  loading,
 }: {
   children: ReactNode;
   tone: Tone;
   size: Size;
+  loading?: boolean;
 }) {
+  const iconSize = size === 'sm' ? 16 : 18;
   return (
     <Base $tone={tone} $size={size}>
       <Label $tone={tone} $size={size}>
         {children}
       </Label>
       <IconBox $tone={tone} $size={size}>
-        <ArrowRight size={size === 'sm' ? 16 : 18} strokeWidth={2.25} />
+        {loading ? (
+          <SpinnerIcon size={iconSize} strokeWidth={2.25} aria-hidden />
+        ) : (
+          <ArrowRight size={iconSize} strokeWidth={2.25} />
+        )}
       </IconBox>
     </Base>
   );
@@ -220,6 +239,7 @@ export function Button({
   size,
   $size,
   disabled,
+  loading = false,
   className,
   type = 'button',
   to,
@@ -230,7 +250,7 @@ export function Button({
   const tone = mapVariant(variant ?? $variant);
   const sz = size ?? $size ?? 'md';
   const face = (
-    <ArrowFace tone={tone} size={sz}>
+    <ArrowFace tone={tone} size={sz} loading={loading}>
       {children}
     </ArrowFace>
   );
@@ -255,7 +275,8 @@ export function Button({
     <Root
       type={type}
       $size={sz}
-      disabled={disabled}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={className}
       onClick={onClick}
       {...rest}
