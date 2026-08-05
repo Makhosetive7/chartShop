@@ -5,6 +5,8 @@ const Wrap = styled.div`
   max-width: 100%;
   min-width: 0;
   min-height: 180px;
+  display: flex;
+  justify-content: center;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
@@ -15,6 +17,7 @@ const Wrap = styled.div`
 const ChartSvg = styled.svg`
   display: block;
   max-width: none;
+  flex-shrink: 0;
 `;
 
 const Empty = styled.div`
@@ -152,7 +155,7 @@ export function SimpleBarChart({
         width={width}
         height={height}
         role="img"
-        preserveAspectRatio="xMinYMid meet"
+        preserveAspectRatio="xMidYMid meet"
       >
         {data.map((d, i) => {
           const x =

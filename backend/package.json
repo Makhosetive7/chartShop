@@ -12,7 +12,8 @@
     "deploy": "node scripts/setWebhook.js",
     "test": "node --test tests/**/*.test.js",
     "test:phase4": "node --test tests/**/*.test.js",
-    "seed:boutique": "node --env-file=.env scripts/seedBoutiqueDemo.js"
+    "seed:boutique": "node --env-file=.env scripts/seedBoutiqueDemo.js",
+    "seed:demos": "node --env-file=.env scripts/seedSectorDemos.js"
   },
   "dependencies": {
     "axios": "^1.5.0",

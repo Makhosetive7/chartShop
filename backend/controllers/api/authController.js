@@ -3,6 +3,11 @@ import AuthService from "../../services/AuthService.js";
 import ActivityService from "../../services/ActivityService.js";
 import { publicShop, stripMarkdown } from "../../utils/apiResponse.js";
 import { normalizeUsername } from "../../utils/channelIdentity.js";
+import {
+  DEMO_SECTORS,
+  getDemoSector,
+  publicDemoSector,
+} from "../../constants/demoSectors.js";
 
 export async function login(req, res) {
   try {
@@ -51,6 +56,132 @@ export async function login(req, res) {
     return res.status(500).json({
       success: false,
       error: "Login failed.",
+    });
+  }
+}
+
+/** List available multi-sector demo shops. */
+export async function listDemos(req, res) {
+  try {
+    const shops = await Shop.find({ isDemo: true, isActive: true }).lean();
+    const bySector = new Map(
+      shops
+        .filter((s) => s.demoSector)
+        .map((s) => [String(s.demoSector).toLowerCase(), s])
+    );
+    // Legacy single boutique without demoSector
+    if (!bySector.has("clothing")) {
+      const legacy = shops.find((s) => s.username === "boutique_demo");
+      if (legacy) bySector.set("clothing", legacy);
+    }
+
+    const demos = DEMO_SECTORS.map((sector) =>
+      publicDemoSector(sector, bySector.get(sector.id) || null)
+    );
+
+    return res.json({
+      success: true,
+      demos,
+    });
+  } catch (error) {
+    console.error("[api/auth/demos]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Could not list demo shops.",
+    });
+  }
+}
+
+/** Enter a shared read-only demo shop without registering. */
+export async function enterDemo(req, res) {
+  try {
+    const sectorId = String(req.body?.sector || req.query?.sector || "")
+      .trim()
+      .toLowerCase();
+
+    let shop = null;
+
+    if (sectorId) {
+      const meta = getDemoSector(sectorId);
+      if (!meta) {
+        return res.status(400).json({
+          success: false,
+          error: `Unknown demo sector. Choose one of: ${DEMO_SECTORS.map((s) => s.id).join(", ")}.`,
+        });
+      }
+      shop = await Shop.findOne({
+        isDemo: true,
+        isActive: true,
+        demoSector: sectorId,
+      });
+      if (!shop && sectorId === "clothing") {
+        shop = await Shop.findOne({
+          username: "boutique_demo",
+          isActive: true,
+        });
+      }
+      if (!shop) {
+        return res.status(503).json({
+          success: false,
+          error: `Demo for "${meta.label}" is not seeded yet. Run npm run seed:demos.`,
+        });
+      }
+    } else {
+      // Backward compatible: prefer clothing, else any demo
+      shop = await Shop.findOne({
+        isDemo: true,
+        isActive: true,
+        demoSector: "clothing",
+      });
+      if (!shop) {
+        shop = await Shop.findOne({ isDemo: true, isActive: true });
+      }
+      if (!shop) {
+        shop = await Shop.findOne({ username: "boutique_demo", isActive: true });
+      }
+      if (!shop) {
+        return res.status(503).json({
+          success: false,
+          error:
+            "Demo shop is not available yet. Run npm run seed:demos and try again.",
+        });
+      }
+    }
+
+    if (!shop.isDemo) {
+      shop.isDemo = true;
+      if (!shop.demoSector) shop.demoSector = sectorId || "clothing";
+      await shop.save();
+    } else if (!shop.demoSector && (sectorId || shop.username === "boutique_demo")) {
+      shop.demoSector = sectorId || "clothing";
+      await shop.save();
+    }
+
+    const { sessionToken } = await AuthService.openChannelSession(
+      shop,
+      "web",
+      null
+    );
+
+    await ActivityService.log({
+      shopId: shop._id,
+      userId: shop.username,
+      channel: "web",
+      action: "auth.demo",
+      summary: `Entered ${shop.demoSector || "demo"} demo shop on web`,
+      entityType: "session",
+    });
+
+    return res.json({
+      success: true,
+      token: sessionToken,
+      shop: publicShop(shop),
+    });
+  } catch (error) {
+    console.error("[api/auth/demo]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Could not start demo session.",
     });
   }
 }

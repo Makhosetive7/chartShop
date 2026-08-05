@@ -2,6 +2,7 @@ import styled, { keyframes } from 'styled-components';
 import { motion } from 'framer-motion';
 import { ArrowButton, Eyebrow } from '@/components/marketing/marketingPrimitives';
 import { BrandMark } from '@/components/ui/BrandMark';
+import { TryDemoButton } from '@/components/demo/TryDemoButton';
 
 const fadeUp = {
   initial: { opacity: 0, y: 22 },
@@ -450,9 +451,9 @@ export function HeroSection() {
         </motion.div>
         <motion.div variants={fadeUp}>
           <CtaRow>
-            <ArrowButton to="/register">Create shop</ArrowButton>
-            <ArrowButton to="/login" variant="ghost">
-              Sign in
+            <TryDemoButton />
+            <ArrowButton to="/register" variant="ghost">
+              Create shop
             </ArrowButton>
           </CtaRow>
         </motion.div>

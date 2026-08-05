@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
+import styled from 'styled-components';
 import { useAuth } from '@/auth';
 import { ArrowButton } from '@/components/marketing/marketingPrimitives';
+import { TryDemoButton } from '@/components/demo/TryDemoButton';
 import {
   AuthShell,
   AuthSwitchLink,
@@ -11,6 +13,13 @@ import {
   Hint,
   Input,
 } from '@/components/marketing/AuthShell';
+
+const ActionRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+`;
 
 export function LoginPage() {
   const { isAuthenticated, login } = useAuth();
@@ -59,9 +68,12 @@ export function LoginPage() {
       }
       onSubmit={onSubmit}
       actions={
-        <ArrowButton type="submit" loading={pending}>
-          {pending ? 'Signing in…' : 'Sign in'}
-        </ArrowButton>
+        <ActionRow>
+          <ArrowButton type="submit" loading={pending}>
+            {pending ? 'Signing in…' : 'Sign in'}
+          </ArrowButton>
+          <TryDemoButton variant="ghost" />
+        </ActionRow>
       }
     >
       <Field>

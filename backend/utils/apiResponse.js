@@ -19,6 +19,8 @@ export function publicShop(shop) {
     businessName: obj.businessName,
     businessDescription: obj.businessDescription,
     isActive: obj.isActive,
+    isDemo: Boolean(obj.isDemo),
+    demoSector: obj.demoSector || null,
     settings: obj.settings,
     lastLogin: obj.lastLogin,
     createdAt: obj.createdAt,

@@ -2,11 +2,22 @@ import axios from 'axios';
 
 export function getErrorMessage(error: unknown, fallback = 'Something went wrong.') {
   if (axios.isAxiosError(error)) {
-    const data = error.response?.data as { error?: string } | undefined;
+    const data = error.response?.data as
+      | { error?: string; code?: string }
+      | undefined;
+    if (error.response?.status === 403 && data?.code === 'DEMO_READ_ONLY') {
+      return '';
+    }
     return data?.error || error.message || fallback;
   }
   if (error instanceof Error) return error.message;
   return fallback;
+}
+
+export function isDemoReadOnlyError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  const data = error.response?.data as { code?: string } | undefined;
+  return error.response?.status === 403 && data?.code === 'DEMO_READ_ONLY';
 }
 
 export type Product = {

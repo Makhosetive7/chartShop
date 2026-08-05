@@ -22,6 +22,39 @@ export async function login(
   }
 }
 
+export async function enterDemo(sector?: string): Promise<LoginResponse> {
+  try {
+    const { data } = await api.post<LoginResponse>('/auth/demo', {
+      sector: sector || undefined,
+    });
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const message =
+        (error.response?.data as { error?: string } | undefined)?.error ||
+        'Demo is unavailable';
+      return { success: false, token: '', shop: null as unknown as Shop, error: message };
+    }
+    throw error;
+  }
+}
+
+export type DemoSector = {
+  id: string;
+  label: string;
+  blurb: string;
+  businessName: string;
+  username: string;
+  available: boolean;
+};
+
+export async function listDemos(): Promise<DemoSector[]> {
+  const { data } = await api.get<{ success: boolean; demos: DemoSector[] }>(
+    '/auth/demos',
+  );
+  return data.demos || [];
+}
+
 export type RegisterInput = {
   username: string;
   businessName: string;
