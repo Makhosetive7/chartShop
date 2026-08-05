@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import ActivityLog from "../models/ActivityLog.js";
 import Shop from "../models/Shop.js";
+import SessionStore from "./sessionStore.js";
 import { stripMarkdown } from "../utils/apiResponse.js";
 import {
   normalizeUsername,
@@ -34,6 +35,13 @@ class ActivityService {
       userId,
       channel
     );
+
+    // Active login session is the source of truth across web / TG / WA.
+    if (channelKey) {
+      const session = await SessionStore.getLoginSession(ch, channelKey);
+      if (session?.shopId) return session.shopId;
+    }
+
     const query = shopChannelQuery(ch, channelKey);
     if (!query) return null;
     const shop = await Shop.findOne(query).select("_id");
@@ -150,6 +158,28 @@ class ActivityService {
       limit,
       action: "chat.turn",
     });
+    return this.turnsToBubbles(items);
+  }
+
+  /**
+   * Demo /app feed: chat transcript plus system/other logs.
+   * Sale/expense rows that already appear as chat.turn are skipped to avoid doubles.
+   */
+  async demoActivityFeed(shopId, { limit = 120 } = {}) {
+    const fetchLimit = Math.min(Math.max(parseInt(limit, 10) || 120, 40) * 2, 200);
+    const items = await this.list(shopId, { limit: fetchLimit });
+    const keep = items.filter(
+      (row) =>
+        row.action === "chat.turn" ||
+        row.action === "demo.seeded" ||
+        (row.action !== "sale.cash" &&
+          row.action !== "sale.credit" &&
+          row.action !== "expense.recorded")
+    );
+    return this.activityToBubbles(keep.slice(0, Math.min(fetchLimit, 200)));
+  }
+
+  turnsToBubbles(items) {
     return items.reverse().flatMap((row) => {
       const input = row.metadata?.input || "";
       const reply = row.metadata?.reply || row.summary;
@@ -174,6 +204,27 @@ class ActivityService {
         });
       }
       return bubbles;
+    });
+  }
+
+  activityToBubbles(items) {
+    // list() returns newest → oldest; reverse for chronological UI
+    return [...items].reverse().flatMap((row) => {
+      if (row.action === "chat.turn") {
+        return this.turnsToBubbles([row]);
+      }
+
+      const label = row.action.replace(/\./g, " · ");
+      return [
+        {
+          id: row.id,
+          role: "assistant",
+          text: `${label}\n${row.summary}`,
+          type: "activity",
+          channel: row.channel,
+          createdAt: row.createdAt,
+        },
+      ];
     });
   }
 }

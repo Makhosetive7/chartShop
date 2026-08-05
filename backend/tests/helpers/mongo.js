@@ -11,32 +11,14 @@ export function testMongoUri() {
   );
 }
 
+import { dropLegacyAuthIndexes as dropLegacy } from "../../utils/dropLegacyIndexes.js";
+
 /**
  * Old unique indexes on telegramId treat missing fields as null and break
  * username-based shops / per-channel sessions. Drop them once per DB.
  */
 export async function dropLegacyAuthIndexes() {
-  const db = mongoose.connection.db;
-  if (!db) return;
-
-  const drop = async (collection, name) => {
-    try {
-      await db.collection(collection).dropIndex(name);
-      console.log(`[test-db] dropped ${collection}.${name}`);
-    } catch (err) {
-      if (err?.code !== 27 && err?.codeName !== "IndexNotFound") {
-        // Ignore missing index; surface anything else
-        if (!/index not found/i.test(String(err.message))) {
-          console.warn(`[test-db] dropIndex ${collection}.${name}:`, err.message);
-        }
-      }
-    }
-  };
-
-  await drop("shops", "telegramId_1");
-  await drop("shops", "telegramId_1_isActive_1");
-  await drop("authsessions", "telegramId_1");
-  await drop("authsessions", "telegramId_1_type_1");
+  await dropLegacy(mongoose.connection.db);
 
   // Ensure new schema indexes exist
   const Shop = (await import("../../models/Shop.js")).default;

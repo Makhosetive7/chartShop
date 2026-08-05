@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import { dropLegacyAuthIndexes } from "../utils/dropLegacyIndexes.js";
 
 dotenv.config();
 
@@ -22,6 +23,8 @@ const connectDB = async () => {
     console.log(`MongoDB Connected: ${conn.connection.host}`);
     console.log(`Database: ${dbName}`);
     console.log(`Environment: ${environment}`);
+
+    await dropLegacyAuthIndexes(conn.connection.db);
 
     // Handle connection events
     mongoose.connection.on("error", (err) => {

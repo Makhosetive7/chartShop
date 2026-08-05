@@ -56,6 +56,8 @@ export function SalesPage() {
   const recentQ = useQuery({
     queryKey: ['sales', 'recent'],
     queryFn: () => listRecentSales(15),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const products = productsQ.data || [];
@@ -350,39 +352,47 @@ export function SalesPage() {
               </tr>
             </thead>
             <tbody>
-              {(recentQ.data || []).map((s) => (
-                <tr key={s.id}>
-                  <td>
-                    {s.date ? new Date(s.date).toLocaleString() : '—'}
-                  </td>
-                  <td>{s.type}</td>
-                  <td>{s.customerName || '—'}</td>
-                  <td>{money(s.total)}</td>
-                  <td>
-                    <Button
-                      type="button"
-                      $variant="ghost"
-                      loading={busyKey === `cancel-${s.id}`}
-                      onClick={async () => {
-                        if (!confirm('Cancel this sale?')) return;
-                        try {
-                          setBusyKey(`cancel-${s.id}`);
-                          const res = await cancelSale(s.id, 'Cancelled from web');
-                          setOk(res.message || 'Sale cancelled.');
-                          invalidate();
-                          void recentQ.refetch();
-                        } catch (err) {
-                          setError(getErrorMessage(err));
-                        } finally {
-                          setBusyKey(null);
-                        }
-                      }}
-                    >
-                      {busyKey === `cancel-${s.id}` ? '…' : 'Cancel'}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {(recentQ.data || []).map((s) => {
+                const saleId = s.id || String((s as { _id?: string })._id || '');
+                return (
+                  <tr key={saleId || `${s.date}-${s.total}`}>
+                    <td>
+                      {s.date ? new Date(s.date).toLocaleString() : '—'}
+                    </td>
+                    <td>{s.type}</td>
+                    <td>{s.customerName || '—'}</td>
+                    <td>{money(s.total)}</td>
+                    <td>
+                      <Button
+                        type="button"
+                        $variant="ghost"
+                        disabled={!saleId}
+                        loading={busyKey === `cancel-${saleId}`}
+                        onClick={async () => {
+                          if (!saleId) return;
+                          if (!confirm('Cancel this sale?')) return;
+                          try {
+                            setBusyKey(`cancel-${saleId}`);
+                            const res = await cancelSale(
+                              saleId,
+                              'Cancelled from web',
+                            );
+                            setOk(res.message || 'Sale cancelled.');
+                            invalidate();
+                            void recentQ.refetch();
+                          } catch (err) {
+                            setError(getErrorMessage(err));
+                          } finally {
+                            setBusyKey(null);
+                          }
+                        }}
+                      >
+                        {busyKey === `cancel-${saleId}` ? '…' : 'Cancel'}
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </Table>
         )}

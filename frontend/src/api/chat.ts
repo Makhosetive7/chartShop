@@ -20,10 +20,15 @@ export type ActivityItem = {
 };
 
 export async function fetchChatHistory() {
-  const { data } = await api.get<{ success: boolean; messages: ChatBubble[] }>(
-    '/chat/history?limit=100',
-  );
-  return data.messages || [];
+  const { data } = await api.get<{
+    success: boolean;
+    demoFeed?: boolean;
+    messages: ChatBubble[];
+  }>('/chat/history?limit=120');
+  return {
+    messages: data.messages || [],
+    demoFeed: Boolean(data.demoFeed),
+  };
 }
 
 export async function sendChatMessage(message: string) {

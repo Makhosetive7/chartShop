@@ -238,7 +238,7 @@ export async function listRecentSales(req, res) {
     return res.json({
       success: result.success !== false,
       message: stripMarkdown(result.message),
-      sales: result.sales || undefined,
+      sales: (result.sales || []).map(serializeSale),
     });
   } catch (error) {
     console.error("[api/sales/recent]", error);

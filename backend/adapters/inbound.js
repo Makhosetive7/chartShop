@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import commandService from "../services/commandService.js";
+import AuthService from "../services/AuthService.js";
 import ActivityService, { detectChannel } from "../services/ActivityService.js";
+import { resolveChannelIdentity } from "../utils/channelIdentity.js";
 
 /**
  * Shared inbound path for all chat adapters.
@@ -14,10 +16,15 @@ export async function handleInboundMessage({
   sendDocument,
 }) {
   const requestId = crypto.randomUUID();
+  const resolvedChannel = detectChannel(userId, channel);
+  const { channel: ch, channelKey } = resolveChannelIdentity(
+    userId,
+    resolvedChannel
+  );
   const response = await commandService.processCommand(
     userId,
     text,
-    detectChannel(userId, channel)
+    resolvedChannel
   );
 
   let replyType = "text";
@@ -50,9 +57,12 @@ export async function handleInboundMessage({
     await sendText(response);
   }
 
+  // Prefer session shopId so TG/WA turns land in the same shop transcript as web.
+  const shop = await AuthService.getAuthenticatedShop(ch, channelKey);
   await ActivityService.logChatTurn({
-    userId,
-    channel: detectChannel(userId, channel),
+    shopId: shop?._id,
+    userId: shop?.username || userId,
+    channel: ch,
     input: text,
     reply: replyText,
     replyType,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -334,21 +334,28 @@ const BubbleAvatar = styled.div`
   box-shadow: 0 4px 10px rgba(74, 14, 28, 0.22);
 `;
 
-const Bubble = styled.div<{ $mine?: boolean }>`
+const Bubble = styled.div<{ $mine?: boolean; $activity?: boolean }>`
   /* Leave a clear opposite gutter so left/right bubbles read side-by-side */
   flex: 0 1 auto;
   max-width: ${({ $mine }) => ($mine ? '78%' : 'calc(100% - 36px)')};
   min-width: 0;
   padding: 11px 13px 8px;
   border-radius: 0;
-  background: ${({ theme, $mine }) =>
+  background: ${({ theme, $mine, $activity }) =>
     $mine
       ? `linear-gradient(145deg, ${theme.colors.coral}, ${theme.colors.maroon})`
-      : theme.colors.surface};
+      : $activity
+        ? 'rgba(139, 30, 58, 0.06)'
+        : theme.colors.surface};
   color: ${({ theme, $mine }) =>
     $mine ? theme.colors.textOnDark : theme.colors.textPrimary};
   border: 1px solid
-    ${({ theme, $mine }) => ($mine ? 'transparent' : theme.colors.border)};
+    ${({ theme, $mine, $activity }) =>
+      $mine
+        ? 'transparent'
+        : $activity
+          ? 'rgba(139, 30, 58, 0.18)'
+          : theme.colors.border};
   box-shadow: ${({ $mine }) =>
     $mine
       ? '0 10px 24px rgba(74, 14, 28, 0.22)'
@@ -698,7 +705,7 @@ function formatDayLabel(iso: string) {
 }
 
 export function ChatPage() {
-  const { shop } = useAuth();
+  const { shop, isDemo } = useAuth();
   const queryClient = useQueryClient();
   const guardDemoWrite = useGuardDemoWrite();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -710,8 +717,10 @@ export function ChatPage() {
   );
 
   const history = useQuery({
-    queryKey: ['chat', 'history'],
+    queryKey: ['chat', 'history', shop?.id],
     queryFn: fetchChatHistory,
+    enabled: Boolean(shop?.id),
+    staleTime: 0,
   });
 
   const send = useMutation({
@@ -719,18 +728,36 @@ export function ChatPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['chat', 'history'] });
       void queryClient.invalidateQueries({ queryKey: ['activity'] });
+      // Chat commands mutate the same shop data as Sales / Products / Dashboard.
+      void queryClient.invalidateQueries({ queryKey: ['sales'] });
+      void queryClient.invalidateQueries({ queryKey: ['products'] });
+      void queryClient.invalidateQueries({ queryKey: ['customers'] });
+      void queryClient.invalidateQueries({ queryKey: ['stats'] });
+      void queryClient.invalidateQueries({ queryKey: ['orders'] });
+      void queryClient.invalidateQueries({ queryKey: ['expenses'] });
       setLocal([]);
     },
   });
 
-  const historyMessages = sessionOnly
-    ? (history.data || []).filter(
-        (m) => m.createdAt && m.createdAt >= sessionStartedAt,
-      )
-    : history.data || [];
+  // After login / shop switch, show full cross-channel history (not a local filter).
+  useEffect(() => {
+    setSessionOnly(false);
+    setLocal([]);
+    setSessionStartedAt(new Date().toISOString());
+  }, [shop?.id]);
+
+  const historyMessages = useMemo(() => {
+    const rows = history.data?.messages || [];
+    if (!sessionOnly) return rows;
+    return rows.filter(
+      (m) => m.createdAt && m.createdAt >= sessionStartedAt,
+    );
+  }, [history.data?.messages, sessionOnly, sessionStartedAt]);
 
   const messages = [...historyMessages, ...local];
-  const isEmpty = messages.length === 0 && !history.isLoading;
+  const isEmpty =
+    messages.length === 0 && !history.isLoading && !history.isError;
+  const showingDemoFeed = Boolean(isDemo || history.data?.demoFeed);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -805,7 +832,11 @@ export function ChatPage() {
                   {shop?.businessName || 'ChartShop'}
                   <Online>Online</Online>
                 </h1>
-                <p>Your shop assistant — same commands as Telegram & WhatsApp</p>
+                <p>
+                  {showingDemoFeed
+                    ? 'Demo activity log — browse sales, expenses, and commands across web, Telegram & WhatsApp'
+                    : 'Your shop assistant — same commands as Telegram & WhatsApp'}
+                </p>
               </HeaderText>
             </HeaderLeft>
             <NewChatBtn type="button" onClick={startNewConversation} aria-label="New conversation">
@@ -820,6 +851,32 @@ export function ChatPage() {
             <AnimatePresence>
               {history.isLoading && messages.length === 0 ? (
                 <ChatThreadSkeleton />
+              ) : null}
+              {history.isError && messages.length === 0 ? (
+                <Empty
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35 }}
+                >
+                  <strong>Couldn’t load chat history</strong>
+                  <p>
+                    Your past commands from web, Telegram, and WhatsApp should
+                    appear here after login. Check your connection and try
+                    again.
+                  </p>
+                  <EmptyActions>
+                    <EmptyAction
+                      type="button"
+                      onClick={() => void history.refetch()}
+                    >
+                      <Sparkles size={18} />
+                      <span>
+                        <strong>Retry</strong>
+                        <em>reload history</em>
+                      </span>
+                    </EmptyAction>
+                  </EmptyActions>
+                </Empty>
               ) : null}
               {isEmpty ? (
                 <Empty
@@ -878,13 +935,14 @@ export function ChatPage() {
                         <MessageCircle size={14} />
                       </BubbleAvatar>
                     ) : null}
-                    <Bubble $mine={mine}>
+                    <Bubble $mine={mine} $activity={msg.type === 'activity'}>
                       {msg.text}
                       <Meta $mine={mine}>
                         {msg.createdAt
                           ? format(new Date(msg.createdAt), 'HH:mm')
                           : ''}
                         {msg.channel && !mine ? ` · ${msg.channel}` : ''}
+                        {msg.type === 'activity' ? ' · log' : ''}
                       </Meta>
                     </Bubble>
                   </MsgRow>
@@ -934,12 +992,20 @@ export function ChatPage() {
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={onKeyDown}
-                  placeholder="Message ChartShop…"
+                  placeholder={
+                    showingDemoFeed
+                      ? 'Demo is read-only — scroll the activity log above'
+                      : 'Message ChartShop…'
+                  }
+                  disabled={showingDemoFeed}
+                  readOnly={showingDemoFeed}
                   rows={1}
                 />
                 <SendBtn
                   type="submit"
-                  disabled={!draft.trim() || send.isPending}
+                  disabled={
+                    showingDemoFeed || !draft.trim() || send.isPending
+                  }
                   aria-label={send.isPending ? 'Sending' : 'Send'}
                   aria-busy={send.isPending || undefined}
                 >
@@ -953,8 +1019,9 @@ export function ChatPage() {
             </Composer>
 
             <Disclaimer>
-              ChartShop runs the same commands as Telegram & WhatsApp. Messages
-              are logged in Activity across all channels.
+              {showingDemoFeed
+                ? 'This shared demo is read-only. Scroll the log to see real shop activity from web, Telegram, and WhatsApp — then create your own shop to run commands.'
+                : 'ChartShop runs the same commands as Telegram & WhatsApp. Messages are logged in Activity across all channels.'}
             </Disclaimer>
           </FooterInner>
         </Footer>
