@@ -27,6 +27,7 @@ import {
   Field,
   Button,
 } from '@/components/ui/primitives';
+import { ReportsBodySkeleton } from '@/components/skeletons/PageSkeletons';
 
 type ReportTab = 'daily' | 'weekly' | 'monthly' | 'best' | 'profit';
 
@@ -356,7 +357,8 @@ export function ReportsPage() {
           <Button
             type="button"
             onClick={() => pdfM.mutate()}
-            disabled={pdfM.isPending || active.isLoading}
+            loading={pdfM.isPending}
+            disabled={active.isLoading}
           >
             <span
               style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
@@ -371,9 +373,15 @@ export function ReportsPage() {
       {error ? <ErrorBanner>{error}</ErrorBanner> : null}
       {ok ? <SuccessBanner>{ok}</SuccessBanner> : null}
       {active.isError ? <ErrorBanner>Failed to load report.</ErrorBanner> : null}
-      {active.isLoading ? <p style={{ textAlign: 'center' }}>Loading report…</p> : null}
+      {active.isLoading ? (
+        <ReportsBodySkeleton
+          variant={
+            tab === 'best' ? 'best' : tab === 'profit' ? 'profit' : 'kpis'
+          }
+        />
+      ) : null}
 
-      {kpis.length ? (
+      {!active.isLoading && kpis.length ? (
         <KpiGrid>
           {kpis.map((item) => (
             <Kpi key={item.label}>
@@ -431,7 +439,7 @@ export function ReportsPage() {
                 type="button"
                 $variant="ghost"
                 onClick={() => pdfM.mutate()}
-                disabled={pdfM.isPending}
+                loading={pdfM.isPending}
               >
                 <span
                   style={{
@@ -441,7 +449,7 @@ export function ReportsPage() {
                   }}
                 >
                   <Download size={15} />
-                  PDF
+                  {pdfM.isPending ? 'PDF…' : 'PDF'}
                 </span>
               </Button>
             ) : null}

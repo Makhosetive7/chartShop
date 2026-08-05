@@ -25,6 +25,8 @@ import {
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
+import { TableSkeleton } from '@/components/ui/Skeleton';
+import { CustomerDetailSkeleton } from '@/components/skeletons/PageSkeletons';
 
 export function CustomersPage() {
   const qc = useQueryClient();
@@ -58,6 +60,18 @@ export function CustomersPage() {
       setOk('Customer added.');
       setForm({ name: '', phone: '', email: '' });
       void qc.invalidateQueries({ queryKey: ['customers'] });
+    },
+    onError: (e) => setError(getErrorMessage(e)),
+  });
+
+  const payM = useMutation({
+    mutationFn: () => recordPayment(selectedId!, Number(payAmount)),
+    onSuccess: () => {
+      setOk('Payment recorded.');
+      setPayAmount('');
+      void qc.invalidateQueries({ queryKey: ['customers'] });
+      void historyQ.refetch();
+      void creditQ.refetch();
     },
     onError: (e) => setError(getErrorMessage(e)),
   });
@@ -109,8 +123,8 @@ export function CustomersPage() {
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
             </Field>
-            <Button type="submit" disabled={createM.isPending}>
-              Add
+            <Button type="submit" loading={createM.isPending}>
+              {createM.isPending ? 'Adding…' : 'Add'}
             </Button>
           </Row>
         </form>
@@ -130,46 +144,61 @@ export function CustomersPage() {
       </Tabs>
 
       <Card>
-        <Table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Phone</th>
-              <th>Spent</th>
-              <th>Balance</th>
-              <th>Visits</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {customers.map((c) => (
-              <tr key={c.id}>
-                <td>{c.name}</td>
-                <td>{c.phone}</td>
-                <td>{money(c.totalSpent)}</td>
-                <td>
-                  {c.currentBalance > 0 ? (
-                    <Badge $tone="warning">{money(c.currentBalance)}</Badge>
-                  ) : (
-                    money(0)
-                  )}
-                </td>
-                <td>{c.totalVisits}</td>
-                <td>
-                  <Button
-                    type="button"
-                    $variant="ghost"
-                    $size="sm"
-                    onClick={() => setSelectedId(c.id)}
-                  >
-                    Open
-                  </Button>
-                </td>
+        {listQ.isLoading ? (
+          <TableSkeleton
+            columns={6}
+            rows={7}
+            widths={['8rem', '6rem', '5rem', '5rem', '3.5rem', '3.5rem']}
+          />
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Spent</th>
+                <th>Balance</th>
+                <th>Visits</th>
+                <th />
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {customers.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.name}</td>
+                  <td>{c.phone}</td>
+                  <td>{money(c.totalSpent)}</td>
+                  <td>
+                    {c.currentBalance > 0 ? (
+                      <Badge $tone="warning">{money(c.currentBalance)}</Badge>
+                    ) : (
+                      money(0)
+                    )}
+                  </td>
+                  <td>{c.totalVisits}</td>
+                  <td>
+                    <Button
+                      type="button"
+                      $variant="ghost"
+                      $size="sm"
+                      onClick={() => setSelectedId(c.id)}
+                    >
+                      Open
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+        {!listQ.isLoading && customers.length === 0 ? (
+          <p>No customers.</p>
+        ) : null}
       </Card>
+
+      {selectedId && (historyQ.isLoading || creditQ.isLoading) ? (
+        <CustomerDetailSkeleton />
+      ) : null}
 
       {selectedId && historyQ.data ? (
         <Card>
@@ -194,20 +223,13 @@ export function CustomersPage() {
             </Field>
             <Button
               type="button"
-              onClick={async () => {
-                try {
-                  await recordPayment(selectedId, Number(payAmount));
-                  setOk('Payment recorded.');
-                  setPayAmount('');
-                  void qc.invalidateQueries({ queryKey: ['customers'] });
-                  void historyQ.refetch();
-                  void creditQ.refetch();
-                } catch (err) {
-                  setError(getErrorMessage(err));
-                }
+              loading={payM.isPending}
+              onClick={() => {
+                setError(null);
+                payM.mutate();
               }}
             >
-              Apply payment
+              {payM.isPending ? 'Applying…' : 'Apply payment'}
             </Button>
           </Row>
 
