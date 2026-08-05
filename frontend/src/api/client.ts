@@ -61,6 +61,7 @@ export type Shop = {
   businessDescription?: string;
   isActive?: boolean;
   isDemo?: boolean;
+  demoSector?: string | null;
   settings?: Record<string, unknown>;
   lastLogin?: string;
   channels?: {

@@ -1,12 +1,8 @@
 /**
- * Seed a women's clothing boutique with ~2 years of light weekly traffic.
+ * Seed all multi-sector demo shops (read-only try-before-register).
  *
  * Usage (from backend/):
- *   node scripts/seedBoutiqueDemo.js
- *
- * Login afterwards:
- *   username: boutique_demo
- *   pin:      4829
+ *   npm run seed:demos
  */
 import "dotenv/config";
 import mongoose from "mongoose";
@@ -16,30 +12,9 @@ import Product from "../models/Product.js";
 import Customer from "../models/Customer.js";
 import Sale from "../models/Sale.js";
 import Expense from "../models/Expense.js";
+import { DEMO_SECTORS } from "../constants/demoSectors.js";
 
-const USER_ID = "boutique_demo";
-const PIN = "4829";
-const BUSINESS_NAME = "Luna Atelier";
-const YEARS = 2;
-const SALES_PER_WEEK_MIN = 3;
-const SALES_PER_WEEK_MAX = 4;
-
-const CATALOG = [
-  { name: "Floral Midi Dress", price: 45, costPrice: 22, stock: 40 },
-  { name: "Linen Blouse", price: 28, costPrice: 12, stock: 55 },
-  { name: "Wide-Leg Trousers", price: 38, costPrice: 18, stock: 35 },
-  { name: "Denim Jacket", price: 52, costPrice: 26, stock: 25 },
-  { name: "Pleated Skirt", price: 32, costPrice: 14, stock: 40 },
-  { name: "Knit Cardigan", price: 36, costPrice: 16, stock: 30 },
-  { name: "Silk Scarf", price: 18, costPrice: 7, stock: 60 },
-  { name: "Crossbody Bag", price: 55, costPrice: 28, stock: 20 },
-  { name: "Block Heels", price: 48, costPrice: 24, stock: 22 },
-  { name: "Statement Earrings", price: 15, costPrice: 5, stock: 80 },
-  { name: "Wrap Top", price: 26, costPrice: 11, stock: 45 },
-  { name: "High-Waist Jeans", price: 42, costPrice: 20, stock: 38 },
-];
-
-const CUSTOMERS = [
+const SHARED_CUSTOMERS = [
   { name: "Thandi Ncube", phone: "0771001001" },
   { name: "Amina Chari", phone: "0771001002" },
   { name: "Grace Moyo", phone: "0771001003" },
@@ -65,7 +40,7 @@ function addDays(date, days) {
 }
 
 function saleDateInWeek(weekStart) {
-  const dayOffset = rand(0, 5); // Mon–Sat feel
+  const dayOffset = rand(0, 5);
   const hour = rand(9, 17);
   const minute = rand(0, 59);
   const d = addDays(weekStart, dayOffset);
@@ -73,67 +48,63 @@ function saleDateInWeek(weekStart) {
   return d;
 }
 
-async function main() {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    console.error("MONGODB_URI is required");
-    process.exit(1);
-  }
+async function wipeShopByUsername(username) {
+  const existing = await Shop.findOne({ username });
+  if (!existing) return;
+  const shopId = existing._id;
+  await Promise.all([
+    Sale.deleteMany({ shopId }),
+    Expense.deleteMany({ shopId }),
+    Product.deleteMany({ shopId }),
+    Customer.deleteMany({ shopId }),
+    Shop.deleteOne({ _id: shopId }),
+  ]);
+  console.log(`Removed previous ${username}`);
+}
 
-  await mongoose.connect(uri);
-  console.log("Connected to MongoDB");
+async function seedSector(sector) {
+  await wipeShopByUsername(sector.username);
 
-  const existing = await Shop.findOne({ username: USER_ID });
-  if (existing) {
-    const shopId = existing._id;
-    await Promise.all([
-      Sale.deleteMany({ shopId }),
-      Expense.deleteMany({ shopId }),
-      Product.deleteMany({ shopId }),
-      Customer.deleteMany({ shopId }),
-      Shop.deleteOne({ _id: shopId }),
-    ]);
-    console.log("Removed previous boutique_demo shop data");
-  }
-
-  const hashedPin = await bcrypt.hash(PIN, 12);
-  const registeredAt = addDays(new Date(), -(YEARS * 365 + 14));
+  const hashedPin = await bcrypt.hash(sector.pin, 12);
+  const years = sector.years || 1;
+  const registeredAt = addDays(new Date(), -(years * 365 + 14));
+  const [salesMin, salesMax] = sector.salesPerWeek || [3, 4];
 
   const shop = await Shop.create({
-    username: USER_ID,
-    businessName: BUSINESS_NAME,
-    businessDescription:
-      "Women's clothing boutique — dresses, separates, and accessories.",
+    username: sector.username,
+    businessName: sector.businessName,
+    businessDescription: sector.businessDescription,
     pin: hashedPin,
     channels: {},
     isActive: true,
     isDemo: true,
-    demoSector: "clothing",
+    demoSector: sector.id,
     registeredAt,
     createdAt: registeredAt,
     settings: {
       currency: "USD",
       timezone: "Africa/Harare",
-      lowStockAlert: 8,
+      lowStockAlert: sector.lowStockAlert ?? 10,
     },
   });
 
   const products = await Product.insertMany(
-    CATALOG.map((p) => ({
+    sector.catalog.map((p) => ({
       shopId: shop._id,
       ...p,
-      lowStockThreshold: 5,
+      lowStockThreshold: Math.max(3, Math.floor((p.stock || 20) * 0.15)),
       trackStock: true,
       isActive: true,
       createdAt: registeredAt,
     }))
   );
 
+  const phoneOffset = sector.id.length * 100;
   const customers = await Customer.insertMany(
-    CUSTOMERS.map((c, i) => ({
+    SHARED_CUSTOMERS.map((c, i) => ({
       shopId: shop._id,
       name: c.name,
-      phone: c.phone,
+      phone: String(Number(c.phone) + phoneOffset + i),
       email: "",
       totalSpent: 0,
       totalVisits: 0,
@@ -148,7 +119,6 @@ async function main() {
 
   const start = new Date(registeredAt);
   start.setHours(0, 0, 0, 0);
-  // Align to Monday-ish for week loops
   const day = start.getDay();
   const toMonday = day === 0 ? -6 : 1 - day;
   let weekStart = addDays(start, toMonday);
@@ -159,7 +129,7 @@ async function main() {
   let saleCount = 0;
 
   while (weekStart < now) {
-    const salesThisWeek = rand(SALES_PER_WEEK_MIN, SALES_PER_WEEK_MAX);
+    const salesThisWeek = rand(salesMin, salesMax);
     for (let i = 0; i < salesThisWeek; i++) {
       const date = saleDateInWeek(weekStart);
       if (date > now) continue;
@@ -225,31 +195,16 @@ async function main() {
         customer.totalVisits += 1;
         if (!customer.firstPurchaseDate) customer.firstPurchaseDate = date;
         customer.lastPurchaseDate = date;
-        if (isCredit) {
-          customer.currentBalance += total;
-        }
+        if (isCredit) customer.currentBalance += total;
       }
     }
 
-    // Occasional weekly expense (rent slice / packaging / transport)
     if (Math.random() < 0.7) {
       expenseDocs.push({
         shopId: shop._id,
         amount: rand(15, 45),
-        description: pick([
-          "Packaging & tissue",
-          "Market table rental",
-          "Transport to market",
-          "Social media boost",
-          "Alterations thread & notions",
-        ]),
-        category: pick([
-          "packaging",
-          "market_fees",
-          "transport",
-          "marketing",
-          "other",
-        ]),
+        description: pick(sector.expenses || ["Operating expense"]),
+        category: "other",
         paymentMethod: "cash",
         date: addDays(weekStart, rand(0, 4)),
       });
@@ -258,21 +213,15 @@ async function main() {
     weekStart = addDays(weekStart, 7);
   }
 
-  // Insert in batches
   const BATCH = 200;
   for (let i = 0; i < salesDocs.length; i += BATCH) {
     await Sale.insertMany(salesDocs.slice(i, i + BATCH));
   }
-  if (expenseDocs.length) {
-    await Expense.insertMany(expenseDocs);
-  }
+  if (expenseDocs.length) await Expense.insertMany(expenseDocs);
+  for (const c of customers) await c.save();
 
-  for (const c of customers) {
-    await c.save();
-  }
-
-  // Soft stock drawdown so inventory looks used
   for (const p of products) {
+    if (p.stock >= 900) continue; // service SKUs
     const sold = salesDocs.reduce((sum, s) => {
       const line = s.items.find(
         (it) => String(it.productId) === String(p._id)
@@ -283,18 +232,37 @@ async function main() {
     await p.save();
   }
 
-  console.log("\nSeed complete");
-  console.log("────────────────────────────");
-  console.log(`Shop:     ${BUSINESS_NAME}`);
-  console.log(`Username: ${USER_ID}`);
-  console.log(`PIN:      ${PIN}`);
-  console.log(`Products: ${products.length}`);
-  console.log(`Customers:${customers.length}`);
-  console.log(`Sales:    ${saleCount} (~${YEARS} years, ${SALES_PER_WEEK_MIN}-${SALES_PER_WEEK_MAX}/week)`);
-  console.log(`Expenses: ${expenseDocs.length}`);
-  console.log("────────────────────────────");
-  console.log("Web login: http://localhost:5173/login");
-  console.log("────────────────────────────\n");
+  console.log(
+    `✓ ${sector.id.padEnd(12)} ${sector.businessName} (@${sector.username}) — ${products.length} products, ${saleCount} sales`
+  );
+}
+
+async function main() {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    console.error("MONGODB_URI is required");
+    process.exit(1);
+  }
+
+  await mongoose.connect(uri);
+  console.log("Connected to MongoDB\nSeeding sector demos…\n");
+
+  // Drop legacy unique indexes that block multiple shops with null channel ids
+  for (const name of ["telegramId_1", "telegramChatId_1", "whatsappPhone_1"]) {
+    try {
+      await Shop.collection.dropIndex(name);
+      console.log(`Dropped legacy index ${name}`);
+    } catch {
+      /* missing index is fine */
+    }
+  }
+
+  for (const sector of DEMO_SECTORS) {
+    await seedSector(sector);
+  }
+
+  console.log("\nSeed complete — PIN for all demos: 4829");
+  console.log("Try demo picker will list these sectors.\n");
 
   await mongoose.disconnect();
 }

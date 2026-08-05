@@ -60,15 +60,19 @@ const Ghost = styled.button`
 `;
 
 export function DemoBanner() {
-  const { isDemo } = useAuth();
+  const { isDemo, shop } = useAuth();
   const { startTour, isActive } = useDemoTour();
   if (!isDemo) return null;
+
+  const sectorHint = shop?.demoSector
+    ? ` (${shop.demoSector.replace(/_/g, ' ')})`
+    : '';
 
   return (
     <Bar role="status">
       <Message>
-        You&apos;re exploring a demo shop — browse freely. Create yours to save
-        changes.
+        You&apos;re exploring a demo shop{sectorHint} — browse freely. Create
+        yours to save changes.
       </Message>
       <Actions>
         {!isActive ? (

@@ -22,9 +22,11 @@ export async function login(
   }
 }
 
-export async function enterDemo(): Promise<LoginResponse> {
+export async function enterDemo(sector?: string): Promise<LoginResponse> {
   try {
-    const { data } = await api.post<LoginResponse>('/auth/demo');
+    const { data } = await api.post<LoginResponse>('/auth/demo', {
+      sector: sector || undefined,
+    });
     return data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -35,6 +37,22 @@ export async function enterDemo(): Promise<LoginResponse> {
     }
     throw error;
   }
+}
+
+export type DemoSector = {
+  id: string;
+  label: string;
+  blurb: string;
+  businessName: string;
+  username: string;
+  available: boolean;
+};
+
+export async function listDemos(): Promise<DemoSector[]> {
+  const { data } = await api.get<{ success: boolean; demos: DemoSector[] }>(
+    '/auth/demos',
+  );
+  return data.demos || [];
 }
 
 export type RegisterInput = {

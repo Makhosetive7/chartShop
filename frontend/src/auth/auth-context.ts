@@ -9,7 +9,7 @@ export type AuthState = {
   isDemo: boolean;
   login: (username: string, pin: string) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
-  enterDemo: () => Promise<void>;
+  enterDemo: (sector?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateShop: (patch: Partial<Shop>) => void;
 };

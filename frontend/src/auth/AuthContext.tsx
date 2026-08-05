@@ -50,8 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setShop(result.shop);
   }, []);
 
-  const enterDemo = useCallback(async () => {
-    const result = await enterDemoRequest();
+  const enterDemo = useCallback(async (sector?: string) => {
+    const result = await enterDemoRequest(sector);
     if (!result.success || !result.token) {
       throw new Error(result.error || 'Demo is unavailable');
     }
