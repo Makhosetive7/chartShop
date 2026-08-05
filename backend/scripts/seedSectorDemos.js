@@ -52,11 +52,13 @@ async function wipeShopByUsername(username) {
   const existing = await Shop.findOne({ username });
   if (!existing) return;
   const shopId = existing._id;
+  const ActivityLog = (await import("../models/ActivityLog.js")).default;
   await Promise.all([
     Sale.deleteMany({ shopId }),
     Expense.deleteMany({ shopId }),
     Product.deleteMany({ shopId }),
     Customer.deleteMany({ shopId }),
+    ActivityLog.deleteMany({ shopId }),
     Shop.deleteOne({ _id: shopId }),
   ]);
   console.log(`Removed previous ${username}`);
@@ -232,9 +234,202 @@ async function seedSector(sector) {
     await p.save();
   }
 
+  await seedDemoActivityLog({
+    shop,
+    products,
+    salesDocs,
+    expenseDocs,
+    sector,
+  });
+
   console.log(
     `✓ ${sector.id.padEnd(12)} ${sector.businessName} (@${sector.username}) — ${products.length} products, ${saleCount} sales`
   );
+}
+
+/**
+ * Build a browsable activity + chat transcript for demo /app.
+ * Caps volume so history stays readable while covering real seeded work.
+ */
+async function seedDemoActivityLog({
+  shop,
+  products,
+  salesDocs,
+  expenseDocs,
+  sector,
+}) {
+  const ActivityLog = (await import("../models/ActivityLog.js")).default;
+  const actor = shop.username;
+  const logs = [];
+
+  const push = (row) => {
+    logs.push({
+      shopId: shop._id,
+      actorId: actor,
+      channel: row.channel || "system",
+      action: row.action,
+      entityType: row.entityType || null,
+      entityId: row.entityId != null ? String(row.entityId) : null,
+      summary: row.summary,
+      metadata: row.metadata || {},
+      requestId: null,
+      createdAt: row.createdAt,
+    });
+  };
+
+  push({
+    channel: "system",
+    action: "demo.seeded",
+    summary: `Demo shop ready — ${sector.businessName} (@${shop.username})`,
+    metadata: { sector: sector.id },
+    createdAt: shop.registeredAt || shop.createdAt || new Date(),
+  });
+
+  // Catalog setup as chat-style turns (web)
+  for (const p of products.slice(0, 6)) {
+    const createdAt = addDays(shop.registeredAt || new Date(), rand(0, 3));
+    const input = `add ${/\s/.test(p.name) ? `"${p.name}"` : p.name} ${Number(
+      p.price
+    ).toFixed(2)} cost ${Number(p.costPrice || 0).toFixed(2)} stock ${p.stock}`;
+    const reply = `Product added!\n\nName: ${p.name}\nPrice: $${Number(
+      p.price
+    ).toFixed(2)}\nStock: ${p.stock}`;
+    push({
+      channel: "web",
+      action: "chat.turn",
+      entityType: "chat",
+      summary: `→ ${input} · ← ${reply}`.slice(0, 400),
+      metadata: { input, reply, replyType: "text" },
+      createdAt,
+    });
+  }
+
+  // Recent sales → activity + chat sell turns (mix of channels)
+  const recentSales = [...salesDocs]
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .slice(-40);
+  const channels = ["web", "telegram", "whatsapp"];
+
+  for (let i = 0; i < recentSales.length; i++) {
+    const sale = recentSales[i];
+    const channel = channels[i % channels.length];
+    const itemsText = sale.items
+      .map((it) => {
+        const name = /\s/.test(it.productName)
+          ? `"${it.productName}"`
+          : it.productName;
+        return `${it.quantity} ${name}`;
+      })
+      .join(" ");
+    const input =
+      sale.type === "credit" && sale.customerName
+        ? `credit sale to "${sale.customerName}" ${itemsText}`
+        : `sell ${itemsText}`;
+    const reply = [
+      sale.type === "credit" ? "CREDIT SALE RECEIPT" : "CASH SALE RECEIPT",
+      "",
+      sale.customerName ? `Customer: ${sale.customerName}` : null,
+      `Total: $${Number(sale.total).toFixed(2)}`,
+      `Items: ${sale.items
+        .map((it) => `${it.quantity}x ${it.productName}`)
+        .join(", ")}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    push({
+      channel,
+      action: "chat.turn",
+      entityType: "chat",
+      summary: `→ ${input} · ← ${reply}`.slice(0, 400),
+      metadata: { input, reply, replyType: "text" },
+      createdAt: sale.date,
+    });
+
+    push({
+      channel,
+      action: sale.type === "credit" ? "sale.credit" : "sale.cash",
+      entityType: "sale",
+      summary: `${sale.type} sale $${Number(sale.total).toFixed(2)}${
+        sale.customerName ? ` · ${sale.customerName}` : ""
+      }`,
+      metadata: {
+        total: sale.total,
+        type: sale.type,
+        items: sale.items.map((it) => ({
+          name: it.productName,
+          quantity: it.quantity,
+        })),
+      },
+      createdAt: sale.date,
+    });
+  }
+
+  const recentExpenses = [...expenseDocs]
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .slice(-20);
+  for (const exp of recentExpenses) {
+    const input = `expense ${Number(exp.amount).toFixed(2)} "${exp.description}"`;
+    const reply = `EXPENSE RECORDED\n\nAmount: $${Number(exp.amount).toFixed(
+      2
+    )}\nDescription: ${exp.description}`;
+    push({
+      channel: "web",
+      action: "chat.turn",
+      entityType: "chat",
+      summary: `→ ${input} · ← ${reply}`.slice(0, 400),
+      metadata: { input, reply, replyType: "text" },
+      createdAt: exp.date,
+    });
+    push({
+      channel: "web",
+      action: "expense.recorded",
+      entityType: "expense",
+      summary: `Expense $${Number(exp.amount).toFixed(2)} · ${exp.description}`,
+      metadata: { amount: exp.amount, description: exp.description },
+      createdAt: exp.date,
+    });
+  }
+
+  // Closing report turns so /app ends on something useful
+  const top = products.slice(0, 3).map((p) => p.name).join(", ");
+  const reportAt = new Date();
+  reportAt.setHours(reportAt.getHours() - 2);
+  for (const [input, reply, channel] of [
+    [
+      "list",
+      `PRODUCT LIST\n\n${products
+        .slice(0, 5)
+        .map((p) => `• ${p.name} - $${Number(p.price).toFixed(2)} (stock ${p.stock})`)
+        .join("\n")}\n…`,
+      "telegram",
+    ],
+    [
+      "daily",
+      `FINANCIAL REPORT - TODAY\n\nDemo snapshot for ${sector.businessName}.\nRecent sales and expenses are loaded — explore Products, Sales, and Reports.`,
+      "web",
+    ],
+    [
+      "best",
+      `BEST SELLERS\n\nTop movers include: ${top}.\nOpen Reports for the full picture.`,
+      "whatsapp",
+    ],
+  ]) {
+    push({
+      channel,
+      action: "chat.turn",
+      entityType: "chat",
+      summary: `→ ${input} · ← ${reply}`.slice(0, 400),
+      metadata: { input, reply, replyType: "text" },
+      createdAt: reportAt,
+    });
+  }
+
+  logs.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const BATCH = 200;
+  for (let i = 0; i < logs.length; i += BATCH) {
+    await ActivityLog.insertMany(logs.slice(i, i + BATCH));
+  }
 }
 
 async function main() {
@@ -247,15 +442,9 @@ async function main() {
   await mongoose.connect(uri);
   console.log("Connected to MongoDB\nSeeding sector demos…\n");
 
-  // Drop legacy unique indexes that block multiple shops with null channel ids
-  for (const name of ["telegramId_1", "telegramChatId_1", "whatsappPhone_1"]) {
-    try {
-      await Shop.collection.dropIndex(name);
-      console.log(`Dropped legacy index ${name}`);
-    } catch {
-      /* missing index is fine */
-    }
-  }
+  // Drop legacy unique indexes that block multiple shops / web sessions
+  const { dropLegacyAuthIndexes } = await import("../utils/dropLegacyIndexes.js");
+  await dropLegacyAuthIndexes(mongoose.connection.db);
 
   for (const sector of DEMO_SECTORS) {
     await seedSector(sector);

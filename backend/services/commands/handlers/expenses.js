@@ -73,6 +73,12 @@ export async function handleExpenseRecording(shopId, text) {
       }
 
       description = words.join(" ").trim();
+
+      // Examples like `expense 25.50 transport cash` use category/payment only —
+      // keep a usable description instead of failing.
+      if (!description && category !== "other") {
+        description = category;
+      }
     }
 
     if (!description.trim()) {
