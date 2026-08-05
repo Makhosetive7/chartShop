@@ -44,7 +44,7 @@ describe("parseSaleItems", () => {
   });
 
   afterEach(async () => {
-    await wipeShopData({ shopId: shop._id, telegramId: shop.telegramId });
+    await wipeShopData({ shopId: shop._id, username: shop.username });
   });
 
   it("parses quoted multi-word product names", async () => {

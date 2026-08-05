@@ -16,7 +16,7 @@ export function RegisterPage() {
   const { isAuthenticated, register } = useAuth();
   const navigate = useNavigate();
   const [businessName, setBusinessName] = useState('');
-  const [userId, setUserId] = useState('');
+  const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [businessDescription, setBusinessDescription] = useState('');
@@ -31,6 +31,13 @@ export function RegisterPage() {
     event.preventDefault();
     setError(null);
 
+    const normalized = username.trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,32}$/.test(normalized)) {
+      setError(
+        'Username must be 3–32 characters: letters, numbers, underscore only.',
+      );
+      return;
+    }
     if (!/^\d{4}$/.test(pin)) {
       setError('PIN must be exactly 4 digits.');
       return;
@@ -43,7 +50,7 @@ export function RegisterPage() {
     setPending(true);
     try {
       await register({
-        userId: userId.trim(),
+        username: normalized,
         businessName: businessName.trim(),
         pin: pin.trim(),
         businessDescription:
@@ -61,7 +68,7 @@ export function RegisterPage() {
     <AuthShell
       eyebrow="Open your shop"
       headline="Register the till in minutes"
-      lead="Pick a shop name, a user ID, and a 4-digit PIN — same credentials work in chat later."
+      lead="Pick a shop name, a username, and a 4-digit PIN — same credentials work in chat."
       showcaseTitle="First sale starts with a message"
       showcaseLead="After register, you can sell from Telegram, WhatsApp, or this dashboard."
       preview={[
@@ -91,13 +98,14 @@ export function RegisterPage() {
         />
       </Field>
       <Field>
-        User ID
-        <Hint>Telegram id, wa:phone, or a web id you will reuse in chat</Hint>
+        Username
+        <Hint>3–32 chars · letters, numbers, underscore · used on all platforms</Hint>
         <Input
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          placeholder="e.g. 123456789 or wa:+27…"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="e.g. tinasales"
           autoComplete="username"
+          pattern="[A-Za-z0-9_]{3,32}"
           required
         />
       </Field>

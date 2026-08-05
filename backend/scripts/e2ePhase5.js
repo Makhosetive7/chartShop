@@ -35,8 +35,11 @@ const {
 } = await import("../adapters/whatsapp.js");
 const { handleTelegramUpdate } = await import("../adapters/telegram.js");
 
-const TG = `e2e5_${Date.now()}`;
-const WA = `wa:263771234567`;
+const TG_CHAT = `${Date.now()}`.slice(-9);
+const TG_USER = `e2e5_tg_${Date.now().toString(36)}`.slice(0, 32);
+const WA_PHONE = "263771234567";
+const WA = `wa:${WA_PHONE}`;
+const WA_USER = `e2e5_wa_${Date.now().toString(36)}`.slice(0, 32);
 const PIN = "4829";
 const results = [];
 
@@ -54,16 +57,20 @@ function includes(hay, ...needles) {
   return needles.every((n) => h.includes(String(n).toLowerCase()));
 }
 
-async function cmd(userId, text) {
-  const response = await commandService.processCommand(userId, text);
+async function cmd(userId, text, channelHint) {
+  const response = await commandService.processCommand(
+    userId,
+    text,
+    channelHint
+  );
   if (response && typeof response === "object") {
     return JSON.stringify(response);
   }
   return String(response ?? "");
 }
 
-async function wipe(userId) {
-  const shop = await Shop.findOne({ telegramId: userId });
+async function wipeByUsername(username) {
+  const shop = await Shop.findOne({ username });
   if (shop) {
     await Promise.all([
       Product.deleteMany({ shopId: shop._id }),
@@ -74,7 +81,13 @@ async function wipe(userId) {
   }
   await mongoose.connection.db
     .collection("authsessions")
-    .deleteMany({ telegramId: userId });
+    .deleteMany({ shopId: shop?._id });
+}
+
+async function wipeChannel(channel, channelKey) {
+  await mongoose.connection.db
+    .collection("authsessions")
+    .deleteMany({ channel, channelKey: String(channelKey) });
 }
 
 function httpGet(port, path) {
@@ -99,41 +112,47 @@ async function main() {
 
   console.log(`Connecting… (${uri.replace(/\/\/.*@/, "//***@")})`);
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
-  console.log(`DB: ${mongoose.connection.name}\nTG=${TG}\nWA=${WA}\n`);
+  console.log(`DB: ${mongoose.connection.name}\nTG=${TG_CHAT} @${TG_USER}\nWA=${WA} @${WA_USER}\n`);
 
-  await wipe(TG);
-  await wipe(WA);
+  await wipeByUsername(TG_USER);
+  await wipeByUsername(WA_USER);
+  await wipeChannel("telegram", TG_CHAT);
+  await wipeChannel("whatsapp", WA_PHONE);
 
   // ---------- Core regression ----------
-  let r = await cmd(TG, `register "Phase5 E2E Shop" ${PIN}`);
+  let r = await cmd(
+    TG_CHAT,
+    `register ${TG_USER} "Phase5 E2E Shop" ${PIN}`,
+    "telegram"
+  );
   assert("register", includes(r, "phase5 e2e shop") || includes(r, "ready"), r);
 
-  r = await cmd(TG, "status");
+  r = await cmd(TG_CHAT, "status", "telegram");
   assert("status logged in", includes(r, "phase5") || includes(r, "logged"), r);
 
-  r = await cmd(TG, "add e2ebread 2.50 stock 20");
+  r = await cmd(TG_CHAT, "add e2ebread 2.50 stock 20", "telegram");
   assert("add bread", includes(r, "e2ebread") || includes(r, "added"), r);
 
-  r = await cmd(TG, 'add "e2e milk" 3.20 stock 10');
+  r = await cmd(TG_CHAT, 'add "e2e milk" 3.20 stock 10', "telegram");
   assert("add milk", includes(r, "milk") || includes(r, "added"), r);
 
-  r = await cmd(TG, "sell 2 e2ebread");
+  r = await cmd(TG_CHAT, "sell 2 e2ebread", "telegram");
   assert("cash sell", includes(r, "cash") || includes(r, "total") || includes(r, "5.00"), r);
 
-  let shop = await Shop.findOne({ telegramId: TG });
+  let shop = await Shop.findOne({ username: TG_USER });
   let bread = await Product.findOne({ shopId: shop._id, name: /e2ebread/i });
   assert("stock after sell", bread?.stock === 18, `stock=${bread?.stock}`);
 
-  r = await cmd(TG, "sell 100 e2ebread");
+  r = await cmd(TG_CHAT, "sell 100 e2ebread", "telegram");
   assert("oversell rejected", includes(r, "insufficient"), r);
 
-  r = await cmd(TG, 'cancel last "e2e5"');
+  r = await cmd(TG_CHAT, 'cancel last "e2e5"', "telegram");
   assert("cancel last", includes(r, "cancel"), r);
   bread = await Product.findOne({ shopId: shop._id, name: /e2ebread/i });
   assert("stock restored", bread?.stock === 20, `stock=${bread?.stock}`);
 
   // ---------- Parser fix ----------
-  r = await cmd(TG, "sell 2 e2ebread 1 \"e2e milk\"");
+  r = await cmd(TG_CHAT, "sell 2 e2ebread 1 \"e2e milk\"", "telegram");
   assert(
     "multi-item sale 2 bread 1 milk",
     includes(r, "e2ebread") && includes(r, "milk") && includes(r, "cash"),
@@ -144,18 +163,18 @@ async function main() {
   assert("multi-item stock bread", bread?.stock === 18, `stock=${bread?.stock}`);
   assert("multi-item stock milk", milk?.stock === 9, `stock=${milk?.stock}`);
 
-  r = await cmd(TG, "sell 1 e2ebread 2.25");
+  r = await cmd(TG_CHAT, "sell 1 e2ebread 2.25", "telegram");
   assert("custom price still works", includes(r, "2.25") || includes(r, "cash"), r);
 
   // ---------- Cost / margin ----------
-  r = await cmd(TG, "add p5bread 2.50 cost 1.00 stock 10");
+  r = await cmd(TG_CHAT, "add p5bread 2.50 cost 1.00 stock 10", "telegram");
   assert(
     "add with cost",
     includes(r, "cost") && includes(r, "1.00") && includes(r, "margin"),
     r
   );
 
-  r = await cmd(TG, "sell 2 p5bread");
+  r = await cmd(TG_CHAT, "sell 2 p5bread", "telegram");
   assert("sell shows COGS", includes(r, "cogs") && includes(r, "gross profit"), r);
 
   const p5Sale = await Sale.findOne({
@@ -166,37 +185,38 @@ async function main() {
   assert("sale.costTotal stored", p5Sale?.costTotal === 2, `costTotal=${p5Sale?.costTotal}`);
   assert("sale.profit stored", p5Sale?.profit === 3, `profit=${p5Sale?.profit}`);
 
-  r = await cmd(TG, "daily");
+  r = await cmd(TG_CHAT, "daily", "telegram");
   assert(
     "daily product margin",
     includes(r, "product margin") || includes(r, "gross profit") || includes(r, "cogs"),
     r
   );
 
-  r = await cmd(TG, "edit p5bread cost 1.25");
+  r = await cmd(TG_CHAT, "edit p5bread cost 1.25", "telegram");
   assert("edit cost", includes(r, "cost") && includes(r, "1.25"), r);
 
   // ---------- Credit path still works ----------
-  r = await cmd(TG, 'customer add "Phase5 Cust" 5550005555');
+  r = await cmd(TG_CHAT, 'customer add "Phase5 Cust" 5550005555', "telegram");
   assert("add customer", includes(r, "phase5 cust") || includes(r, "added"), r);
 
-  r = await cmd(TG, 'credit sale to "Phase5 Cust" 1 e2ebread');
+  r = await cmd(TG_CHAT, 'credit sale to "Phase5 Cust" 1 e2ebread', "telegram");
   assert("credit sale", includes(r, "credit"), r);
 
-  r = await cmd(TG, "logout");
+  r = await cmd(TG_CHAT, "logout", "telegram");
   assert("logout", includes(r, "logged out") || includes(r, "goodbye"), r);
 
-  r = await cmd(TG, "list");
+  r = await cmd(TG_CHAT, "list", "telegram");
   assert("blocked when logged out", includes(r, "login") || includes(r, "welcome"), r);
 
-  r = await cmd(TG, `login ${PIN}`);
-  assert("re-login", includes(r, "phase5") || includes(r, "welcome"), r);
+  r = await cmd(TG_CHAT, `login ${PIN}`, "telegram");
+  assert("re-login pin-only on linked chat", includes(r, "phase5") || includes(r, "welcome"), r);
 
   // ---------- Shared inbound adapter ----------
   const replies = [];
   await handleInboundMessage({
-    userId: TG,
+    userId: TG_CHAT,
     text: "list",
+    channel: "telegram",
     sendText: async (body) => {
       replies.push(body);
     },
@@ -217,29 +237,32 @@ async function main() {
   });
   assert("whatsapp hub verify", verify.ok && verify.challenge === "4242", JSON.stringify(verify));
 
-  // Register a separate WhatsApp-identity shop
-  r = await cmd(WA, `register "WA E2E Shop" ${PIN}`);
+  // Register a separate WhatsApp shop (different username)
+  r = await cmd(WA, `register ${WA_USER} "WA E2E Shop" ${PIN}`, "whatsapp");
   assert("wa register", includes(r, "wa e2e shop") || includes(r, "ready"), r);
 
-  r = await cmd(WA, "add wabread 1.50 stock 5");
+  r = await cmd(WA, "add wabread 1.50 stock 5", "whatsapp");
   assert("wa add product", includes(r, "wabread") || includes(r, "added"), r);
 
-  const waShop = await Shop.findOne({ telegramId: WA });
-  const tgShop = await Shop.findOne({ telegramId: TG });
+  const waShop = await Shop.findOne({ username: WA_USER });
+  const tgShop = await Shop.findOne({ username: TG_USER });
   assert(
     "wa and tg shops are separate",
     waShop && tgShop && String(waShop._id) !== String(tgShop._id),
     `wa=${waShop?._id} tg=${tgShop?._id}`
   );
+  assert(
+    "channels linked on each shop",
+    tgShop.channels?.telegramChatId === TG_CHAT &&
+      waShop.channels?.whatsappPhone === WA_PHONE,
+    JSON.stringify({ tg: tgShop.channels, wa: waShop.channels })
+  );
 
-  // WhatsApp webhook handler with stubbed Graph API (monkey-patch axios via env - skip real send)
-  // Drive processCommand path by calling handleInboundMessage for wa id (already covered).
-  // Still exercise payload extractor via handleWhatsAppWebhook with broken token send swallowed:
   const waReplies = [];
-  // Bypass Graph by using inbound directly for message processing fidelity
   await handleInboundMessage({
     userId: WA,
     text: "list",
+    channel: "whatsapp",
     sendText: async (body) => waReplies.push(body),
   });
   assert(
@@ -248,22 +271,7 @@ async function main() {
     waReplies[0]
   );
 
-  // Telegram update adapter (will try real Telegram send — catch and treat send failure as ok if command ran)
-  let telegramAdapterOk = false;
-  try {
-    await handleTelegramUpdate({
-      update_id: 1,
-      message: { chat: { id: Number(TG.replace(/\D/g, "").slice(0, 9) || "1") }, text: "help" },
-    });
-    telegramAdapterOk = true;
-  } catch (err) {
-    // Expected: dummy token cannot send to Telegram API; adapter still invoked
-    telegramAdapterOk = /telegram|401|404|Unauthorized|chat not found|ECONN|ENOTFOUND|403/i.test(
-      String(err.message) + JSON.stringify(err.response?.data || {})
-    );
-  }
-  // Use numeric chat that won't match TG shop — better: call inbound already tested.
-  // Mark adapter module load + ignore-path instead:
+  // Telegram update adapter
   const ignored = await handleTelegramUpdate({ update_id: 2 });
   assert("telegram adapter ignores non-text", ignored?.ignored === true, JSON.stringify(ignored));
   assert(
@@ -317,8 +325,10 @@ async function main() {
     server.close((err) => (err ? reject(err) : resolve()))
   );
 
-  await wipe(TG);
-  await wipe(WA);
+  await wipeByUsername(TG_USER);
+  await wipeByUsername(WA_USER);
+  await wipeChannel("telegram", TG_CHAT);
+  await wipeChannel("whatsapp", WA_PHONE);
   await mongoose.disconnect();
 
   const failed = results.filter((x) => !x.ok);

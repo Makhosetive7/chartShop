@@ -44,7 +44,7 @@ describe("credit sale + cancel restores balance", () => {
   });
 
   afterEach(async () => {
-    await wipeShopData({ shopId: shop._id, telegramId: shop.telegramId });
+    await wipeShopData({ shopId: shop._id, username: shop.username });
   });
 
   it("restores stock and customer balance when credit sale is cancelled", async () => {

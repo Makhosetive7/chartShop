@@ -15,7 +15,8 @@ import Customer from "../models/Customer.js";
 
 dotenv.config();
 
-const TG = `e2e_${Date.now()}`;
+const TG_CHAT = `${Date.now()}`.slice(-9);
+const USERNAME = `e2e3_${Date.now().toString(36)}`.slice(0, 32);
 const PIN = "4829";
 const results = [];
 
@@ -31,7 +32,11 @@ function includes(hay, ...needles) {
 }
 
 async function cmd(text) {
-  const response = await commandService.processCommand(TG, text);
+  const response = await commandService.processCommand(
+    TG_CHAT,
+    text,
+    "telegram"
+  );
   if (response && typeof response === "object") {
     return JSON.stringify(response);
   }
@@ -39,7 +44,7 @@ async function cmd(text) {
 }
 
 async function cleanup() {
-  const shop = await Shop.findOne({ telegramId: TG });
+  const shop = await Shop.findOne({ username: USERNAME });
   if (shop) {
     await Promise.all([
       Product.deleteMany({ shopId: shop._id }),
@@ -49,7 +54,8 @@ async function cleanup() {
     await Shop.deleteOne({ _id: shop._id });
   }
   await mongoose.connection.db.collection("authsessions").deleteMany({
-    telegramId: TG,
+    channel: "telegram",
+    channelKey: TG_CHAT,
   });
 }
 
@@ -61,35 +67,31 @@ async function main() {
 
   console.log(`Connecting… (${uri.replace(/\/\/.*@/, "//***@")})`);
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
-  console.log(`DB: ${mongoose.connection.name}\nTelegram test id: ${TG}\n`);
+  console.log(`DB: ${mongoose.connection.name}\nChat: ${TG_CHAT} @${USERNAME}\n`);
 
   await cleanup();
 
-  // 1. Register (quick format)
-  let r = await cmd(`register "Phase3 E2E Shop" ${PIN}`);
+  // 1. Register (quick format with username)
+  let r = await cmd(`register ${USERNAME} "Phase3 E2E Shop" ${PIN}`);
   assert(
     "register",
-    includes(r, "phase3 e2e shop") || includes(r, "welcome") || includes(r, "registered") || includes(r, "success") || includes(r, "logged"),
+    includes(r, "phase3 e2e shop") || includes(r, "welcome") || includes(r, "registered") || includes(r, "success") || includes(r, "ready"),
     r
   );
 
-  // If register returned a multi-step prompt, finish the flow
-  if (includes(r, "step") || includes(r, "description") || includes(r, "business name")) {
-    r = await cmd("register");
-    // start registration then steps
-  }
   // Ensure logged in via login if needed
-  if (includes(r, "already have") || includes(r, "login")) {
-    r = await cmd(`login ${PIN}`);
+  if (includes(r, "already") || includes(r, "login")) {
+    r = await cmd(`login ${USERNAME} ${PIN}`);
   }
 
   // Re-check auth with status
   r = await cmd("status");
   if (!includes(r, "phase3") && !includes(r, "logged") && !includes(r, "active")) {
-    // Try full register flow
     await cleanup();
     r = await cmd("register");
-    assert("register start", includes(r, "business name") || includes(r, "step"), r);
+    assert("register start", includes(r, "username") || includes(r, "step"), r);
+    r = await cmd(USERNAME);
+    assert("register username", includes(r, "business name") || includes(r, "step"), r);
     r = await cmd("Phase3 E2E Shop");
     assert("register name", includes(r, "description") || includes(r, "step"), r);
     r = await cmd("End to end test shop for phase three command split");
@@ -118,7 +120,7 @@ async function main() {
   r = await cmd("sell 2 e2ebread");
   assert("cash sell", includes(r, "cash") || includes(r, "receipt") || includes(r, "5.00") || includes(r, "total"), r);
 
-  const shop = await Shop.findOne({ telegramId: TG });
+  const shop = await Shop.findOne({ username: USERNAME });
   let bread = await Product.findOne({ shopId: shop._id, name: /e2ebread/i });
   assert("stock after sell", bread && bread.stock === 8, `stock=${bread?.stock}`);
 
@@ -193,7 +195,7 @@ async function main() {
   assert("blocked when logged out", includes(r, "login") || includes(r, "register") || includes(r, "welcome"), r);
 
   r = await cmd(`login ${PIN}`);
-  assert("login again", includes(r, "phase3") || includes(r, "welcome") || includes(r, "success") || includes(r, "logged"), r);
+  assert("re-login pin-only on linked chat", includes(r, "welcome") || includes(r, "phase3") || includes(r, "logged") || includes(r, "success"), r);
 
   r = await cmd("list");
   assert("list after re-login", includes(r, "e2ebread"), r);

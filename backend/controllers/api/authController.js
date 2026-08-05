@@ -1,22 +1,30 @@
-import bcrypt from "bcryptjs";
 import Shop from "../../models/Shop.js";
 import AuthService from "../../services/AuthService.js";
 import ActivityService from "../../services/ActivityService.js";
 import { publicShop, stripMarkdown } from "../../utils/apiResponse.js";
+import { normalizeUsername } from "../../utils/channelIdentity.js";
 
 export async function login(req, res) {
   try {
-    const userId = String(req.body?.userId || "").trim();
+    const username = String(
+      req.body?.username || req.body?.userId || ""
+    ).trim();
     const pin = String(req.body?.pin || "").trim();
 
-    if (!userId || !pin) {
+    if (!username || !pin) {
       return res.status(400).json({
         success: false,
-        error: "userId and pin are required.",
+        error: "username and pin are required.",
       });
     }
 
-    const result = await AuthService.login(userId, pin);
+    const result = await AuthService.loginWithCredentials({
+      username,
+      pin,
+      channel: "web",
+      channelKey: null,
+    });
+
     if (!result.success) {
       return res.status(401).json({
         success: false,
@@ -26,7 +34,7 @@ export async function login(req, res) {
 
     await ActivityService.log({
       shopId: result.shop?._id,
-      userId,
+      userId: result.shop?.username,
       channel: "web",
       action: "auth.login",
       summary: `Signed in on web`,
@@ -49,7 +57,7 @@ export async function login(req, res) {
 
 export async function logout(req, res) {
   try {
-    const result = await AuthService.logout(req.userId);
+    const result = await AuthService.logoutByToken(req.sessionToken);
     return res.json({
       success: result.success,
       message: stripMarkdown(result.message),
@@ -70,58 +78,55 @@ export async function me(req, res) {
   });
 }
 
-/** One-shot register: same as chat `register "Name" 1234`. */
+/** One-shot register with username + PIN. */
 export async function register(req, res) {
   try {
-    const userId = String(req.body?.userId || "").trim();
+    const username = String(
+      req.body?.username || req.body?.userId || ""
+    ).trim();
     const businessName = String(req.body?.businessName || "").trim();
     const pin = String(req.body?.pin || "").trim();
     const businessDescription = String(
       req.body?.businessDescription || "General merchandise"
     ).trim();
 
-    if (!userId || !businessName || !pin) {
+    if (!username || !businessName || !pin) {
       return res.status(400).json({
         success: false,
-        error: "userId, businessName, and pin are required.",
+        error: "username, businessName, and pin are required.",
       });
     }
 
-    const pinValidation = AuthService.validatePin(pin);
-    if (!pinValidation.valid) {
-      return res.status(400).json({
-        success: false,
-        error: pinValidation.message,
-      });
-    }
-
-    const existing = await Shop.findOne({ telegramId: userId });
-    if (existing) {
-      return res.status(409).json({
-        success: false,
-        error: "Account already registered for this userId.",
-      });
-    }
-
-    const hashedPin = await bcrypt.hash(pin, 12);
-    const shop = await Shop.create({
-      telegramId: userId,
+    const result = await AuthService.registerAccount({
+      username,
       businessName,
       businessDescription,
-      pin: hashedPin,
-      isActive: true,
-      registeredAt: new Date(),
+      pin,
+      channel: "web",
+      channelKey: null,
     });
 
-    const sessionToken = await AuthService.createLoginSession(
-      userId,
-      shop._id
-    );
+    if (!result.success) {
+      const status = /taken|already/i.test(result.message) ? 409 : 400;
+      return res.status(status).json({
+        success: false,
+        error: stripMarkdown(result.message),
+      });
+    }
+
+    await ActivityService.log({
+      shopId: result.shop?._id,
+      userId: result.shop?.username,
+      channel: "web",
+      action: "auth.register",
+      summary: `Registered on web`,
+      entityType: "session",
+    });
 
     return res.status(201).json({
       success: true,
-      token: sessionToken,
-      shop: publicShop(shop),
+      token: result.sessionToken,
+      shop: publicShop(result.shop),
     });
   } catch (error) {
     console.error("[api/auth/register]", error);
@@ -134,23 +139,21 @@ export async function register(req, res) {
 
 export async function status(req, res) {
   try {
-    const userId = String(req.query.userId || req.body?.userId || "").trim();
-    if (!userId) {
+    const username = normalizeUsername(
+      req.query.username || req.body?.username || req.query.userId || ""
+    );
+    if (!username) {
       return res.status(400).json({
         success: false,
-        error: "userId is required.",
+        error: "username is required.",
       });
     }
 
-    const shop = await Shop.findOne({ telegramId: userId });
-    const isAuthenticated = await AuthService.isAuthenticated(userId);
-    const regStatus = await AuthService.getRegistrationStatus(userId);
+    const shop = await AuthService.findShopByUsername(username);
 
     return res.json({
       success: true,
       registered: Boolean(shop),
-      isAuthenticated,
-      registrationInProgress: regStatus,
       shop: shop ? publicShop(shop) : null,
     });
   } catch (error) {
@@ -164,13 +167,9 @@ export async function status(req, res) {
 
 export async function profile(req, res) {
   try {
-    const result = await AuthService.getProfile(req.userId);
-    if (!result.success) {
-      return res.status(404).json({
-        success: false,
-        error: stripMarkdown(result.message),
-      });
-    }
+    const result = await AuthService.getProfileByShop(req.shop, {
+      isLoggedIn: true,
+    });
     return res.json({
       success: true,
       shop: publicShop(req.shop),
@@ -195,7 +194,7 @@ export async function updateProfileName(req, res) {
       });
     }
 
-    const result = await AuthService.updateBusinessName(req.userId, name);
+    const result = await AuthService.updateBusinessNameForShop(req.shop, name);
     if (!result.success) {
       return res.status(400).json({
         success: false,
@@ -203,7 +202,7 @@ export async function updateProfileName(req, res) {
       });
     }
 
-    const shop = await Shop.findOne({ telegramId: req.userId });
+    const shop = await Shop.findById(req.shopId);
     return res.json({
       success: true,
       shop: publicShop(shop),
@@ -230,8 +229,8 @@ export async function updateProfileDescription(req, res) {
       });
     }
 
-    const result = await AuthService.updateBusinessDescription(
-      req.userId,
+    const result = await AuthService.updateBusinessDescriptionForShop(
+      req.shop,
       description
     );
     if (!result.success) {
@@ -241,7 +240,7 @@ export async function updateProfileDescription(req, res) {
       });
     }
 
-    const shop = await Shop.findOne({ telegramId: req.userId });
+    const shop = await Shop.findById(req.shopId);
     return res.json({
       success: true,
       shop: publicShop(shop),
@@ -259,6 +258,7 @@ export async function updateProfileDescription(req, res) {
 /** One-shot PIN change (API equivalent of chat multi-step pin edit). */
 export async function updateProfilePin(req, res) {
   try {
+    const bcrypt = (await import("bcryptjs")).default;
     const oldPin = String(req.body?.oldPin || "").trim();
     const newPin = String(req.body?.newPin || "").trim();
 
@@ -269,14 +269,7 @@ export async function updateProfilePin(req, res) {
       });
     }
 
-    const shop = await Shop.findOne({ telegramId: req.userId });
-    if (!shop) {
-      return res.status(404).json({
-        success: false,
-        error: "Shop not found.",
-      });
-    }
-
+    const shop = req.shop;
     const validOld = await bcrypt.compare(oldPin, shop.pin);
     if (!validOld) {
       return res.status(401).json({

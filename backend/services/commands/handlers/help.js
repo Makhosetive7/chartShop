@@ -5,11 +5,11 @@ export function getHelpText() {
  CORE COMMANDS
 ===============
 • help - Show this guide
-• register - Step-by-step setup
-• register "Business Name" 1234 - Quick setup
-• login - Login with PIN
-• login 1234 - Quick login
-• logout - End session
+• register - Step-by-step setup (username + shop + PIN)
+• register your_username "Business Name" 1234 - Quick setup
+• login your_username 1234 - Login (links this chat on first use)
+• login 1234 - PIN-only (only after this chat is linked)
+• logout - End this channel's session
 • account - View account info
 • status - Check registration/login status
 • profile - View full profile

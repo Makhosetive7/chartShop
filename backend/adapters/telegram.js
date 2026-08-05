@@ -3,6 +3,7 @@ import { handleInboundMessage } from "./inbound.js";
 
 /**
  * Process one Telegram Bot API update (webhook or polling).
+ * Chat id is transport only — shop identity is username + PIN.
  */
 export async function handleTelegramUpdate(update) {
   if (!update?.message?.text) {

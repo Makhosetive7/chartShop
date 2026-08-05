@@ -5,29 +5,35 @@ JSON REST API mirroring Telegram/WhatsApp chat commands. Same Mongo models and d
 Base URL: `/api/v1`  
 Auth: `Authorization: Bearer <token>` from login or register.
 
-Channel `userId` is the shop’s `telegramId` (numeric chat id) or `wa:<phone>`.
+**Identity:** one shop account per `username` + PIN. Telegram chat ids and WhatsApp phones are linked channel metadata, not login ids.
 
 ```bash
 TOKEN=$(curl -s http://localhost:3000/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"userId":"YOUR_TELEGRAM_ID","pin":"4829"}' | jq -r .token)
+  -d '{"username":"tinasales","pin":"4829"}' | jq -r .token)
 ```
 
 ## Auth
 
 | Method | Path | Chat equivalent |
 |--------|------|-----------------|
-| POST | `/auth/register` | `register "Name" 1234` |
-| POST | `/auth/login` | `login 1234` |
-| POST | `/auth/logout` | `logout` |
+| POST | `/auth/register` | `register tinasales "Name" 1234` |
+| POST | `/auth/login` | `login tinasales 1234` |
+| POST | `/auth/logout` | `logout` (this channel only) |
 | GET | `/auth/me` | session check |
-| GET | `/auth/status?userId=` | `status` |
+| GET | `/auth/status?username=` | `status` |
 | GET | `/auth/profile` | `profile` / `account` |
 | PATCH | `/auth/profile/name` | `profile edit name` |
 | PATCH | `/auth/profile/description` | `profile edit description` |
 | PATCH | `/auth/profile/pin` | `profile edit pin` (`oldPin`, `newPin`) |
 
-Register body: `{ "userId", "businessName", "pin", "businessDescription?" }` — returns token + shop.
+Register body: `{ "username", "businessName", "pin", "businessDescription?" }` — returns token + shop.
+
+Login body: `{ "username", "pin" }`.
+
+Shop payload includes `username` and `channels: { telegramLinked, whatsappLinked }` (no PIN).
+
+On Telegram/WhatsApp, first successful `login <username> <pin>` binds that chat to the shop. PIN-only login works only after the channel is linked.
 
 ## Products
 

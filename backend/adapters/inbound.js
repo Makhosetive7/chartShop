@@ -14,7 +14,11 @@ export async function handleInboundMessage({
   sendDocument,
 }) {
   const requestId = crypto.randomUUID();
-  const response = await commandService.processCommand(userId, text);
+  const response = await commandService.processCommand(
+    userId,
+    text,
+    detectChannel(userId, channel)
+  );
 
   let replyType = "text";
   let replyText = "";

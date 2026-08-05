@@ -15,7 +15,7 @@ import {
 export function LoginPage() {
   const { isAuthenticated, login } = useAuth();
   const navigate = useNavigate();
-  const [userId, setUserId] = useState('');
+  const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -29,7 +29,7 @@ export function LoginPage() {
     setError(null);
     setPending(true);
     try {
-      await login(userId.trim(), pin.trim());
+      await login(username.trim().toLowerCase(), pin.trim());
       navigate('/app', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -42,7 +42,7 @@ export function LoginPage() {
     <AuthShell
       eyebrow="Welcome back"
       headline="Open the till again"
-      lead="Sign in with the same user ID and PIN you use in Telegram or WhatsApp."
+      lead="Sign in with the same username and PIN you use in Telegram or WhatsApp."
       showcaseTitle="Your shop picks up where you left off"
       showcaseLead="Sales, stock, and credit stay synced — chat or web, same books."
       preview={[
@@ -65,13 +65,14 @@ export function LoginPage() {
       }
     >
       <Field>
-        User ID
-        <Hint>Telegram id, wa:phone, or your web id</Hint>
+        Username
+        <Hint>Same username on web, Telegram, and WhatsApp</Hint>
         <Input
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          placeholder="e.g. 123456789 or wa:+27…"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="e.g. tinasales"
           autoComplete="username"
+          pattern="[A-Za-z0-9_]{3,32}"
           required
         />
       </Field>

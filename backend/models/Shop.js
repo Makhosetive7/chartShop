@@ -1,10 +1,30 @@
 import mongoose from "mongoose";
 
+const channelsSchema = new mongoose.Schema(
+  {
+    telegramChatId: {
+      type: String,
+      default: null,
+    },
+    whatsappPhone: {
+      type: String,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
 const shopSchema = new mongoose.Schema({
-  telegramId: {
+  /** Canonical login identity — case-insensitive, unique. */
+  username: {
     type: String,
     required: true,
     unique: true,
+    trim: true,
+    lowercase: true,
+    minlength: 3,
+    maxlength: 32,
+    match: /^[a-z0-9_]+$/,
   },
   businessName: {
     type: String,
@@ -24,9 +44,15 @@ const shopSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  /** Linked messaging transports (not login identity). */
+  channels: {
+    type: channelsSchema,
+    default: () => ({}),
+  },
+  /** Admin/disable flag — not "currently logged in". */
   isActive: {
     type: Boolean,
-    default: false,
+    default: true,
   },
   createdAt: {
     type: Date,
@@ -39,22 +65,16 @@ const shopSchema = new mongoose.Schema({
   lastLogin: {
     type: Date,
   },
-
   lastLogout: {
     type: Date,
   },
-
-  // Rate limiting fields
   loginAttempts: {
     type: Number,
     default: 0,
   },
-
   lockedUntil: {
     type: Date,
   },
-
-  // Settings
   settings: {
     currency: {
       type: String,
@@ -71,11 +91,26 @@ const shopSchema = new mongoose.Schema({
   },
 });
 
-// Indexes for performance
 shopSchema.index({ businessName: 1 });
-shopSchema.index({ telegramId: 1, isActive: 1 });
+shopSchema.index(
+  { "channels.telegramChatId": 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      "channels.telegramChatId": { $type: "string" },
+    },
+  }
+);
+shopSchema.index(
+  { "channels.whatsappPhone": 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      "channels.whatsappPhone": { $type: "string" },
+    },
+  }
+);
 
-// Methods
 shopSchema.methods.isLocked = function () {
   return this.lockedUntil && this.lockedUntil > new Date();
 };
