@@ -7,6 +7,7 @@ import { DemoTourProvider } from '@/components/demo/DemoTour';
 import { HomePage } from '@/pages/HomePage';
 import { LoginPage } from '@/pages/LoginPage';
 import { RegisterPage } from '@/pages/RegisterPage';
+import { RecoverPage } from '@/pages/RecoverPage';
 import { ChatPage } from '@/pages/ChatPage';
 import { ActivityPage } from '@/pages/ActivityPage';
 import { DashboardPage } from '@/pages/DashboardPage';
@@ -28,6 +29,7 @@ export function App() {
               <Route index element={<HomePage />} />
               <Route path="login" element={<LoginPage />} />
               <Route path="register" element={<RegisterPage />} />
+              <Route path="recover" element={<RecoverPage />} />
             </Route>
 
             <Route path="app" element={<ProtectedRoute />}>

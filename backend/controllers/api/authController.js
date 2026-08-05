@@ -1,6 +1,7 @@
 import Shop from "../../models/Shop.js";
 import AuthService from "../../services/AuthService.js";
 import ActivityService from "../../services/ActivityService.js";
+import SessionStore from "../../services/sessionStore.js";
 import { publicShop, stripMarkdown } from "../../utils/apiResponse.js";
 import { normalizeUsername } from "../../utils/channelIdentity.js";
 import {
@@ -242,6 +243,9 @@ export async function register(req, res) {
       return res.status(status).json({
         success: false,
         error: stripMarkdown(result.message),
+        ...(result.suggestions?.length
+          ? { suggestions: result.suggestions }
+          : {}),
       });
     }
 
@@ -258,6 +262,8 @@ export async function register(req, res) {
       success: true,
       token: result.sessionToken,
       shop: publicShop(result.shop),
+      // Shown once — client must display immediately; never persisted server-side as plaintext.
+      recoveryCodes: result.recoveryCodes || [],
     });
   } catch (error) {
     console.error("[api/auth/register]", error);
@@ -292,6 +298,45 @@ export async function status(req, res) {
     return res.status(500).json({
       success: false,
       error: "Failed to get status.",
+    });
+  }
+}
+
+/** Real-time username availability for registration / profile edit. */
+export async function checkUsername(req, res) {
+  try {
+    const username = String(
+      req.query.username || req.body?.username || ""
+    ).trim();
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        error: "username is required.",
+      });
+    }
+
+    let excludeShopId = null;
+    const header = req.get("Authorization") || "";
+    const match = header.match(/^Bearer\s+(.+)$/i);
+    if (match) {
+      const session = await SessionStore.getLoginSessionByToken(
+        match[1].trim()
+      );
+      if (session?.shopId) excludeShopId = session.shopId;
+    }
+
+    const result = await AuthService.checkUsernameAvailability(username, {
+      excludeShopId,
+    });
+    return res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error("[api/auth/username]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to check username.",
     });
   }
 }
@@ -344,6 +389,54 @@ export async function updateProfileName(req, res) {
     return res.status(500).json({
       success: false,
       error: "Failed to update name.",
+    });
+  }
+}
+
+export async function updateProfileUsername(req, res) {
+  try {
+    const username = String(
+      req.body?.username || req.body?.userId || ""
+    ).trim();
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        error: "username is required.",
+      });
+    }
+
+    const result = await AuthService.updateUsernameForShop(req.shop, username);
+    if (!result.success) {
+      const status = /taken|already/i.test(result.message) ? 409 : 400;
+      return res.status(status).json({
+        success: false,
+        error: stripMarkdown(result.message),
+        ...(result.suggestions?.length
+          ? { suggestions: result.suggestions }
+          : {}),
+      });
+    }
+
+    const shop = await Shop.findById(req.shopId);
+    await ActivityService.log({
+      shopId: shop._id,
+      userId: shop.username,
+      channel: req.channel || "web",
+      action: "auth.username",
+      summary: result.message,
+      entityType: "shop",
+    });
+
+    return res.json({
+      success: true,
+      shop: publicShop(shop),
+      message: stripMarkdown(result.message),
+    });
+  } catch (error) {
+    console.error("[api/auth/profile/username]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to update username.",
     });
   }
 }
@@ -436,6 +529,111 @@ export async function updateProfilePin(req, res) {
     return res.status(500).json({
       success: false,
       error: "Failed to update PIN.",
+    });
+  }
+}
+
+/** Public: reset PIN with a one-time recovery code. */
+export async function redeemRecovery(req, res) {
+  try {
+    const username = String(
+      req.body?.username || req.body?.userId || ""
+    ).trim();
+    const code = String(req.body?.code || req.body?.recoveryCode || "").trim();
+    const newPin = String(req.body?.newPin || req.body?.pin || "").trim();
+
+    if (!username || !code || !newPin) {
+      return res.status(400).json({
+        success: false,
+        error: "username, code, and newPin are required.",
+      });
+    }
+
+    const result = await AuthService.redeemRecoveryCode({
+      username,
+      code,
+      newPin,
+    });
+
+    if (!result.success) {
+      const locked = /locked|too many/i.test(result.message || "");
+      return res.status(locked ? 429 : 401).json({
+        success: false,
+        error: stripMarkdown(result.message),
+      });
+    }
+
+    await ActivityService.log({
+      shopId: (await AuthService.findShopByUsername(username))?._id,
+      userId: normalizeUsername(username),
+      channel: "web",
+      action: "auth.recovery",
+      summary: "PIN reset with recovery code",
+      entityType: "shop",
+    });
+
+    return res.json({
+      success: true,
+      message: result.message,
+      remaining: result.remaining,
+      mustRegenerate: result.mustRegenerate,
+    });
+  } catch (error) {
+    console.error("[api/auth/recovery/redeem]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Recovery failed.",
+    });
+  }
+}
+
+/** Authenticated: status of unused recovery codes (no plaintext). */
+export async function recoveryStatus(req, res) {
+  try {
+    const status = await AuthService.getRecoveryCodeStatus(req.shopId);
+    return res.json({ success: true, ...status });
+  } catch (error) {
+    console.error("[api/auth/recovery]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to get recovery status.",
+    });
+  }
+}
+
+/** Authenticated: revoke unused codes and issue a new set (shown once). */
+export async function regenerateRecovery(req, res) {
+  try {
+    const result = await AuthService.issueRecoveryCodesForShop(req.shop, {
+      revokeExisting: true,
+    });
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.message,
+      });
+    }
+
+    await ActivityService.log({
+      shopId: req.shopId,
+      userId: req.username,
+      channel: req.channel || "web",
+      action: "auth.recovery.regenerate",
+      summary: "Issued a new recovery code set",
+      entityType: "shop",
+    });
+
+    return res.json({
+      success: true,
+      message: result.message,
+      recoveryCodes: result.codes,
+      remaining: result.remaining,
+    });
+  } catch (error) {
+    console.error("[api/auth/recovery/regenerate]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to regenerate recovery codes.",
     });
   }
 }

@@ -16,7 +16,7 @@ import Customer from "../models/Customer.js";
 dotenv.config();
 
 const TG_CHAT = `${Date.now()}`.slice(-9);
-const USERNAME = `e2e3_${Date.now().toString(36)}`.slice(0, 32);
+const USERNAME = `e2e3${Date.now().toString().slice(-8)}`.slice(0, 15);
 const PIN = "4829";
 const results = [];
 

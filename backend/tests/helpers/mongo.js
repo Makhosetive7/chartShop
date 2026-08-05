@@ -23,7 +23,12 @@ export async function dropLegacyAuthIndexes() {
   // Ensure new schema indexes exist
   const Shop = (await import("../../models/Shop.js")).default;
   const AuthSession = (await import("../../models/AuthSession.js")).default;
-  await Promise.all([Shop.syncIndexes(), AuthSession.syncIndexes()]);
+  const RecoveryCode = (await import("../../models/RecoveryCode.js")).default;
+  await Promise.all([
+    Shop.syncIndexes(),
+    AuthSession.syncIndexes(),
+    RecoveryCode.syncIndexes(),
+  ]);
 }
 
 export async function connectTestDb() {
@@ -58,6 +63,7 @@ export async function wipeShopData({
   const Shop = (await import("../../models/Shop.js")).default;
   const Expense = (await import("../../models/Expense.js")).default;
   const AuthSession = (await import("../../models/AuthSession.js")).default;
+  const RecoveryCode = (await import("../../models/RecoveryCode.js")).default;
 
   if (shopId) {
     await Promise.all([
@@ -66,6 +72,7 @@ export async function wipeShopData({
       Customer.deleteMany({ shopId }),
       Expense.deleteMany({ shopId }),
       AuthSession.deleteMany({ shopId }),
+      RecoveryCode.deleteMany({ shopId }),
       Shop.deleteOne({ _id: shopId }),
     ]);
   }

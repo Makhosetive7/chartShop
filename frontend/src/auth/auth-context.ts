@@ -8,7 +8,13 @@ export type AuthState = {
   isAuthenticated: boolean;
   isDemo: boolean;
   login: (username: string, pin: string) => Promise<void>;
-  register: (input: RegisterInput) => Promise<void>;
+  /** Registers without opening a session — caller must call establishSession. */
+  register: (input: RegisterInput) => Promise<{
+    recoveryCodes: string[];
+    token: string;
+    shop: Shop;
+  }>;
+  establishSession: (token: string, shop: Shop) => void;
   enterDemo: (sector?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateShop: (patch: Partial<Shop>) => void;

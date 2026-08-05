@@ -44,7 +44,8 @@ api.interceptors.response.use(
         const isPublic =
           path === '/' ||
           path.startsWith('/login') ||
-          path.startsWith('/register');
+          path.startsWith('/register') ||
+          path.startsWith('/recover');
         if (!isPublic) {
           window.location.assign('/login');
         }
@@ -75,4 +76,6 @@ export type LoginResponse = {
   token: string;
   shop: Shop;
   error?: string;
+  suggestions?: string[];
+  recoveryCodes?: string[];
 };

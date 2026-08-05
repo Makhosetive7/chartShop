@@ -20,15 +20,28 @@ router.post("/auth/login", authController.login);
 router.get("/auth/demos", authController.listDemos);
 router.post("/auth/demo", authController.enterDemo);
 router.get("/auth/status", authController.status);
+router.get("/auth/username", authController.checkUsername);
+router.post("/auth/recovery/redeem", authController.redeemRecovery);
 
 // Auth (session)
 router.post("/auth/logout", requireApiAuth, authController.logout);
 router.get("/auth/me", requireApiAuth, authController.me);
 router.get("/auth/profile", requireApiAuth, authController.profile);
+router.get("/auth/recovery", requireApiAuth, authController.recoveryStatus);
+router.post(
+  "/auth/recovery/regenerate",
+  requireApiAuth,
+  authController.regenerateRecovery
+);
 router.patch(
   "/auth/profile/name",
   requireApiAuth,
   authController.updateProfileName
+);
+router.patch(
+  "/auth/profile/username",
+  requireApiAuth,
+  authController.updateProfileUsername
 );
 router.patch(
   "/auth/profile/description",

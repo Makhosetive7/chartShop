@@ -15,7 +15,10 @@ const channelsSchema = new mongoose.Schema(
 );
 
 const shopSchema = new mongoose.Schema({
-  /** Canonical login identity — case-insensitive, unique. */
+  /** Canonical login identity — case-insensitive, unique.
+   * New registrations: 3–15 letters + optional trailing digits (see usernamePolicy).
+   * Schema stays permissive so grandfathered / demo usernames (underscores, ≤32) still save.
+   */
   username: {
     type: String,
     required: true,

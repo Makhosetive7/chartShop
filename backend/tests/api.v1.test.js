@@ -300,7 +300,7 @@ describe("API v1", () => {
   });
 
   it("registers a new shop via API", async () => {
-    const newUsername = `api_reg_${Date.now().toString(36)}`;
+    const newUsername = `apireg${Date.now().toString().slice(-6)}`.slice(0, 15);
     const reg = await request(server, {
       method: "POST",
       path: "/api/v1/auth/register",
@@ -318,6 +318,156 @@ describe("API v1", () => {
     );
     assert.ok(reg.body.token);
     assert.equal(reg.body.shop.username, newUsername);
+
+    await wipeShopData({
+      shopId: reg.body.shop.id,
+      username: newUsername,
+    });
+  });
+
+  it("checks username availability and rejects reserved names", async () => {
+    const taken = await request(server, {
+      method: "GET",
+      path: `/api/v1/auth/username?username=${encodeURIComponent(username)}`,
+    });
+    assert.equal(taken.status, 200);
+    assert.equal(taken.body.available, false);
+    assert.ok(Array.isArray(taken.body.suggestions));
+    assert.ok(taken.body.suggestions.length >= 1);
+
+    const reserved = await request(server, {
+      method: "GET",
+      path: "/api/v1/auth/username?username=admin",
+    });
+    assert.equal(reserved.status, 200);
+    assert.equal(reserved.body.available, false);
+    assert.equal(reserved.body.valid, false);
+    assert.ok(Array.isArray(reserved.body.suggestions));
+    assert.ok(reserved.body.suggestions.length >= 1);
+    assert.ok(reserved.body.suggestions.every((s) => s !== "admin"));
+
+    const okName = `ok${Date.now().toString().slice(-8)}`.slice(0, 15);
+    const free = await request(server, {
+      method: "GET",
+      path: `/api/v1/auth/username?username=${encodeURIComponent(okName)}`,
+    });
+    assert.equal(free.status, 200);
+    assert.equal(free.body.available, true);
+    assert.equal(free.body.username, okName);
+  });
+
+  it("changes username via profile API", async () => {
+    const login = await request(server, {
+      method: "POST",
+      path: "/api/v1/auth/login",
+      body: { username, pin },
+    });
+    assert.equal(login.status, 200);
+    const token = login.body.token;
+
+    const selfCheck = await request(server, {
+      method: "GET",
+      path: `/api/v1/auth/username?username=${encodeURIComponent(username)}`,
+      token,
+    });
+    assert.equal(selfCheck.status, 200);
+    assert.equal(selfCheck.body.available, true);
+
+    const next = `ren${Date.now().toString().slice(-8)}`.slice(0, 15);
+    const changed = await request(server, {
+      method: "PATCH",
+      path: "/api/v1/auth/profile/username",
+      token,
+      body: { username: next },
+    });
+    assert.equal(
+      changed.status,
+      200,
+      `username change failed: ${JSON.stringify(changed.body)}`
+    );
+    assert.equal(changed.body.shop.username, next);
+
+    const oldLogin = await request(server, {
+      method: "POST",
+      path: "/api/v1/auth/login",
+      body: { username, pin },
+    });
+    assert.equal(oldLogin.status, 401);
+
+    const newLogin = await request(server, {
+      method: "POST",
+      path: "/api/v1/auth/login",
+      body: { username: next, pin },
+    });
+    assert.equal(newLogin.status, 200);
+    assert.equal(newLogin.body.shop.username, next);
+
+    // afterEach wipe uses this username
+    username = next;
+  });
+
+  it("issues recovery codes on register and redeems one to reset PIN", async () => {
+    const newUsername = `recv${Date.now().toString().slice(-8)}`.slice(0, 15);
+    const reg = await request(server, {
+      method: "POST",
+      path: "/api/v1/auth/register",
+      body: {
+        username: newUsername,
+        businessName: `Recv Shop ${Date.now()}`,
+        pin: "4829",
+        businessDescription: "General merchandise for recovery test",
+      },
+    });
+    assert.equal(reg.status, 201, JSON.stringify(reg.body));
+    assert.ok(Array.isArray(reg.body.recoveryCodes));
+    assert.equal(reg.body.recoveryCodes.length, 8);
+    const token = reg.body.token;
+    const code = reg.body.recoveryCodes[0];
+
+    const status = await request(server, {
+      method: "GET",
+      path: "/api/v1/auth/recovery",
+      token,
+    });
+    assert.equal(status.status, 200);
+    assert.equal(status.body.remaining, 8);
+
+    const redeem = await request(server, {
+      method: "POST",
+      path: "/api/v1/auth/recovery/redeem",
+      body: {
+        username: newUsername,
+        code,
+        newPin: "5731",
+      },
+    });
+    assert.equal(redeem.status, 200, JSON.stringify(redeem.body));
+    assert.equal(redeem.body.remaining, 7);
+
+    const reuse = await request(server, {
+      method: "POST",
+      path: "/api/v1/auth/recovery/redeem",
+      body: {
+        username: newUsername,
+        code,
+        newPin: "5820",
+      },
+    });
+    assert.equal(reuse.status, 401);
+
+    const oldLogin = await request(server, {
+      method: "POST",
+      path: "/api/v1/auth/login",
+      body: { username: newUsername, pin: "4829" },
+    });
+    assert.equal(oldLogin.status, 401);
+
+    const newLogin = await request(server, {
+      method: "POST",
+      path: "/api/v1/auth/login",
+      body: { username: newUsername, pin: "5731" },
+    });
+    assert.equal(newLogin.status, 200);
 
     await wipeShopData({
       shopId: reg.body.shop.id,

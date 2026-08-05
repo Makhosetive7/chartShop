@@ -118,10 +118,125 @@ export async function register(input: RegisterInput): Promise<LoginResponse> {
     return data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
+      const payload = error.response?.data as
+        | { error?: string; suggestions?: string[] }
+        | undefined;
+      const message = payload?.error || 'Registration failed';
+      return {
+        success: false,
+        token: '',
+        shop: null as unknown as Shop,
+        error: message,
+        suggestions: payload?.suggestions,
+      };
+    }
+    throw error;
+  }
+}
+
+export type UsernameCheckResult = {
+  success: boolean;
+  available: boolean;
+  valid: boolean;
+  username: string;
+  message?: string;
+  suggestions?: string[];
+  error?: string;
+};
+
+export async function checkUsername(
+  username: string,
+): Promise<UsernameCheckResult> {
+  try {
+    const { data } = await api.get<UsernameCheckResult>('/auth/username', {
+      params: { username },
+    });
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
       const message =
         (error.response?.data as { error?: string } | undefined)?.error ||
-        'Registration failed';
-      return { success: false, token: '', shop: null as unknown as Shop, error: message };
+        'Could not check username';
+      return {
+        success: false,
+        available: false,
+        valid: false,
+        username,
+        error: message,
+      };
+    }
+    throw error;
+  }
+}
+
+export type RedeemRecoveryInput = {
+  username: string;
+  code: string;
+  newPin: string;
+};
+
+export type RedeemRecoveryResult = {
+  success: boolean;
+  message?: string;
+  remaining?: number;
+  mustRegenerate?: boolean;
+  error?: string;
+};
+
+export async function redeemRecovery(
+  input: RedeemRecoveryInput,
+): Promise<RedeemRecoveryResult> {
+  try {
+    const { data } = await api.post<RedeemRecoveryResult>(
+      '/auth/recovery/redeem',
+      input,
+    );
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const message =
+        (error.response?.data as { error?: string } | undefined)?.error ||
+        'Recovery failed';
+      return { success: false, error: message };
+    }
+    throw error;
+  }
+}
+
+export type RecoveryStatus = {
+  success: boolean;
+  hasCodes: boolean;
+  remaining: number;
+  lastIssuedAt?: string | null;
+  error?: string;
+};
+
+export async function fetchRecoveryStatus(): Promise<RecoveryStatus> {
+  const { data } = await api.get<RecoveryStatus>('/auth/recovery');
+  return data;
+}
+
+export async function regenerateRecoveryCodes(): Promise<{
+  success: boolean;
+  recoveryCodes?: string[];
+  remaining?: number;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const { data } = await api.post<{
+      success: boolean;
+      recoveryCodes?: string[];
+      remaining?: number;
+      message?: string;
+    }>('/auth/recovery/regenerate');
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const message =
+        (error.response?.data as { error?: string } | undefined)?.error ||
+        'Could not regenerate codes';
+      return { success: false, error: message };
     }
     throw error;
   }
