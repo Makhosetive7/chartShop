@@ -1,5 +1,23 @@
 import axios from 'axios';
 import { api, type LoginResponse, type Shop } from './client';
+import {
+  DEMO_PIN,
+  DEMO_SECTOR_FALLBACK,
+  demoUsernameForSector,
+  isKnownDemoUsername,
+} from '@/constants/demoSectors';
+
+function markDemoShop(shop: Shop, sector?: string): Shop {
+  if (!shop) return shop;
+  if (shop.isDemo || isKnownDemoUsername(shop.username)) {
+    return {
+      ...shop,
+      isDemo: true,
+      demoSector: shop.demoSector || sector || null,
+    };
+  }
+  return shop;
+}
 
 export async function login(
   username: string,
@@ -10,6 +28,9 @@ export async function login(
       username,
       pin,
     });
+    if (data.success && data.shop) {
+      data.shop = markDemoShop(data.shop);
+    }
     return data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -27,9 +48,30 @@ export async function enterDemo(sector?: string): Promise<LoginResponse> {
     const { data } = await api.post<LoginResponse>('/auth/demo', {
       sector: sector || undefined,
     });
+    if (data.success && data.shop) {
+      data.shop = markDemoShop(data.shop, sector);
+    }
     return data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      // Stale production API (pre demo-shop deploy): fall back to demo login.
+      if (status === 404 || status === 405) {
+        const username = demoUsernameForSector(sector);
+        const viaLogin = await login(username, DEMO_PIN);
+        if (viaLogin.success && viaLogin.shop) {
+          viaLogin.shop = markDemoShop(viaLogin.shop, sector);
+          return viaLogin;
+        }
+        return {
+          success: false,
+          token: '',
+          shop: null as unknown as Shop,
+          error:
+            viaLogin.error ||
+            'Demo login failed. Redeploy the API with /auth/demo, or run seed:demos.',
+        };
+      }
       const message =
         (error.response?.data as { error?: string } | undefined)?.error ||
         'Demo is unavailable';
@@ -49,10 +91,18 @@ export type DemoSector = {
 };
 
 export async function listDemos(): Promise<DemoSector[]> {
-  const { data } = await api.get<{ success: boolean; demos: DemoSector[] }>(
-    '/auth/demos',
-  );
-  return data.demos || [];
+  try {
+    const { data } = await api.get<{ success: boolean; demos: DemoSector[] }>(
+      '/auth/demos',
+    );
+    return data.demos || [];
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      // API not redeployed yet — still show the sector picker.
+      return DEMO_SECTOR_FALLBACK.map((s) => ({ ...s, available: true }));
+    }
+    throw error;
+  }
 }
 
 export type RegisterInput = {
@@ -88,7 +138,7 @@ export async function logout(): Promise<void> {
 
 export async function fetchMe(): Promise<Shop> {
   const { data } = await api.get<{ success: boolean; shop: Shop }>('/auth/me');
-  return data.shop;
+  return markDemoShop(data.shop);
 }
 
 export type { StatsOverview } from './stats';
