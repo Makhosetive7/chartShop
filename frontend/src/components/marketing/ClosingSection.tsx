@@ -1,6 +1,7 @@
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { ArrowButton } from '@/components/marketing/marketingPrimitives';
+import { TryDemoButton } from '@/components/demo/TryDemoButton';
 
 const Wrap = styled.section`
   padding: 0 clamp(1.25rem, 4vw, 2.5rem) clamp(3.5rem, 8vw, 5rem);
@@ -40,6 +41,13 @@ const Banner = styled(motion.div)`
   }
 `;
 
+const CtaRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+`;
+
 const Graphic = styled.div`
   display: grid;
   gap: 10px;
@@ -74,9 +82,12 @@ export function ClosingSection() {
             First sale in a message. Stock that stays honest. Credit you can collect.
             Same books on the web when you sit down.
           </p>
-            <ArrowButton to="/register" variant="light">
-              Create your shop
-            </ArrowButton>
+            <CtaRow>
+              <TryDemoButton variant="light" />
+              <ArrowButton to="/register" variant="ghost">
+                Create your shop
+              </ArrowButton>
+            </CtaRow>
         </div>
         <Graphic aria-hidden>
           {[

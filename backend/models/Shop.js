@@ -54,6 +54,11 @@ const shopSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  /** Shared read-only demo shop for marketing try-before-register. */
+  isDemo: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

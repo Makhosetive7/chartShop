@@ -2,6 +2,7 @@ import { useMemo, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import type { Shop } from '@/api/client';
 import {
+  enterDemo as enterDemoRequest,
   login as loginRequest,
   logout as logoutRequest,
   register as registerRequest,
@@ -49,6 +50,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setShop(result.shop);
   }, []);
 
+  const enterDemo = useCallback(async () => {
+    const result = await enterDemoRequest();
+    if (!result.success || !result.token) {
+      throw new Error(result.error || 'Demo is unavailable');
+    }
+    persistSession(result.token, result.shop);
+    setToken(result.token);
+    setShop(result.shop);
+  }, []);
+
   const logout = useCallback(async () => {
     await logoutRequest();
     setToken(null);
@@ -69,12 +80,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       shop,
       isAuthenticated: Boolean(token),
+      isDemo: Boolean(shop?.isDemo),
       login,
       register,
+      enterDemo,
       logout,
       updateShop,
     }),
-    [token, shop, login, register, logout, updateShop],
+    [token, shop, login, register, enterDemo, logout, updateShop],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

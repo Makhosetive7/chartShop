@@ -1,4 +1,8 @@
 import axios from 'axios';
+import {
+  actionLabelFromRequestUrl,
+  openDemoUpgrade,
+} from '@/components/demo/demoUpgradeBridge';
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
@@ -20,16 +24,30 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('chartshop_token');
-      localStorage.removeItem('chartshop_shop');
-      const path = window.location.pathname;
-      const isPublic =
-        path === '/' ||
-        path.startsWith('/login') ||
-        path.startsWith('/register');
-      if (!isPublic) {
-        window.location.assign('/login');
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const data = error.response?.data as
+        | { code?: string; error?: string }
+        | undefined;
+
+      if (status === 403 && data?.code === 'DEMO_READ_ONLY') {
+        openDemoUpgrade({
+          action: actionLabelFromRequestUrl(error.config?.url),
+          message: data.error,
+        });
+      }
+
+      if (status === 401) {
+        localStorage.removeItem('chartshop_token');
+        localStorage.removeItem('chartshop_shop');
+        const path = window.location.pathname;
+        const isPublic =
+          path === '/' ||
+          path.startsWith('/login') ||
+          path.startsWith('/register');
+        if (!isPublic) {
+          window.location.assign('/login');
+        }
       }
     }
     return Promise.reject(error);
@@ -42,6 +60,7 @@ export type Shop = {
   businessName: string;
   businessDescription?: string;
   isActive?: boolean;
+  isDemo?: boolean;
   settings?: Record<string, unknown>;
   lastLogin?: string;
   channels?: {

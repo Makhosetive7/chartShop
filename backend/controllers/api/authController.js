@@ -55,6 +55,55 @@ export async function login(req, res) {
   }
 }
 
+/** Enter the shared read-only demo shop without registering. */
+export async function enterDemo(req, res) {
+  try {
+    let shop = await Shop.findOne({ isDemo: true, isActive: true });
+    if (!shop) {
+      // Fallback for DBs seeded before isDemo existed
+      shop = await Shop.findOne({ username: "boutique_demo", isActive: true });
+      if (shop && !shop.isDemo) {
+        shop.isDemo = true;
+        await shop.save();
+      }
+    }
+    if (!shop) {
+      return res.status(503).json({
+        success: false,
+        error:
+          "Demo shop is not available yet. Run the boutique demo seed and try again.",
+      });
+    }
+
+    const { sessionToken } = await AuthService.openChannelSession(
+      shop,
+      "web",
+      null
+    );
+
+    await ActivityService.log({
+      shopId: shop._id,
+      userId: shop.username,
+      channel: "web",
+      action: "auth.demo",
+      summary: "Entered demo shop on web",
+      entityType: "session",
+    });
+
+    return res.json({
+      success: true,
+      token: sessionToken,
+      shop: publicShop(shop),
+    });
+  } catch (error) {
+    console.error("[api/auth/demo]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Could not start demo session.",
+    });
+  }
+}
+
 export async function logout(req, res) {
   try {
     const result = await AuthService.logoutByToken(req.sessionToken);

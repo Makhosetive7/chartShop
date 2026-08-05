@@ -21,7 +21,9 @@ import {
   Users,
 } from 'lucide-react';
 import { fetchChatHistory, sendChatMessage, type ChatBubble } from '@/api/chat';
+import { isDemoReadOnlyError } from '@/api/types';
 import { useAuth } from '@/auth';
+import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { BrandMark } from '@/components/ui/BrandMark';
 
 const SUGGESTIONS = [
@@ -684,6 +686,7 @@ function formatDayLabel(iso: string) {
 export function ChatPage() {
   const { shop } = useAuth();
   const queryClient = useQueryClient();
+  const guardDemoWrite = useGuardDemoWrite();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
   const [local, setLocal] = useState<ChatBubble[]>([]);
@@ -729,6 +732,7 @@ export function ChatPage() {
   async function submit(text: string) {
     const message = text.trim();
     if (!message || send.isPending) return;
+    if (guardDemoWrite('use chat commands')) return;
 
     setDraft('');
     setLocal((prev) => [
@@ -743,6 +747,10 @@ export function ChatPage() {
     try {
       await send.mutateAsync(message);
     } catch (err) {
+      if (isDemoReadOnlyError(err)) {
+        setLocal((prev) => prev.slice(0, -1));
+        return;
+      }
       setLocal((prev) => [
         ...prev,
         {

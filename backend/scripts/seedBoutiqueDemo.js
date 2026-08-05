@@ -107,6 +107,7 @@ async function main() {
     pin: hashedPin,
     channels: {},
     isActive: true,
+    isDemo: true,
     registeredAt,
     createdAt: registeredAt,
     settings: {

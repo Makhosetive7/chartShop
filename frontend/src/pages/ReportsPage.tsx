@@ -250,7 +250,7 @@ export function ReportsPage() {
   });
 
   return (
-    <Page>
+    <Page data-tour="page-reports">
       <Header>
         <PageTitle style={{ marginBottom: 8 }}>Reports</PageTitle>
         <PageLead style={{ marginBottom: 0 }}>

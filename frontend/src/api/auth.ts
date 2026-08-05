@@ -22,6 +22,21 @@ export async function login(
   }
 }
 
+export async function enterDemo(): Promise<LoginResponse> {
+  try {
+    const { data } = await api.post<LoginResponse>('/auth/demo');
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const message =
+        (error.response?.data as { error?: string } | undefined)?.error ||
+        'Demo is unavailable';
+      return { success: false, token: '', shop: null as unknown as Shop, error: message };
+    }
+    throw error;
+  }
+}
+
 export type RegisterInput = {
   username: string;
   businessName: string;

@@ -17,6 +17,7 @@ const router = express.Router();
 // Auth (public)
 router.post("/auth/register", authController.register);
 router.post("/auth/login", authController.login);
+router.post("/auth/demo", authController.enterDemo);
 router.get("/auth/status", authController.status);
 
 // Auth (session)

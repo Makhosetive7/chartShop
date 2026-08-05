@@ -27,6 +27,7 @@ import {
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
+import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 
 type FilterTab = 'all' | 'low' | 'out';
 
@@ -129,6 +130,7 @@ function stockStatus(p: Product): 'ok' | 'low' | 'out' | 'off' {
 
 export function ProductsPage() {
   const qc = useQueryClient();
+  const guardDemoWrite = useGuardDemoWrite();
   const [tab, setTab] = useState<FilterTab>('all');
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -202,6 +204,7 @@ export function ProductsPage() {
 
   function onCreate(e: FormEvent) {
     e.preventDefault();
+    if (guardDemoWrite('change products')) return;
     setOk(null);
     createM.mutate({
       name: form.name.trim(),
@@ -215,6 +218,7 @@ export function ProductsPage() {
   async function savePrice(p: Product, raw: string) {
     const price = Number(raw);
     if (!Number.isFinite(price) || price < 0 || price === p.price) return;
+    if (guardDemoWrite('change products')) return;
     try {
       await updateProduct(p.id, { price });
       setOk(`Updated price for ${p.name}`);
@@ -230,6 +234,7 @@ export function ProductsPage() {
       return;
     }
     if (costPrice === p.costPrice) return;
+    if (guardDemoWrite('change products')) return;
     try {
       await updateProduct(p.id, { costPrice });
       setOk(`Updated cost for ${p.name}`);
@@ -242,6 +247,7 @@ export function ProductsPage() {
   async function adjustStock(p: Product, op: '+' | '-') {
     const quantity = Number(stockEdit[p.id]);
     if (!Number.isFinite(quantity) || quantity <= 0) return;
+    if (guardDemoWrite('change products')) return;
     try {
       await updateStock(p.id, { op, quantity });
       setStockEdit((prev) => ({ ...prev, [p.id]: '' }));
@@ -254,6 +260,7 @@ export function ProductsPage() {
 
   async function removeProduct(p: Product) {
     if (!confirm(`Delete ${p.name}?`)) return;
+    if (guardDemoWrite('change products')) return;
     try {
       await deleteProduct(p.id, true);
       setOk(`Deleted ${p.name}`);

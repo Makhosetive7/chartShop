@@ -24,6 +24,7 @@ import {
 import { useAuth } from '@/auth';
 import { Button } from '@/components/ui/Button';
 import { BrandMark } from '@/components/ui/BrandMark';
+import { DemoBanner } from '@/components/demo/DemoBanner';
 
 const NAV_HEIGHT_MOBILE = '64px';
 const NAV_HEIGHT_DESKTOP = '76px';
@@ -34,20 +35,27 @@ type LinkItem = {
   icon: typeof MessageCircle;
   label: string;
   short?: string;
+  tour?: string;
 };
 
 const PRIMARY: LinkItem[] = [
-  { to: '/app', end: true, icon: MessageCircle, label: 'Chat' },
-  { to: '/app/dashboard', icon: LayoutDashboard, label: 'Home', short: 'Home' },
-  { to: '/app/products', icon: Package, label: 'Products' },
-  { to: '/app/sales', icon: ShoppingCart, label: 'Sales' },
+  { to: '/app', end: true, icon: MessageCircle, label: 'Chat', tour: 'nav-chat' },
+  {
+    to: '/app/dashboard',
+    icon: LayoutDashboard,
+    label: 'Home',
+    short: 'Home',
+    tour: 'nav-home',
+  },
+  { to: '/app/products', icon: Package, label: 'Products', tour: 'nav-products' },
+  { to: '/app/sales', icon: ShoppingCart, label: 'Sales', tour: 'nav-sales' },
 ];
 
 const MORE: LinkItem[] = [
   { to: '/app/customers', icon: Users, label: 'Customers' },
   { to: '/app/orders', icon: ClipboardList, label: 'Orders' },
   { to: '/app/expenses', icon: Wallet, label: 'Expenses' },
-  { to: '/app/reports', icon: FileBarChart, label: 'Reports' },
+  { to: '/app/reports', icon: FileBarChart, label: 'Reports', tour: 'nav-reports' },
   { to: '/app/activity', icon: History, label: 'Activity' },
   { to: '/app/settings', icon: Settings, label: 'Settings' },
 ];
@@ -459,6 +467,8 @@ export function AppLayout() {
         </LogoutSlot>
       </TopBar>
 
+      <DemoBanner />
+
       <Main $flush={flush}>
         <MainInner $flush={flush}>
           <Outlet />
@@ -468,8 +478,13 @@ export function AppLayout() {
       <BottomNav aria-label="Primary">
         <NavTrack>
           <MobileNav>
-            {PRIMARY.map(({ to, icon: Icon, label, short, end }) => (
-              <Item key={to} to={to} end={Boolean(end)}>
+            {PRIMARY.map(({ to, icon: Icon, label, short, end, tour }) => (
+              <Item
+                key={to}
+                to={to}
+                end={Boolean(end)}
+                data-tour={tour}
+              >
                 <Icon size={20} strokeWidth={1.85} />
                 <span>{short || label}</span>
               </Item>
@@ -487,8 +502,13 @@ export function AppLayout() {
           </MobileNav>
 
           <DesktopNav>
-            {ALL.map(({ to, icon: Icon, label, end }) => (
-              <Item key={to} to={to} end={Boolean(end)}>
+            {ALL.map(({ to, icon: Icon, label, end, tour }) => (
+              <Item
+                key={to}
+                to={to}
+                end={Boolean(end)}
+                data-tour={tour}
+              >
                 <Icon size={20} strokeWidth={1.85} />
                 <span>{label}</span>
               </Item>
