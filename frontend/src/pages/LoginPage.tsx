@@ -69,7 +69,7 @@ export function LoginPage() {
       onSubmit={onSubmit}
       actions={
         <ActionRow>
-          <ArrowButton type="submit" disabled={pending}>
+          <ArrowButton type="submit" loading={pending}>
             {pending ? 'Signing in…' : 'Sign in'}
           </ArrowButton>
           <TryDemoButton variant="ghost" />

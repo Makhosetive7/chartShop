@@ -91,7 +91,7 @@ export function RegisterPage() {
       onSubmit={onSubmit}
       actions={
         <ActionRow>
-          <ArrowButton type="submit" disabled={pending}>
+          <ArrowButton type="submit" loading={pending}>
             {pending ? 'Creating shop…' : 'Create shop'}
           </ArrowButton>
           <TryDemoButton variant="ghost" />

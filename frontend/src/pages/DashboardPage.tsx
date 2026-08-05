@@ -23,6 +23,7 @@ import {
   SimpleBarChart,
 } from '@/components/charts/SimpleCharts';
 import { ErrorBanner, Table } from '@/components/ui/primitives';
+import { DashboardSkeleton } from '@/components/skeletons/PageSkeletons';
 
 const DAYS_OPTIONS = [7, 30, 90] as const;
 
@@ -349,7 +350,7 @@ export function DashboardPage() {
         </ErrorBanner>
       ) : null}
 
-      {loading && !overview ? <p>Loading dashboard…</p> : null}
+      {loading && !overview ? <DashboardSkeleton /> : null}
 
       {overview ? (
         <>

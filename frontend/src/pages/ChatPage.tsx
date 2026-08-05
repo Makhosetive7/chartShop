@@ -12,6 +12,7 @@ import {
 } from 'date-fns';
 import {
   ArrowUp,
+  Loader2,
   MessageCircle,
   Package,
   Pencil,
@@ -25,6 +26,7 @@ import { isDemoReadOnlyError } from '@/api/types';
 import { useAuth } from '@/auth';
 import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { BrandMark } from '@/components/ui/BrandMark';
+import { ChatThreadSkeleton } from '@/components/skeletons/PageSkeletons';
 
 const SUGGESTIONS = [
   { cmd: 'help', label: 'Help', icon: Sparkles },
@@ -43,6 +45,10 @@ const pulse = keyframes`
 const bounceDot = keyframes`
   0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
   40% { transform: translateY(-4px); opacity: 1; }
+`;
+
+const spin = keyframes`
+  to { transform: rotate(360deg); }
 `;
 
 const Page = styled.div`
@@ -525,6 +531,14 @@ const SendBtn = styled.button`
     box-shadow: none;
     transform: none;
   }
+
+  svg {
+    display: block;
+  }
+`;
+
+const SendSpinner = styled(Loader2)`
+  animation: ${spin} 0.75s linear infinite;
 `;
 
 const Disclaimer = styled.p`
@@ -804,6 +818,9 @@ export function ChatPage() {
         <Thread $roomy={!isEmpty}>
           <ThreadInner>
             <AnimatePresence>
+              {history.isLoading && messages.length === 0 ? (
+                <ChatThreadSkeleton />
+              ) : null}
               {isEmpty ? (
                 <Empty
                   initial={{ opacity: 0, y: 12 }}
@@ -923,9 +940,14 @@ export function ChatPage() {
                 <SendBtn
                   type="submit"
                   disabled={!draft.trim() || send.isPending}
-                  aria-label="Send"
+                  aria-label={send.isPending ? 'Sending' : 'Send'}
+                  aria-busy={send.isPending || undefined}
                 >
-                  <ArrowUp size={18} strokeWidth={2.5} />
+                  {send.isPending ? (
+                    <SendSpinner size={18} strokeWidth={2.5} aria-hidden />
+                  ) : (
+                    <ArrowUp size={18} strokeWidth={2.5} />
+                  )}
                 </SendBtn>
               </InputShell>
             </Composer>

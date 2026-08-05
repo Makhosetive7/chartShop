@@ -32,6 +32,7 @@ import {
   SuccessBanner,
   Badge,
 } from '@/components/ui/primitives';
+import { SettingsProfileSkeleton } from '@/components/skeletons/PageSkeletons';
 
 const Header = styled.header`
   margin-bottom: ${({ theme }) => theme.space[5]};
@@ -220,6 +221,7 @@ export function SettingsPage() {
   const [pins, setPins] = useState({ oldPin: '', newPin: '', confirmPin: '' });
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const profileQ = useQuery({
     queryKey: ['profile'],
@@ -318,8 +320,13 @@ export function SettingsPage() {
   }
 
   async function onLogout() {
-    await logout();
-    window.location.assign('/');
+    setLoggingOut(true);
+    try {
+      await logout();
+      window.location.assign('/');
+    } catch {
+      setLoggingOut(false);
+    }
   }
 
   const shopName = profile?.businessName || shop?.businessName || 'Your shop';
@@ -384,8 +391,10 @@ export function SettingsPage() {
             </SectionCopy>
           </SectionHead>
 
-          {profileQ.isLoading ? <p>Loading profile…</p> : null}
-
+          {profileQ.isLoading ? (
+            <SettingsProfileSkeleton />
+          ) : (
+            <>
           <form onSubmit={onName}>
             <Field>
               Business name
@@ -397,7 +406,7 @@ export function SettingsPage() {
               />
             </Field>
             <FormActions>
-              <Button type="submit" disabled={saveName.isPending}>
+              <Button type="submit" loading={saveName.isPending}>
                 {saveName.isPending ? 'Saving…' : 'Save name'}
               </Button>
             </FormActions>
@@ -414,11 +423,13 @@ export function SettingsPage() {
               />
             </Field>
             <FormActions>
-              <Button type="submit" disabled={saveDesc.isPending}>
+              <Button type="submit" loading={saveDesc.isPending}>
                 {saveDesc.isPending ? 'Saving…' : 'Save description'}
               </Button>
             </FormActions>
           </form>
+            </>
+          )}
         </Card>
 
         <Card>
@@ -484,7 +495,7 @@ export function SettingsPage() {
               </Field>
             </Row>
             <FormActions>
-              <Button type="submit" disabled={savePin.isPending}>
+              <Button type="submit" loading={savePin.isPending}>
                 <Shield size={16} />
                 {savePin.isPending ? 'Updating…' : 'Update PIN'}
               </Button>
@@ -505,8 +516,13 @@ export function SettingsPage() {
               </p>
             </SectionCopy>
           </SectionHead>
-          <Button type="button" $variant="danger" onClick={() => void onLogout()}>
-            Log out
+          <Button
+            type="button"
+            $variant="danger"
+            loading={loggingOut}
+            onClick={() => void onLogout()}
+          >
+            {loggingOut ? 'Signing out…' : 'Log out'}
           </Button>
         </SessionCard>
       </Stack>

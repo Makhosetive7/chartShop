@@ -22,6 +22,7 @@ import {
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 
 const STATUSES = ['all', 'pending', 'confirmed', 'ready', 'completed', 'cancelled'] as const;
 
@@ -35,6 +36,7 @@ export function OrdersPage() {
   const [qty, setQty] = useState('1');
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [statusBusy, setStatusBusy] = useState<string | null>(null);
 
   const productsQ = useQuery({ queryKey: ['products', 'all'], queryFn: listProducts });
   const customersQ = useQuery({
@@ -159,8 +161,8 @@ export function OrdersPage() {
               Notes
               <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
             </Field>
-            <Button type="submit" disabled={createM.isPending}>
-              Place order
+            <Button type="submit" loading={createM.isPending}>
+              {createM.isPending ? 'Placing…' : 'Place order'}
             </Button>
           </Row>
         </form>
@@ -180,58 +182,70 @@ export function OrdersPage() {
       </Tabs>
 
       <Card>
-        <Table>
-          <thead>
-            <tr>
-              <th>Ref</th>
-              <th>Customer</th>
-              <th>Total</th>
-              <th>Status</th>
-              <th>When</th>
-              <th>Update</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((o) => (
-              <tr key={o.id}>
-                <td>{o.shortId || o.id.slice(-4)}</td>
-                <td>{o.customerName}</td>
-                <td>{money(o.total)}</td>
-                <td>
-                  <Badge $tone={tone(o.status)}>{o.status}</Badge>
-                </td>
-                <td>
-                  {o.orderDate
-                    ? new Date(o.orderDate).toLocaleString()
-                    : '—'}
-                </td>
-                <td>
-                  <Row>
-                    {(nextActions[o.status] || []).map((ns) => (
-                      <Button
-                        key={ns}
-                        type="button"
-                        $variant="ghost"
-                        $size="sm"
-                        onClick={async () => {
-                          try {
-                            await updateOrderStatus(o.id, ns);
-                            setOk(`Order → ${ns}`);
-                            void qc.invalidateQueries({ queryKey: ['orders'] });
-                          } catch (err) {
-                            setError(getErrorMessage(err));
-                          }
-                        }}
-                      >
-                        {ns}
-                      </Button>
-                    ))}
-                  </Row>
-                </td>
+        {ordersQ.isLoading ? (
+          <TableSkeleton
+            columns={6}
+            rows={7}
+            widths={['3.5rem', '7rem', '4.5rem', '5rem', '8rem', '5rem']}
+          />
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <th>Ref</th>
+                <th>Customer</th>
+                <th>Total</th>
+                <th>Status</th>
+                <th>When</th>
+                <th>Update</th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {orders.map((o) => (
+                <tr key={o.id}>
+                  <td>{o.shortId || o.id.slice(-4)}</td>
+                  <td>{o.customerName}</td>
+                  <td>{money(o.total)}</td>
+                  <td>
+                    <Badge $tone={tone(o.status)}>{o.status}</Badge>
+                  </td>
+                  <td>
+                    {o.orderDate
+                      ? new Date(o.orderDate).toLocaleString()
+                      : '—'}
+                  </td>
+                  <td>
+                    <Row>
+                      {(nextActions[o.status] || []).map((ns) => (
+                        <Button
+                          key={ns}
+                          type="button"
+                          $variant="ghost"
+                          $size="sm"
+                          loading={statusBusy === `${o.id}:${ns}`}
+                          onClick={async () => {
+                            try {
+                              setStatusBusy(`${o.id}:${ns}`);
+                              await updateOrderStatus(o.id, ns);
+                              setOk(`Order → ${ns}`);
+                              void qc.invalidateQueries({ queryKey: ['orders'] });
+                            } catch (err) {
+                              setError(getErrorMessage(err));
+                            } finally {
+                              setStatusBusy(null);
+                            }
+                          }}
+                        >
+                          {statusBusy === `${o.id}:${ns}` ? '…' : ns}
+                        </Button>
+                      ))}
+                    </Row>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
         {!ordersQ.isLoading && orders.length === 0 ? <p>No orders.</p> : null}
       </Card>
     </Page>

@@ -30,9 +30,9 @@ import {
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 
 type Line = { productId: string; quantity: string; price: string };
-
 const emptyLine = (): Line => ({ productId: '', quantity: '1', price: '' });
 
 export function SalesPage() {
@@ -46,6 +46,7 @@ export function SalesPage() {
   const [laybyePay, setLaybyePay] = useState({ customer: '', amount: '' });
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const productsQ = useQuery({ queryKey: ['products', 'all'], queryFn: listProducts });
   const customersQ = useQuery({
@@ -245,7 +246,7 @@ export function SalesPage() {
             <Button type="button" $variant="ghost" onClick={() => setLines([...lines, emptyLine()])}>
               + Line
             </Button>
-            <Button type="submit" disabled={sellM.isPending}>
+            <Button type="submit" loading={sellM.isPending}>
               {sellM.isPending ? 'Processing…' : 'Complete sale'}
             </Button>
           </Row>
@@ -278,9 +279,11 @@ export function SalesPage() {
           </Field>
           <Button
             type="button"
+            loading={busyKey === 'laybye'}
             onClick={async () => {
               try {
                 setError(null);
+                setBusyKey('laybye');
                 const res = await payLaybye(
                   laybyePay.customer.trim(),
                   Number(laybyePay.amount),
@@ -294,10 +297,12 @@ export function SalesPage() {
                 invalidate();
               } catch (err) {
                 setError(getErrorMessage(err));
+              } finally {
+                setBusyKey(null);
               }
             }}
           >
-            Pay laybye
+            {busyKey === 'laybye' ? 'Paying…' : 'Pay laybye'}
           </Button>
         </Row>
       </Card>
@@ -308,63 +313,79 @@ export function SalesPage() {
           <Button
             type="button"
             $variant="danger"
+            loading={busyKey === 'cancel-last'}
             onClick={async () => {
               if (!confirm('Cancel the last sale?')) return;
               try {
+                setBusyKey('cancel-last');
                 const res = await cancelLastSale('Cancelled from web');
                 setOk(res.message || 'Last sale cancelled.');
                 invalidate();
                 void recentQ.refetch();
               } catch (err) {
                 setError(getErrorMessage(err));
+              } finally {
+                setBusyKey(null);
               }
             }}
           >
-            Cancel last
+            {busyKey === 'cancel-last' ? 'Cancelling…' : 'Cancel last'}
           </Button>
         </Row>
-        <Table>
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>Type</th>
-              <th>Customer</th>
-              <th>Total</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {(recentQ.data || []).map((s) => (
-              <tr key={s.id}>
-                <td>
-                  {s.date ? new Date(s.date).toLocaleString() : '—'}
-                </td>
-                <td>{s.type}</td>
-                <td>{s.customerName || '—'}</td>
-                <td>{money(s.total)}</td>
-                <td>
-                  <Button
-                    type="button"
-                    $variant="ghost"
-                    onClick={async () => {
-                      if (!confirm('Cancel this sale?')) return;
-                      try {
-                        const res = await cancelSale(s.id, 'Cancelled from web');
-                        setOk(res.message || 'Sale cancelled.');
-                        invalidate();
-                        void recentQ.refetch();
-                      } catch (err) {
-                        setError(getErrorMessage(err));
-                      }
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </td>
+        {recentQ.isLoading ? (
+          <TableSkeleton
+            columns={5}
+            rows={6}
+            widths={['8rem', '4rem', '7rem', '4.5rem', '4rem']}
+          />
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Type</th>
+                <th>Customer</th>
+                <th>Total</th>
+                <th />
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {(recentQ.data || []).map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    {s.date ? new Date(s.date).toLocaleString() : '—'}
+                  </td>
+                  <td>{s.type}</td>
+                  <td>{s.customerName || '—'}</td>
+                  <td>{money(s.total)}</td>
+                  <td>
+                    <Button
+                      type="button"
+                      $variant="ghost"
+                      loading={busyKey === `cancel-${s.id}`}
+                      onClick={async () => {
+                        if (!confirm('Cancel this sale?')) return;
+                        try {
+                          setBusyKey(`cancel-${s.id}`);
+                          const res = await cancelSale(s.id, 'Cancelled from web');
+                          setOk(res.message || 'Sale cancelled.');
+                          invalidate();
+                          void recentQ.refetch();
+                        } catch (err) {
+                          setError(getErrorMessage(err));
+                        } finally {
+                          setBusyKey(null);
+                        }
+                      }}
+                    >
+                      {busyKey === `cancel-${s.id}` ? '…' : 'Cancel'}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
         {!recentQ.isLoading && !(recentQ.data || []).length ? (
           <p>No recent sales.</p>
         ) : null}
