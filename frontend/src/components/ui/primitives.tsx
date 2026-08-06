@@ -146,8 +146,6 @@ export const TableWrap = styled.div<{ $compact?: boolean }>`
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  margin: 0 -4px;
-  padding: 0 4px 4px;
   scrollbar-width: thin;
   scrollbar-color: ${({ theme }) => theme.colors.borderStrong} transparent;
 
@@ -243,7 +241,11 @@ const TableEl = styled.table<{ $compact?: boolean }>`
               overflow: hidden;
               text-overflow: ellipsis;
               white-space: nowrap;
-              box-shadow: 6px 0 12px -8px rgba(26, 10, 10, 0.18);
+              background-clip: padding-box;
+              /* Hard edge + soft fade so scrolling cells cannot peek through */
+              box-shadow:
+                1px 0 0 0 ${theme.colors.border},
+                8px 0 10px -8px rgba(26, 10, 10, 0.16);
             }
 
             thead th:first-child {
