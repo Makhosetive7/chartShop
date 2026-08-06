@@ -96,32 +96,101 @@ const SearchField = styled.label`
 `;
 
 const CompactInput = styled(Input)`
-  width: 88px;
-  padding: 8px 10px;
+  width: 4.5rem;
+  min-height: 0;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 0.88rem;
 `;
 
-const QtyInput = styled(Input)`
-  width: 72px;
-  padding: 8px 10px;
+const AdjustGroup = styled.div`
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  height: 32px;
+  border: 1px solid ${({ theme }) => theme.colors.border};
+  background: ${({ theme }) => theme.colors.cream};
 `;
 
-const Actions = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  max-width: 220px;
+const QtyInput = styled.input`
+  width: 2.6rem;
+  min-width: 0;
+  border: none;
+  border-right: 1px solid ${({ theme }) => theme.colors.border};
+  background: transparent;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: center;
+  color: inherit;
 
-  @media (min-width: 720px) {
-    max-width: none;
+  &:focus {
+    outline: none;
+    background: ${({ theme }) => theme.colors.surface};
   }
+
+  &:disabled {
+    opacity: 0.5;
+  }
+
+  /* Hide number spinners — we have explicit +/- */
+  appearance: textfield;
+
+  &::-webkit-outer-spin-button,
+  &::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+`;
+
+const StepBtn = styled.button`
+  flex: 0 0 30px;
+  width: 30px;
+  border: none;
+  border-right: 1px solid ${({ theme }) => theme.colors.border};
+  background: transparent;
+  color: ${({ theme }) => theme.colors.maroon};
+  font: inherit;
+  font-size: 1rem;
+  font-weight: ${({ theme }) => theme.fontWeights.semibold};
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+
+  &:last-child {
+    border-right: none;
+  }
+
+  &:hover:not(:disabled) {
+    background: ${({ theme }) => theme.colors.peachSoft};
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+`;
+
+const Truncate = styled.span`
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
 const NameCell = styled.div`
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+
+  > *:not(${Truncate}) {
+    flex-shrink: 0;
+  }
 `;
 
 function stockStatus(p: Product): 'ok' | 'low' | 'out' | 'off' {
@@ -404,16 +473,16 @@ export function ProductsPage() {
           <TableSkeleton
             columns={6}
             rows={8}
-            widths={['9rem', '5rem', '5rem', '3.5rem', '7rem', '4rem']}
+            widths={['9rem', '3.5rem', '4.5rem', '4.5rem', '6.5rem', '3.5rem']}
           />
         ) : (
           <Table>
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Stock</th>
                 <th>Price</th>
                 <th>Cost</th>
-                <th>Stock</th>
                 <th>Adjust</th>
                 <th />
               </tr>
@@ -425,7 +494,7 @@ export function ProductsPage() {
                   <tr key={p.id}>
                     <td>
                       <NameCell>
-                        {p.name}
+                        <Truncate title={p.name}>{p.name}</Truncate>
                         {status === 'out' ? (
                           <Badge $tone="danger">Out</Badge>
                         ) : null}
@@ -434,6 +503,7 @@ export function ProductsPage() {
                         ) : null}
                       </NameCell>
                     </td>
+                    <td>{p.trackStock ? p.stock : '—'}</td>
                     <td>
                       <CompactInput
                         type="number"
@@ -456,41 +526,35 @@ export function ProductsPage() {
                       />
                     </td>
                     <td>
-                      {p.trackStock ? p.stock : '—'}
-                    </td>
-                    <td>
-                      <Actions>
+                      <AdjustGroup>
                         <QtyInput
                           type="number"
                           min="1"
-                          placeholder="qty"
+                          placeholder="1"
+                          aria-label={`Adjust quantity for ${p.name}`}
                           value={stockEdit[p.id] || ''}
                           disabled={!p.trackStock}
                           onChange={(e) =>
                             setStockEdit({ ...stockEdit, [p.id]: e.target.value })
                           }
                         />
-                        <Button
+                        <StepBtn
                           type="button"
-                          $variant="ghost"
-                          $size="sm"
-                          disabled={!p.trackStock}
-                          loading={rowBusy === `${p.id}:+`}
+                          aria-label={`Add stock for ${p.name}`}
+                          disabled={!p.trackStock || rowBusy === `${p.id}:+`}
                           onClick={() => void adjustStock(p, '+')}
                         >
-                          +
-                        </Button>
-                        <Button
+                          {rowBusy === `${p.id}:+` ? '…' : '+'}
+                        </StepBtn>
+                        <StepBtn
                           type="button"
-                          $variant="ghost"
-                          $size="sm"
-                          disabled={!p.trackStock}
-                          loading={rowBusy === `${p.id}:-`}
+                          aria-label={`Remove stock for ${p.name}`}
+                          disabled={!p.trackStock || rowBusy === `${p.id}:-`}
                           onClick={() => void adjustStock(p, '-')}
                         >
-                          −
-                        </Button>
-                      </Actions>
+                          {rowBusy === `${p.id}:-` ? '…' : '−'}
+                        </StepBtn>
+                      </AdjustGroup>
                     </td>
                     <td>
                       <Button
