@@ -10,11 +10,11 @@ Vite + React + TypeScript web app for ChartShop: marketing site, auth, and shop 
 
 ## Production
 
-| | |
-|---|---|
-| **Host** | [Vercel](https://vercel.com) |
-| **Public URL** | https://chart-shop.vercel.app |
-| **API it calls** | https://chartshop.onrender.com/api/v1 |
+|                  |                                            |
+| ---------------- | ------------------------------------------ |
+| **Host**         | [Vercel](https://vercel.com)               |
+| **Public URL**   | https://chart-shop.vercel.app              |
+| **API it calls** | https://chartshop.onrender.com/api/v1      |
 | **SPA rewrites** | `vercel.json` → all routes to `index.html` |
 
 Open:
@@ -31,18 +31,18 @@ The production build bakes in `VITE_API_BASE_URL=https://chartshop.onrender.com/
 
 ## Stack
 
-| Layer | Choice |
-|-------|--------|
-| Build | Vite 8 |
-| UI | React 19 + TypeScript |
-| Styling | styled-components + polished |
-| Routing | React Router 7 |
-| Data | TanStack Query + Axios |
-| Motion / icons | Framer Motion, lucide-react |
-| Primitives | Radix UI |
-| Dates | date-fns |
-| Quality | ESLint, oxlint, Prettier |
-| Tests | Vitest + React Testing Library + jsdom |
+| Layer          | Choice                                 |
+| -------------- | -------------------------------------- |
+| Build          | Vite 8                                 |
+| UI             | React 19 + TypeScript                  |
+| Styling        | styled-components + polished           |
+| Routing        | React Router 7                         |
+| Data           | TanStack Query + Axios                 |
+| Motion / icons | Framer Motion, lucide-react            |
+| Primitives     | Radix UI                               |
+| Dates          | date-fns                               |
+| Quality        | ESLint, oxlint, Prettier               |
+| Tests          | Vitest + React Testing Library + jsdom |
 
 ---
 
@@ -68,22 +68,22 @@ frontend/
 
 ### Routes
 
-| Path | Access | Screen |
-|------|--------|--------|
-| `/` | Public | Marketing home |
-| `/login` | Public | Username + PIN |
-| `/register` | Public | Create shop |
-| `/recover` | Public | Recovery codes |
-| `/app` | Auth | In-app chat (default) |
-| `/app/dashboard` | Auth | Stats overview |
-| `/app/products` | Auth | Inventory |
-| `/app/sales` | Auth | Sales |
-| `/app/customers` | Auth | Customers |
-| `/app/orders` | Auth | Orders |
-| `/app/expenses` | Auth | Expenses |
-| `/app/reports` | Auth | Reports / PDF |
-| `/app/activity` | Auth | Activity feed |
-| `/app/settings` | Auth | Profile / PIN / recovery |
+| Path             | Access | Screen                   |
+| ---------------- | ------ | ------------------------ |
+| `/`              | Public | Marketing home           |
+| `/login`         | Public | Username + PIN           |
+| `/register`      | Public | Create shop              |
+| `/recover`       | Public | Recovery codes           |
+| `/app`           | Auth   | In-app chat (default)    |
+| `/app/dashboard` | Auth   | Stats overview           |
+| `/app/products`  | Auth   | Inventory                |
+| `/app/sales`     | Auth   | Sales                    |
+| `/app/customers` | Auth   | Customers                |
+| `/app/orders`    | Auth   | Orders                   |
+| `/app/expenses`  | Auth   | Expenses                 |
+| `/app/reports`   | Auth   | Reports / PDF            |
+| `/app/activity`  | Auth   | Activity feed            |
+| `/app/settings`  | Auth   | Profile / PIN / recovery |
 
 Auth token is stored as `chartshop_token` (and shop snapshot as `chartshop_shop`) in `localStorage`. Axios attaches `Authorization: Bearer …`. A `401` clears storage and sends the user to `/login`.
 
@@ -109,10 +109,10 @@ npm install
 
 ### 2. Environment variables
 
-| Variable | Local default | Purpose |
-|----------|---------------|---------|
-| `VITE_API_BASE_URL` | `/api/v1` | Axios base URL (relative → same origin, proxied in dev) |
-| `VITE_API_PROXY_TARGET` | `http://127.0.0.1:3006` | Vite proxy target for `/api/*` |
+| Variable                | Local default           | Purpose                                                 |
+| ----------------------- | ----------------------- | ------------------------------------------------------- |
+| `VITE_API_BASE_URL`     | `/api/v1`               | Axios base URL (relative → same origin, proxied in dev) |
+| `VITE_API_PROXY_TARGET` | `http://127.0.0.1:3006` | Vite proxy target for `/api/*`                          |
 
 Example `.env` for local work (must match backend `PORT`):
 
@@ -157,16 +157,16 @@ Open http://localhost:5173 — register at `/register`, then use `/app`.
 
 ## npm scripts
 
-| Script | Purpose |
-|--------|---------|
-| `npm run dev` | Vite dev server (port **5173**) |
-| `npm run build` | `tsc -b` + production bundle → `dist/` |
-| `npm run preview` | Serve `dist/` locally |
-| `npm test` | Vitest once |
-| `npm run test:watch` | Vitest watch |
-| `npm run lint` | ESLint + oxlint |
-| `npm run format` | Prettier write |
-| `npm run format:check` | Prettier check |
+| Script                 | Purpose                                |
+| ---------------------- | -------------------------------------- |
+| `npm run dev`          | Vite dev server (port **5173**)        |
+| `npm run build`        | `tsc -b` + production bundle → `dist/` |
+| `npm run preview`      | Serve `dist/` locally                  |
+| `npm test`             | Vitest once                            |
+| `npm run test:watch`   | Vitest watch                           |
+| `npm run lint`         | ESLint + oxlint                        |
+| `npm run format`       | Prettier write                         |
+| `npm run format:check` | Prettier check                         |
 
 Path alias: `@/` → `src/` (configured in `vite.config.ts` / tsconfig).
 
@@ -190,13 +190,13 @@ Demo shops: `POST /api/v1/auth/demo` (read-only writes return `403` + `DEMO_READ
 
 ### Project settings
 
-| Setting | Value |
-|---------|-------|
-| **Root Directory** | `frontend` |
-| **Framework** | Vite |
-| **Build command** | `npm run build` |
-| **Output directory** | `dist` |
-| **Install command** | `npm install` |
+| Setting              | Value           |
+| -------------------- | --------------- |
+| **Root Directory**   | `frontend`      |
+| **Framework**        | Vite            |
+| **Build command**    | `npm run build` |
+| **Output directory** | `dist`          |
+| **Install command**  | `npm install`   |
 
 ### Environment variables (Vercel → Production)
 
@@ -264,14 +264,14 @@ Vitest setup: `src/test/setup.ts`. Prefer component tests near features under `s
 
 ## Troubleshooting
 
-| Symptom | Fix |
-|---------|-----|
-| `ECONNREFUSED` / proxy errors | Start backend; match `PORT` and `VITE_API_PROXY_TARGET` |
-| Login works locally but not on Vercel | Production env missing `VITE_API_BASE_URL`, or stale deploy |
-| `/login` is Vercel 404 | Ensure `vercel.json` is deployed; Root Directory = `frontend` |
-| CORS errors in browser to Render | Set backend `CORS_ORIGIN` to `https://chart-shop.vercel.app` |
-| Instant redirect to `/login` | Token expired/invalid; clear `localStorage` or log in again |
-| Wrong API host after env change | Vite inlines env at **build** time — rebuild/redeploy |
+| Symptom                               | Fix                                                           |
+| ------------------------------------- | ------------------------------------------------------------- |
+| `ECONNREFUSED` / proxy errors         | Start backend; match `PORT` and `VITE_API_PROXY_TARGET`       |
+| Login works locally but not on Vercel | Production env missing `VITE_API_BASE_URL`, or stale deploy   |
+| `/login` is Vercel 404                | Ensure `vercel.json` is deployed; Root Directory = `frontend` |
+| CORS errors in browser to Render      | Set backend `CORS_ORIGIN` to `https://chart-shop.vercel.app`  |
+| Instant redirect to `/login`          | Token expired/invalid; clear `localStorage` or log in again   |
+| Wrong API host after env change       | Vite inlines env at **build** time — rebuild/redeploy         |
 
 ---
 
