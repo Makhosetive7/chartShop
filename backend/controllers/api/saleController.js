@@ -295,19 +295,71 @@ export async function cancelSale(req, res) {
 export async function refundsReport(req, res) {
   try {
     const days = parseInt(req.query.days, 10) || 30;
-    const message = await CancellationService.getRefundsReport(
-      req.shopId,
-      days
-    );
+    const data = await CancellationService.getRefundsData(req.shopId, days);
+    const message = CancellationService.formatRefundsMessage(data);
     return res.json({
       success: true,
-      message: typeof message === "string" ? stripMarkdown(message) : message,
+      message: stripMarkdown(message),
+      days: data.days,
+      totalRefundAmount: data.totalRefundAmount,
+      sales: data.sales,
     });
   } catch (error) {
     console.error("[api/sales/refunds]", error);
     return res.status(500).json({
       success: false,
       error: "Failed to generate refunds report.",
+    });
+  }
+}
+
+function serializeLaybye(laybye) {
+  if (!laybye) return null;
+  return {
+    id: String(laybye._id),
+    customerId: laybye.customerId ? String(laybye.customerId) : null,
+    customerName: laybye.customerName,
+    customerPhone: laybye.customerPhone || null,
+    totalAmount: laybye.totalAmount,
+    amountPaid: laybye.amountPaid,
+    balanceDue: laybye.balanceDue,
+    status: laybye.status,
+    items: laybye.items,
+    dueDate: laybye.dueDate,
+    completedDate: laybye.completedDate || null,
+    notes: laybye.notes || null,
+  };
+}
+
+export async function listLaybyes(req, res) {
+  try {
+    const status = String(req.query.status || "active").trim().toLowerCase();
+    const allowed = new Set(["active", "completed", "cancelled", "all"]);
+    if (!allowed.has(status)) {
+      return res.status(400).json({
+        success: false,
+        error: "status must be active, completed, cancelled, or all.",
+      });
+    }
+
+    const filter = { shopId: req.shopId };
+    if (status !== "all") {
+      filter.status = status;
+    }
+
+    const laybyes = await LayBye.find(filter)
+      .sort({ dueDate: 1, createdAt: -1 })
+      .limit(100);
+
+    return res.json({
+      success: true,
+      laybyes: laybyes.map(serializeLaybye),
+    });
+  } catch (error) {
+    console.error("[api/laybye/list]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to list laybyes.",
     });
   }
 }
@@ -383,18 +435,24 @@ export async function createLaybye(req, res) {
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
 
+    // Full deposit at create → complete immediately (stock + sale).
+    if (laybye.balanceDue <= 0) {
+      const { completeLayBye } = await import(
+        "../../services/commands/handlers/sales.js"
+      );
+      const sale = await completeLayBye(req.shopId, laybye);
+      return res.status(201).json({
+        success: true,
+        completed: true,
+        sale: serializeSale(sale),
+        laybye: serializeLaybye(laybye),
+      });
+    }
+
     return res.status(201).json({
       success: true,
-      laybye: {
-        id: String(laybye._id),
-        customerName: laybye.customerName,
-        totalAmount: laybye.totalAmount,
-        amountPaid: laybye.amountPaid,
-        balanceDue: laybye.balanceDue,
-        status: laybye.status,
-        items: laybye.items,
-        dueDate: laybye.dueDate,
-      },
+      completed: false,
+      laybye: serializeLaybye(laybye),
     });
   } catch (error) {
     console.error("[api/laybye]", error);

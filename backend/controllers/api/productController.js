@@ -80,9 +80,13 @@ export async function createProduct(req, res) {
       req.body?.stock === undefined || req.body?.stock === null
         ? 0
         : parseInt(req.body.stock, 10);
+    const shopDefaultThreshold =
+      req.shop?.settings?.lowStockAlert != null
+        ? Number(req.shop.settings.lowStockAlert)
+        : 10;
     const lowStockThreshold =
       req.body?.lowStockThreshold === undefined
-        ? 10
+        ? shopDefaultThreshold
         : parseInt(req.body.lowStockThreshold, 10);
     const trackStock =
       req.body?.trackStock !== undefined
@@ -130,7 +134,9 @@ export async function createProduct(req, res) {
       stock,
       lowStockThreshold: Number.isFinite(lowStockThreshold)
         ? lowStockThreshold
-        : 10,
+        : Number.isFinite(shopDefaultThreshold)
+          ? shopDefaultThreshold
+          : 10,
       trackStock,
       isActive: true,
     });

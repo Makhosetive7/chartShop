@@ -22,12 +22,12 @@ import {
   Tab,
   Table,
   ErrorBanner,
-  SuccessBanner,
   Select,
   Field,
   Button,
 } from '@/components/ui/primitives';
 import { ReportsBodySkeleton } from '@/components/skeletons/PageSkeletons';
+import { toastError, toastSuccess } from '@/lib/toast';
 
 type ReportTab = 'daily' | 'weekly' | 'monthly' | 'best' | 'profit';
 
@@ -173,8 +173,6 @@ export function ReportsPage() {
   const [bestDays, setBestDays] = useState(7);
   const [profitPeriod, setProfitPeriod] = useState('daily');
   const [month, setMonth] = useState('');
-  const [ok, setOk] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const dailyQ = useQuery({
     queryKey: ['reports', 'daily'],
@@ -240,13 +238,10 @@ export function ReportsPage() {
       return downloadReportPdf(tab, month || undefined);
     },
     onSuccess: (fileName) => {
-      setError(null);
-      setOk(`Downloaded ${fileName}`);
-      window.setTimeout(() => setOk(null), 3500);
+      toastSuccess(`Downloaded ${fileName}`);
     },
     onError: (err) => {
-      setOk(null);
-      setError(getErrorMessage(err, 'PDF download failed.'));
+      toastError(getErrorMessage(err, 'PDF download failed.'));
     },
   });
 
@@ -277,7 +272,6 @@ export function ReportsPage() {
               $active={tab === key}
               onClick={() => {
                 setTab(key);
-                setError(null);
               }}
             >
               {label}
@@ -370,8 +364,6 @@ export function ReportsPage() {
         ) : null}
       </Toolbar>
 
-      {error ? <ErrorBanner>{error}</ErrorBanner> : null}
-      {ok ? <SuccessBanner>{ok}</SuccessBanner> : null}
       {active.isError ? <ErrorBanner>Failed to load report.</ErrorBanner> : null}
       {active.isLoading ? (
         <ReportsBodySkeleton

@@ -12,6 +12,7 @@ import Product from "../models/Product.js";
 import Customer from "../models/Customer.js";
 import Sale from "../models/Sale.js";
 import Expense from "../models/Expense.js";
+import LayBye from "../models/LayBye.js";
 import { DEMO_SECTORS } from "../constants/demoSectors.js";
 
 const SHARED_CUSTOMERS = [
@@ -23,6 +24,15 @@ const SHARED_CUSTOMERS = [
   { name: "Farai Mutasa", phone: "0771001006" },
   { name: "Chipo Mhlanga", phone: "0771001007" },
   { name: "Tendai Zhou", phone: "0771001008" },
+];
+
+const CANCEL_REASONS = [
+  "Wrong price entered",
+  "Customer changed mind",
+  "Duplicate sale",
+  "Cancelled from web",
+  "Wrong item scanned",
+  "Payment failed — voided",
 ];
 
 function rand(min, max) {
@@ -48,6 +58,43 @@ function saleDateInWeek(weekStart) {
   return d;
 }
 
+function buildLineItems(products, itemCount = 1) {
+  const chosen = new Set();
+  const items = [];
+  let total = 0;
+  let costTotal = 0;
+
+  for (let j = 0; j < itemCount; j++) {
+    let product = pick(products);
+    let guard = 0;
+    while (chosen.has(String(product._id)) && guard < 8) {
+      product = pick(products);
+      guard += 1;
+    }
+    chosen.add(String(product._id));
+
+    const quantity = rand(1, 2);
+    const price = product.price;
+    const lineTotal = quantity * price;
+    const lineCost = quantity * (product.costPrice || 0);
+    total += lineTotal;
+    costTotal += lineCost;
+    items.push({
+      productId: product._id,
+      productName: product.name,
+      quantity,
+      price,
+      standardPrice: price,
+      isCustomPrice: false,
+      costPrice: product.costPrice,
+      costTotal: lineCost,
+      total: lineTotal,
+    });
+  }
+
+  return { items, total, costTotal };
+}
+
 async function wipeShopByUsername(username) {
   const existing = await Shop.findOne({ username });
   if (!existing) return;
@@ -56,6 +103,7 @@ async function wipeShopByUsername(username) {
   await Promise.all([
     Sale.deleteMany({ shopId }),
     Expense.deleteMany({ shopId }),
+    LayBye.deleteMany({ shopId }),
     Product.deleteMany({ shopId }),
     Customer.deleteMany({ shopId }),
     ActivityLog.deleteMany({ shopId }),
@@ -90,11 +138,12 @@ async function seedSector(sector) {
     },
   });
 
+  const shopDefaultThreshold = sector.lowStockAlert ?? 10;
   const products = await Product.insertMany(
     sector.catalog.map((p) => ({
       shopId: shop._id,
       ...p,
-      lowStockThreshold: Math.max(3, Math.floor((p.stock || 20) * 0.15)),
+      lowStockThreshold: shopDefaultThreshold,
       trackStock: true,
       isActive: true,
       createdAt: registeredAt,
@@ -136,39 +185,7 @@ async function seedSector(sector) {
       const date = saleDateInWeek(weekStart);
       if (date > now) continue;
 
-      const itemCount = rand(1, 3);
-      const chosen = new Set();
-      const items = [];
-      let total = 0;
-      let costTotal = 0;
-
-      for (let j = 0; j < itemCount; j++) {
-        let product = pick(products);
-        let guard = 0;
-        while (chosen.has(String(product._id)) && guard < 8) {
-          product = pick(products);
-          guard += 1;
-        }
-        chosen.add(String(product._id));
-
-        const quantity = rand(1, 2);
-        const price = product.price;
-        const lineTotal = quantity * price;
-        const lineCost = quantity * (product.costPrice || 0);
-        total += lineTotal;
-        costTotal += lineCost;
-        items.push({
-          productId: product._id,
-          productName: product.name,
-          quantity,
-          price,
-          standardPrice: price,
-          isCustomPrice: false,
-          costPrice: product.costPrice,
-          costTotal: lineCost,
-          total: lineTotal,
-        });
-      }
+      const { items, total, costTotal } = buildLineItems(products, rand(1, 3));
 
       const withCustomer = Math.random() < 0.55;
       const customer = withCustomer ? pick(customers) : null;
@@ -234,17 +251,272 @@ async function seedSector(sector) {
     await p.save();
   }
 
+  // Leave 1–2 tracked products at/near shop low-stock default for Settings + Products UI.
+  const tracked = products.filter((p) => p.stock < 900);
+  for (const p of tracked.slice(0, 2)) {
+    p.stock = Math.max(0, Math.min(p.stock, shopDefaultThreshold));
+    await p.save();
+  }
+
+  const featureExtras = await seedLaybyesAndRefunds({
+    shop,
+    products,
+    customers,
+  });
+
   await seedDemoActivityLog({
     shop,
     products,
     salesDocs,
     expenseDocs,
     sector,
+    featureExtras,
   });
 
   console.log(
-    `✓ ${sector.id.padEnd(12)} ${sector.businessName} (@${sector.username}) — ${products.length} products, ${saleCount} sales`
+    `✓ ${sector.id.padEnd(12)} ${sector.businessName} (@${sector.username}) — ${products.length} products, ${saleCount} sales, ${featureExtras.cancelledCount} refunds, ${featureExtras.laybyeCount} laybyes`
   );
+}
+
+/**
+ * Seed cancelled sales (refunds UI) + active/completed laybyes (Sales page).
+ */
+async function seedLaybyesAndRefunds({ shop, products, customers }) {
+  const trackedProducts = products.filter((p) => (p.stock || 0) < 900);
+  const pool = trackedProducts.length ? trackedProducts : products;
+  const now = new Date();
+
+  const cancelledDocs = [];
+  const cancelWindows = [2, 5, 9, 14, 21, 28, 45];
+  for (let i = 0; i < cancelWindows.length; i++) {
+    const daysAgo = cancelWindows[i];
+    const { items, total, costTotal } = buildLineItems(pool, rand(1, 2));
+    const customer = i % 2 === 0 ? pick(customers) : null;
+    const saleDate = addDays(now, -daysAgo);
+    saleDate.setHours(rand(10, 16), rand(0, 59), 0, 0);
+    const cancelledAt = addDays(saleDate, rand(0, 1));
+    cancelledAt.setHours(saleDate.getHours() + rand(1, 4), rand(0, 59), 0, 0);
+
+    cancelledDocs.push({
+      shopId: shop._id,
+      type: customer && i % 3 === 0 ? "credit" : "cash",
+      status: "cancelled",
+      items,
+      total,
+      costTotal,
+      profit: total - costTotal,
+      amountPaid: customer && i % 3 === 0 ? 0 : total,
+      balanceDue: customer && i % 3 === 0 ? total : 0,
+      isCancelled: true,
+      cancelledAt,
+      cancellationReason: CANCEL_REASONS[i % CANCEL_REASONS.length],
+      customerId: customer?._id,
+      customerName: customer?.name,
+      customerPhone: customer?.phone,
+      date: saleDate,
+    });
+  }
+  await Sale.insertMany(cancelledDocs);
+
+  // Prefer distinct customers for active laybyes so Pay/Complete by name is unambiguous.
+  const laybyeCustomers = [...customers].slice(0, 4);
+  while (laybyeCustomers.length < 4) {
+    laybyeCustomers.push(pick(customers));
+  }
+
+  const laybyeDocs = [];
+
+  // Active — small deposit, clear balance for Pay flow
+  {
+    const customer = laybyeCustomers[0];
+    const { items, total } = buildLineItems(pool, 2);
+    const deposit = Math.max(
+      1,
+      Math.round(total * 0.3 * 100) / 100
+    );
+    const startDate = addDays(now, -12);
+    laybyeDocs.push({
+      shopId: shop._id,
+      customerId: customer._id,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+      items: items.map((it) => ({
+        productId: it.productId,
+        productName: it.productName,
+        quantity: it.quantity,
+        price: it.price,
+        total: it.total,
+      })),
+      totalAmount: total,
+      amountPaid: deposit,
+      balanceDue: Math.round((total - deposit) * 100) / 100,
+      installments: [
+        { amount: deposit, date: startDate, paymentMethod: "cash" },
+      ],
+      status: "active",
+      startDate,
+      dueDate: addDays(startDate, 30),
+      reservedStock: false,
+      notes: "Demo active laybye — deposit paid",
+    });
+  }
+
+  // Active — mostly paid (easy final payment)
+  {
+    const customer = laybyeCustomers[1];
+    const { items, total } = buildLineItems(pool, 1);
+    const balance = Math.min(
+      total - 1,
+      Math.max(2, Math.round(total * 0.15 * 100) / 100)
+    );
+    const paid = Math.round((total - balance) * 100) / 100;
+    const startDate = addDays(now, -20);
+    laybyeDocs.push({
+      shopId: shop._id,
+      customerId: customer._id,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+      items: items.map((it) => ({
+        productId: it.productId,
+        productName: it.productName,
+        quantity: it.quantity,
+        price: it.price,
+        total: it.total,
+      })),
+      totalAmount: total,
+      amountPaid: paid,
+      balanceDue: balance,
+      installments: [
+        {
+          amount: Math.round(paid * 0.6 * 100) / 100,
+          date: startDate,
+          paymentMethod: "cash",
+        },
+        {
+          amount: Math.round(paid * 0.4 * 100) / 100,
+          date: addDays(startDate, 8),
+          paymentMethod: "mobile",
+        },
+      ],
+      status: "active",
+      startDate,
+      dueDate: addDays(startDate, 30),
+      reservedStock: false,
+      notes: "Demo laybye nearly paid",
+    });
+  }
+
+  // Active — mid payment
+  {
+    const customer = laybyeCustomers[2];
+    const { items, total } = buildLineItems(pool, 2);
+    const deposit = Math.max(
+      2,
+      Math.round(total * 0.45 * 100) / 100
+    );
+    const startDate = addDays(now, -6);
+    laybyeDocs.push({
+      shopId: shop._id,
+      customerId: customer._id,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+      items: items.map((it) => ({
+        productId: it.productId,
+        productName: it.productName,
+        quantity: it.quantity,
+        price: it.price,
+        total: it.total,
+      })),
+      totalAmount: total,
+      amountPaid: deposit,
+      balanceDue: Math.round((total - deposit) * 100) / 100,
+      installments: [
+        { amount: deposit, date: startDate, paymentMethod: "cash" },
+      ],
+      status: "active",
+      startDate,
+      dueDate: addDays(startDate, 30),
+      reservedStock: false,
+    });
+  }
+
+  // Completed laybye + matching sale
+  {
+    const customer = laybyeCustomers[3];
+    const { items, total, costTotal } = buildLineItems(pool, 1);
+    const startDate = addDays(now, -40);
+    const completedDate = addDays(now, -8);
+    const [laybye] = await LayBye.create([
+      {
+        shopId: shop._id,
+        customerId: customer._id,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        items: items.map((it) => ({
+          productId: it.productId,
+          productName: it.productName,
+          quantity: it.quantity,
+          price: it.price,
+          total: it.total,
+        })),
+        totalAmount: total,
+        amountPaid: total,
+        balanceDue: 0,
+        installments: [
+          {
+            amount: Math.round(total * 0.4 * 100) / 100,
+            date: startDate,
+            paymentMethod: "cash",
+          },
+          {
+            amount: Math.round(total * 0.6 * 100) / 100,
+            date: completedDate,
+            paymentMethod: "cash",
+          },
+        ],
+        status: "completed",
+        startDate,
+        completedDate,
+        dueDate: addDays(startDate, 30),
+        reservedStock: false,
+        notes: "Demo completed laybye",
+      },
+    ]);
+
+    await Sale.create({
+      shopId: shop._id,
+      type: "completed_laybye",
+      status: "completed",
+      items,
+      total,
+      costTotal,
+      profit: total - costTotal,
+      amountPaid: total,
+      balanceDue: 0,
+      isCancelled: false,
+      customerId: customer._id,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+      date: completedDate,
+    });
+
+    customer.totalSpent += total;
+    customer.totalVisits += 1;
+    if (!customer.firstPurchaseDate) customer.firstPurchaseDate = startDate;
+    customer.lastPurchaseDate = completedDate;
+    await customer.save();
+  }
+
+  if (laybyeDocs.length) {
+    await LayBye.insertMany(laybyeDocs);
+  }
+
+  return {
+    cancelledCount: cancelledDocs.length,
+    laybyeCount: laybyeDocs.length + 1,
+    cancelledDocs,
+    activeLaybyes: laybyeDocs,
+  };
 }
 
 /**
@@ -257,6 +529,7 @@ async function seedDemoActivityLog({
   salesDocs,
   expenseDocs,
   sector,
+  featureExtras,
 }) {
   const ActivityLog = (await import("../models/ActivityLog.js")).default;
   const actor = shop.username;
@@ -391,6 +664,66 @@ async function seedDemoActivityLog({
     });
   }
 
+  // Refunds / cancellations for Sales page demo
+  for (const sale of featureExtras?.cancelledDocs || []) {
+    push({
+      channel: "web",
+      action: "sale.cancelled",
+      entityType: "sale",
+      summary: `Cancelled $${Number(sale.total).toFixed(2)}${
+        sale.customerName ? ` · ${sale.customerName}` : ""
+      } — ${sale.cancellationReason}`,
+      metadata: {
+        total: sale.total,
+        reason: sale.cancellationReason,
+        type: sale.type,
+      },
+      createdAt: sale.cancelledAt || sale.date,
+    });
+  }
+
+  // Laybye chat turns so Activity shows the new flows
+  for (const lb of featureExtras?.activeLaybyes || []) {
+    const itemsText = (lb.items || [])
+      .map((it) => {
+        const name = /\s/.test(it.productName)
+          ? `"${it.productName}"`
+          : it.productName;
+        return `${it.quantity} ${name}`;
+      })
+      .join(" ");
+    const input = `laybye "${lb.customerName}" ${itemsText} deposit ${Number(
+      lb.amountPaid
+    ).toFixed(2)}`;
+    const reply = `LAYBYE CREATED\n\nCustomer: ${lb.customerName}\nTotal: $${Number(
+      lb.totalAmount
+    ).toFixed(2)}\nDeposit: $${Number(lb.amountPaid).toFixed(
+      2
+    )}\nBalance: $${Number(lb.balanceDue).toFixed(2)}`;
+    push({
+      channel: "web",
+      action: "chat.turn",
+      entityType: "chat",
+      summary: `→ ${input} · ← ${reply}`.slice(0, 400),
+      metadata: { input, reply, replyType: "text" },
+      createdAt: lb.startDate || new Date(),
+    });
+    push({
+      channel: "web",
+      action: "laybye.created",
+      entityType: "laybye",
+      summary: `Laybye $${Number(lb.totalAmount).toFixed(2)} · ${lb.customerName} · balance $${Number(
+        lb.balanceDue
+      ).toFixed(2)}`,
+      metadata: {
+        total: lb.totalAmount,
+        balanceDue: lb.balanceDue,
+        customerName: lb.customerName,
+      },
+      createdAt: lb.startDate || new Date(),
+    });
+  }
+
   // Closing report turns so /app ends on something useful
   const top = products.slice(0, 3).map((p) => p.name).join(", ");
   const reportAt = new Date();
@@ -406,13 +739,18 @@ async function seedDemoActivityLog({
     ],
     [
       "daily",
-      `FINANCIAL REPORT - TODAY\n\nDemo snapshot for ${sector.businessName}.\nRecent sales and expenses are loaded — explore Products, Sales, and Reports.`,
+      `FINANCIAL REPORT - TODAY\n\nDemo snapshot for ${sector.businessName}.\nRecent sales, laybyes, and refunds are loaded — explore Products, Sales, and Settings.`,
       "web",
     ],
     [
       "best",
       `BEST SELLERS\n\nTop movers include: ${top}.\nOpen Reports for the full picture.`,
       "whatsapp",
+    ],
+    [
+      "cancel refunds",
+      `REFUNDS REPORT\n\n${featureExtras?.cancelledCount || 0} cancellations seeded for this demo.\nOpen Sales → Refunds / cancellations.`,
+      "web",
     ],
   ]) {
     push({

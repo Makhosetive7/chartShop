@@ -13,6 +13,7 @@ import { ActivityPage } from '@/pages/ActivityPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { ProductsPage } from '@/pages/ProductsPage';
 import { SalesPage } from '@/pages/SalesPage';
+import { LaybyesPage } from '@/pages/LaybyesPage';
 import { CustomersPage } from '@/pages/CustomersPage';
 import { OrdersPage } from '@/pages/OrdersPage';
 import { ExpensesPage } from '@/pages/ExpensesPage';
@@ -38,6 +39,7 @@ export function App() {
                 <Route path="dashboard" element={<DashboardPage />} />
                 <Route path="products" element={<ProductsPage />} />
                 <Route path="sales" element={<SalesPage />} />
+                <Route path="laybyes" element={<LaybyesPage />} />
                 <Route path="customers" element={<CustomersPage />} />
                 <Route path="orders" element={<OrdersPage />} />
                 <Route path="expenses" element={<ExpensesPage />} />

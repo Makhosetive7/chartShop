@@ -25,6 +25,11 @@ const ENDPOINTS = [
     command: "profile edit description",
   },
   { method: "PATCH", path: "/auth/profile/pin", command: "profile edit pin" },
+  {
+    method: "PATCH",
+    path: "/auth/profile/settings",
+    command: "shop settings (web)",
+  },
   { method: "POST", path: "/auth/recovery/redeem", command: "recover" },
   {
     method: "POST",
@@ -46,6 +51,7 @@ const ENDPOINTS = [
   { method: "POST", path: "/sales/:id/cancel", command: "cancel sale N" },
   { method: "GET", path: "/sales/refunds", command: "cancel refunds" },
   { method: "POST", path: "/laybye", command: "laybye" },
+  { method: "GET", path: "/laybye", command: "laybye list (web)" },
   { method: "POST", path: "/laybye/pay", command: "laybye pay" },
   { method: "POST", path: "/laybye/complete", command: "laybye complete" },
   { method: "GET", path: "/customers", command: "customers" },

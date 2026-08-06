@@ -146,3 +146,16 @@ export async function updateProfileUsername(username: string) {
   }>('/auth/profile/username', { username });
   return data;
 }
+
+export async function updateShopSettings(body: {
+  timezone?: string;
+  lowStockAlert?: number;
+}) {
+  const { data } = await api.patch<{
+    success: boolean;
+    shop: Shop;
+    message?: string;
+    error?: string;
+  }>('/auth/profile/settings', body);
+  return data;
+}
