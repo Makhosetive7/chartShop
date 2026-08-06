@@ -4,13 +4,6 @@ import styled, { keyframes } from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  differenceInCalendarDays,
-  format,
-  isThisYear,
-  isToday,
-  isYesterday,
-} from 'date-fns';
-import {
   ArrowUp,
   Loader2,
   MessageCircle,
@@ -27,7 +20,12 @@ import { useAuth } from '@/auth';
 import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { BrandMark } from '@/components/ui/BrandMark';
 import { ChatThreadSkeleton } from '@/components/skeletons/PageSkeletons';
-
+import { useShopTimezone } from '@/hooks/useShopTimezone';
+import {
+  formatShopDayLabel,
+  formatShopTime,
+  shopDayKey,
+} from '@/utils/dates';
 const SUGGESTIONS = [
   { cmd: 'help', label: 'Help', icon: Sparkles },
   { cmd: 'list', label: 'Products', icon: Package },
@@ -876,26 +874,9 @@ const bubbleMotion = {
   transition: { duration: 0.22, ease: 'easeOut' as const },
 };
 
-function dayKey(iso?: string) {
-  if (!iso) return '';
-  return format(new Date(iso), 'yyyy-MM-dd');
-}
-
-function formatDayLabel(iso: string) {
-  const date = new Date(iso);
-  if (isToday(date)) return 'Today';
-  if (isYesterday(date)) return 'Yesterday';
-  if (differenceInCalendarDays(new Date(), date) < 7) {
-    return format(date, 'EEEE');
-  }
-  if (isThisYear(date)) {
-    return format(date, 'EEEE, d MMMM');
-  }
-  return format(date, 'd MMMM yyyy');
-}
-
 export function ChatPage() {
   const { shop, isDemo } = useAuth();
+  const timeZone = useShopTimezone();
   const queryClient = useQueryClient();
   const guardDemoWrite = useGuardDemoWrite();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -1105,15 +1086,17 @@ export function ChatPage() {
             </AnimatePresence>
 
             {messages.map((msg, index) => {
-              const day = dayKey(msg.createdAt);
-              const showDay = day && day !== lastDay;
+              const day = shopDayKey(msg.createdAt, timeZone);
+              const showDay = Boolean(day) && day !== lastDay;
               if (showDay) lastDay = day;
               const mine = msg.role === 'user';
               return (
                 <div key={msg.id || `${msg.role}-${index}-${msg.createdAt}`}>
                   {showDay ? (
                     <DayDivider>
-                      <span>{formatDayLabel(msg.createdAt!)}</span>
+                      <span>
+                        {formatShopDayLabel(msg.createdAt!, timeZone)}
+                      </span>
                     </DayDivider>
                   ) : null}
                   <MsgRow
@@ -1131,7 +1114,7 @@ export function ChatPage() {
                       {msg.text}
                       <Meta $mine={mine}>
                         {msg.createdAt
-                          ? format(new Date(msg.createdAt), 'HH:mm')
+                          ? formatShopTime(msg.createdAt, timeZone)
                           : ''}
                         {msg.channel && !mine ? ` · ${msg.channel}` : ''}
                         {msg.type === 'activity' ? ' · log' : ''}

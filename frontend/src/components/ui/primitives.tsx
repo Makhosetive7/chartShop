@@ -1,4 +1,4 @@
-import styled from 'styled-components';
+import styled, { css } from 'styled-components';
 import type { ReactNode, TableHTMLAttributes } from 'react';
 
 export { Button } from './Button';
@@ -139,10 +139,10 @@ export const TextArea = styled.textarea`
   }
 `;
 
-export const TableWrap = styled.div`
+export const TableWrap = styled.div<{ $compact?: boolean }>`
   width: 100%;
   max-width: 100%;
-  overflow-x: auto;
+  overflow-x: ${({ $compact }) => ($compact ? 'hidden' : 'auto')};
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
@@ -161,12 +161,13 @@ export const TableWrap = styled.div`
   }
 `;
 
-const TableEl = styled.table`
+const TableEl = styled.table<{ $compact?: boolean }>`
   width: 100%;
-  min-width: 480px;
+  min-width: ${({ $compact }) => ($compact ? '0' : '480px')};
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.88rem;
+  table-layout: ${({ $compact }) => ($compact ? 'fixed' : 'auto')};
 
   @media (min-width: 720px) {
     min-width: 0;
@@ -211,37 +212,69 @@ const TableEl = styled.table`
     background: ${({ theme }) => theme.colors.peachSoft};
   }
 
-  /* Keep the first column readable while scrolling on small screens */
-  @media (max-width: 719px) {
-    th:first-child,
-    td:first-child {
-      position: sticky;
-      left: 0;
-      z-index: 2;
-      min-width: 120px;
-      max-width: 46vw;
-      white-space: normal;
-      box-shadow: 6px 0 12px -8px rgba(26, 10, 10, 0.18);
-    }
+  ${({ $compact, theme }) =>
+    $compact
+      ? css`
+          /* Compact 2–3 col tables: fit the viewport, wrap the label column */
+          th:first-child,
+          td:first-child {
+            width: 52%;
+            overflow-wrap: anywhere;
+            white-space: normal;
+          }
 
-    thead th:first-child {
-      z-index: 3;
-    }
+          th:not(:first-child),
+          td:not(:first-child) {
+            width: auto;
+            white-space: nowrap;
+          }
+        `
+      : css`
+          /* Keep the first column readable while scrolling on small screens */
+          @media (max-width: 719px) {
+            th:first-child,
+            td:first-child {
+              position: sticky;
+              left: 0;
+              z-index: 2;
+              width: 8rem;
+              min-width: 8rem;
+              max-width: 8rem;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+              box-shadow: 6px 0 12px -8px rgba(26, 10, 10, 0.18);
+            }
 
-    tbody tr:hover td:first-child {
-      background: ${({ theme }) => theme.colors.peachSoft};
-    }
-  }
+            thead th:first-child {
+              z-index: 3;
+            }
+
+            tbody tr:hover td:first-child {
+              background: ${theme.colors.peachSoft};
+            }
+          }
+        `}
 `;
 
 type TableProps = TableHTMLAttributes<HTMLTableElement> & {
   children?: ReactNode;
+  /** Fit narrow viewports without sideways scroll (2–3 column tables). */
+  compact?: boolean;
 };
 
-export function Table({ children, style, className, ...rest }: TableProps) {
+export function Table({
+  children,
+  style,
+  className,
+  compact = false,
+  ...rest
+}: TableProps) {
   return (
-    <TableWrap style={style} className={className}>
-      <TableEl {...rest}>{children}</TableEl>
+    <TableWrap style={style} className={className} $compact={compact}>
+      <TableEl {...rest} $compact={compact}>
+        {children}
+      </TableEl>
     </TableWrap>
   );
 }

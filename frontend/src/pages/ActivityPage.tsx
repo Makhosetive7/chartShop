@@ -2,13 +2,6 @@ import { useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { useQuery } from '@tanstack/react-query';
 import {
-  differenceInCalendarDays,
-  format,
-  isThisYear,
-  isToday,
-  isYesterday,
-} from 'date-fns';
-import {
   Globe,
   MessageCircle,
   Phone,
@@ -30,6 +23,12 @@ import {
   ActivityListSkeleton,
   ActivityStatsSkeleton,
 } from '@/components/skeletons/PageSkeletons';
+import { useShopTimezone } from '@/hooks/useShopTimezone';
+import {
+  formatShopDayLabel,
+  formatShopTime,
+  shopDayKey,
+} from '@/utils/dates';
 
 const CHANNELS = ['all', 'web', 'telegram', 'whatsapp', 'system'] as const;
 const ACTIONS = ['all', 'chat.turn', 'auth.login'] as const;
@@ -246,21 +245,6 @@ function channelIcon(channel: string) {
   return MessageCircle;
 }
 
-function formatDayLabel(iso: string) {
-  const date = new Date(iso);
-  if (isToday(date)) return 'Today';
-  if (isYesterday(date)) return 'Yesterday';
-  if (differenceInCalendarDays(new Date(), date) < 7) {
-    return format(date, 'EEEE');
-  }
-  if (isThisYear(date)) return format(date, 'EEEE, d MMMM');
-  return format(date, 'd MMMM yyyy');
-}
-
-function dayKey(iso: string) {
-  return format(new Date(iso), 'yyyy-MM-dd');
-}
-
 function actionLabel(action: string) {
   if (action === 'chat.turn') return 'Chat';
   if (action === 'auth.login') return 'Login';
@@ -274,6 +258,7 @@ function getChatParts(row: ActivityItem) {
 }
 
 export function ActivityPage() {
+  const timeZone = useShopTimezone();
   const [channel, setChannel] = useState<ChannelFilter>('all');
   const [action, setAction] = useState<ActionFilter>('all');
   const [query, setQuery] = useState('');
@@ -410,7 +395,7 @@ export function ActivityPage() {
       ) : (
       <List>
         {filtered.map((row) => {
-          const day = dayKey(row.createdAt);
+          const day = shopDayKey(row.createdAt, timeZone);
           const showDay = day !== lastDay;
           if (showDay) lastDay = day;
           const Icon = channelIcon(row.channel);
@@ -420,7 +405,9 @@ export function ActivityPage() {
 
           return (
             <div key={row.id}>
-              {showDay ? <DayLabel>{formatDayLabel(row.createdAt)}</DayLabel> : null}
+              {showDay ? (
+                <DayLabel>{formatShopDayLabel(row.createdAt, timeZone)}</DayLabel>
+              ) : null}
               <Item>
                 <Top>
                   <Meta>
@@ -440,7 +427,7 @@ export function ActivityPage() {
                       {actionLabel(row.action)}
                     </Badge>
                   </Meta>
-                  <Time>{format(new Date(row.createdAt), 'HH:mm')}</Time>
+                  <Time>{formatShopTime(row.createdAt, timeZone)}</Time>
                 </Top>
 
                 <Summary>{row.summary}</Summary>

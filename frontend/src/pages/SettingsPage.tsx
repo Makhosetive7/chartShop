@@ -1,15 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import styled from 'styled-components';
 import axios from 'axios';
-import {
-  Building2,
-  KeyRound,
-  LogOut,
-  Shield,
-} from 'lucide-react';
 import {
   fetchProfile,
   updateProfileName,
@@ -17,7 +10,14 @@ import {
   updateProfilePin,
   updateProfileUsername,
 } from '@/api/reports';
+import { useShopTimezone } from '@/hooks/useShopTimezone';
+import { formatShopDateTime } from '@/utils/dates';
 import {
+  Building2,
+  KeyRound,
+  LogOut,
+  Shield,
+} from 'lucide-react';import {
   checkUsername,
   fetchRecoveryStatus,
   regenerateRecoveryCodes,
@@ -46,6 +46,7 @@ import {
   sanitizeUsernameInput,
   validateUsername,
 } from '@/utils/username';
+
 const Header = styled.header`
   margin-bottom: ${({ theme }) => theme.space[5]};
 `;
@@ -306,18 +307,10 @@ function suggestionsFromError(error: unknown): string[] {
   return data?.suggestions || [];
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return 'Never';
-  try {
-    return format(new Date(value), 'd MMM yyyy · HH:mm');
-  } catch {
-    return '—';
-  }
-}
-
 export function SettingsPage() {
   const { shop, logout, updateShop } = useAuth();
   const qc = useQueryClient();
+  const timeZone = useShopTimezone();
   const [name, setName] = useState(shop?.businessName || '');
   const [username, setUsername] = useState(shop?.username || '');
   const [description, setDescription] = useState(
@@ -639,11 +632,22 @@ export function SettingsPage() {
         <HeroGrid>
           <HeroStat>
             <span>Last login</span>
-            <strong>{formatDate(profile?.lastLogin || shop?.lastLogin || null)}</strong>
+            <strong>
+              {profile?.lastLogin || shop?.lastLogin
+                ? formatShopDateTime(
+                    profile?.lastLogin || shop?.lastLogin,
+                    timeZone,
+                  )
+                : 'Never'}
+            </strong>
           </HeroStat>
           <HeroStat>
             <span>Registered</span>
-            <strong>{formatDate(profile?.registeredAt)}</strong>
+            <strong>
+              {profile?.registeredAt
+                ? formatShopDateTime(profile.registeredAt, timeZone)
+                : '—'}
+            </strong>
           </HeroStat>
           <HeroStat>
             <span>Currency</span>
