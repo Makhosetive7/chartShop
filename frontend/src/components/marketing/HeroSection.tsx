@@ -85,6 +85,29 @@ const CtaRow = styled.div`
   margin-top: ${({ theme }) => theme.space[1]};
 `;
 
+const PlatformEyebrow = styled(Eyebrow)`
+  white-space: nowrap;
+  max-width: 100%;
+
+  &::before {
+    display: none;
+  }
+
+  @media (max-width: 420px) {
+    font-size: 0.62rem;
+    letter-spacing: 0.055em;
+    padding: 6px 10px;
+    gap: 6px;
+  }
+`;
+
+const PlatformDivider = styled.span`
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  background: ${({ theme }) => theme.colors.primary};
+`;
+
 const Showcase = styled(motion.div)`
   position: relative;
   z-index: 1;
@@ -435,7 +458,13 @@ export function HeroSection() {
         transition={{ staggerChildren: 0.09 }}
       >
         <motion.div variants={fadeUp}>
-          <Eyebrow>Web now · Telegram available · WhatsApp coming</Eyebrow>
+          <PlatformEyebrow>
+            <span>Web now</span>
+            <PlatformDivider aria-hidden />
+            <span>Telegram available</span>
+            <PlatformDivider aria-hidden />
+            <span>WhatsApp coming</span>
+          </PlatformEyebrow>
         </motion.div>
         <motion.div variants={fadeUp}>
           <Brand>ChartShop</Brand>
