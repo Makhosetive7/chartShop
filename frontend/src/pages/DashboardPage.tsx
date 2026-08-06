@@ -489,7 +489,7 @@ export function DashboardPage() {
                     }))}
                     formatValue={money}
                   />
-                  <Table style={{ marginTop: 18 }}>
+                  <Table compact style={{ marginTop: 18 }}>
                     <thead>
                       <tr>
                         <th>Product</th>
@@ -526,7 +526,7 @@ export function DashboardPage() {
                     color="#8B1E3A"
                     formatValue={money}
                   />
-                  <Table style={{ marginTop: 18 }}>
+                  <Table compact style={{ marginTop: 18 }}>
                     <thead>
                       <tr>
                         <th>Client</th>
@@ -556,7 +556,7 @@ export function DashboardPage() {
               <h2>Most frequent shoppers</h2>
               <PanelLead>By visit count</PanelLead>
               {(overview.customers.mostFrequent || []).length ? (
-                <Table>
+                <Table compact>
                   <thead>
                     <tr>
                       <th>Client</th>
@@ -589,7 +589,7 @@ export function DashboardPage() {
                 Debtors and inventory warnings
               </PanelLead>
               {(overview.customers.debtors || []).length ? (
-                <Table>
+                <Table compact>
                   <thead>
                     <tr>
                       <th>Debtor</th>
@@ -609,7 +609,7 @@ export function DashboardPage() {
                 <EmptyNote>No outstanding balances.</EmptyNote>
               )}
               {(inventory?.lowStock?.length || inventory?.outOfStock?.length) ? (
-                <Table style={{ marginTop: 16 }}>
+                <Table compact style={{ marginTop: 16 }}>
                   <thead>
                     <tr>
                       <th>Stock alert</th>
@@ -643,7 +643,7 @@ export function DashboardPage() {
             <Panel>
               <h2>Slow movers</h2>
               <PanelLead>Lowest units sold in the last {days} days</PanelLead>
-              <Table>
+              <Table compact>
                 <thead>
                   <tr>
                     <th>Product</th>

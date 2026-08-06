@@ -151,10 +151,10 @@ export function SolutionSection() {
     <Band id="solution">
       <CenterIntro>
         <Eyebrow $tone="onDark">How ChartShop works</Eyebrow>
-        <SectionTitle $onDark>One message. Books that stay true.</SectionTitle>
+        <SectionTitle $onDark>One shop. Books that stay true.</SectionTitle>
         <SectionLead $onDark>
-          Chat is the till. The web is the back office. Same shop, same PIN, same
-          numbers — whether you are at the counter or on the road.
+          The web dashboard is the desk. Chat commands work on Telegram today —
+          WhatsApp is next. Same shop, same PIN, same numbers.
         </SectionLead>
       </CenterIntro>
       <Grid>

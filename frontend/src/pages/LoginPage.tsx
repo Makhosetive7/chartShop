@@ -51,9 +51,9 @@ export function LoginPage() {
     <AuthShell
       eyebrow="Welcome back"
       headline="Open the till again"
-      lead="Sign in with the same username and PIN you use in Telegram or WhatsApp."
+      lead="Sign in with your shop username and PIN."
       showcaseTitle="Your shop picks up where you left off"
-      showcaseLead="Sales, stock, and credit stay synced — chat or web, same books."
+      showcaseLead="Sales, stock, and credit stay synced on the web — Telegram if you use it."
       preview={[
         { label: 'sold 2 bread @ 18', value: '+ZiG 36' },
         { label: 'Stock synced', value: '48 left' },
@@ -87,7 +87,7 @@ export function LoginPage() {
     >
       <Field>
         Username
-        <Hint>Same username on web, Telegram, and WhatsApp</Hint>
+        <Hint>Same username on web and Telegram (WhatsApp coming soon)</Hint>
         <Input
           value={username}
           onChange={(e) => setUsername(e.target.value)}

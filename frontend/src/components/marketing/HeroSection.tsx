@@ -435,25 +435,25 @@ export function HeroSection() {
         transition={{ staggerChildren: 0.09 }}
       >
         <motion.div variants={fadeUp}>
-          <Eyebrow>Telegram · WhatsApp · Web</Eyebrow>
+          <Eyebrow>Web now · Telegram available · WhatsApp coming</Eyebrow>
         </motion.div>
         <motion.div variants={fadeUp}>
           <Brand>ChartShop</Brand>
         </motion.div>
         <motion.div variants={fadeUp}>
-          <Headline>The till that lives in your chat.</Headline>
+          <Headline>Your shop books — on the web today.</Headline>
         </motion.div>
         <motion.div variants={fadeUp}>
           <Support>
-            Sell, track stock, and chase credit from a message — same books on the web
-            when you need the full picture.
+            Sell, track stock, and chase credit from the dashboard. Telegram chat
+            works if you want it — WhatsApp is next on the roadmap.
           </Support>
         </motion.div>
         <motion.div variants={fadeUp}>
           <CtaRow>
             <TryDemoButton />
-            <ArrowButton to="/register" variant="ghost">
-              Create shop
+            <ArrowButton to="/login" variant="ghost">
+              Sign in
             </ArrowButton>
           </CtaRow>
         </motion.div>
@@ -477,7 +477,7 @@ export function HeroSection() {
                 <strong>ChartShop</strong>
                 <span>online · your shop bot</span>
               </ChatMeta>
-              <ChannelPill>Telegram</ChannelPill>
+              <ChannelPill>Web chat</ChannelPill>
             </ChatHeader>
             <Transcript>
               {MESSAGES.map((msg, index) => (
@@ -504,7 +504,7 @@ export function HeroSection() {
           <TillCard>
             <TillHead>
               <h3>Today at the till</h3>
-              <span>Live from chat</span>
+              <span>Live dashboard</span>
             </TillHead>
             <BigStat
               initial={{ opacity: 0, y: 8 }}
@@ -561,7 +561,7 @@ export function HeroSection() {
           </TillCard>
         </Stage>
 
-        <Caption>Sell in chat · stock and credit stay current</Caption>
+        <Caption>Web first · chat channels as they land</Caption>
       </Showcase>
     </Hero>
   );

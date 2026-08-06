@@ -23,11 +23,14 @@ import {
   Tab,
 } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { useShopTimezone } from '@/hooks/useShopTimezone';
+import { formatShopDate } from '@/utils/dates';
 
 const STATUSES = ['all', 'pending', 'confirmed', 'ready', 'completed', 'cancelled'] as const;
 
 export function OrdersPage() {
   const qc = useQueryClient();
+  const timeZone = useShopTimezone();
   const [status, setStatus] = useState<(typeof STATUSES)[number]>('all');
   const [customer, setCustomer] = useState('');
   const [orderType, setOrderType] = useState('pickup');
@@ -210,9 +213,7 @@ export function OrdersPage() {
                     <Badge $tone={tone(o.status)}>{o.status}</Badge>
                   </td>
                   <td>
-                    {o.orderDate
-                      ? new Date(o.orderDate).toLocaleString()
-                      : '—'}
+                    {formatShopDate(o.orderDate, timeZone)}
                   </td>
                   <td>
                     <Row>

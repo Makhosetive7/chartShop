@@ -20,6 +20,8 @@ import {
   Tab,
 } from '@/components/ui/primitives';
 import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
+import { useShopTimezone } from '@/hooks/useShopTimezone';
+import { formatShopDate } from '@/utils/dates';
 
 const PERIODS = ['daily', 'weekly', 'monthly'] as const;
 const CATEGORIES = [
@@ -35,6 +37,7 @@ const CATEGORIES = [
 
 export function ExpensesPage() {
   const qc = useQueryClient();
+  const timeZone = useShopTimezone();
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>('daily');
   const [form, setForm] = useState({
     amount: '',
@@ -194,7 +197,7 @@ export function ExpensesPage() {
               <tbody>
                 {expenses.map((ex) => (
                   <tr key={ex.id}>
-                    <td>{ex.date ? new Date(ex.date).toLocaleString() : '—'}</td>
+                    <td>{formatShopDate(ex.date, timeZone)}</td>
                     <td>{ex.description}</td>
                     <td>{ex.category}</td>
                     <td>{money(ex.amount)}</td>

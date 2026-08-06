@@ -27,9 +27,12 @@ import {
 } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { CustomerDetailSkeleton } from '@/components/skeletons/PageSkeletons';
+import { useShopTimezone } from '@/hooks/useShopTimezone';
+import { formatShopDate } from '@/utils/dates';
 
 export function CustomersPage() {
   const qc = useQueryClient();
+  const timeZone = useShopTimezone();
   const [filter, setFilter] = useState<'all' | 'active'>('all');
   const [form, setForm] = useState({ name: '', phone: '', email: '' });
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -245,7 +248,7 @@ export function CustomersPage() {
             <tbody>
               {(historyQ.data.sales || []).map((s) => (
                 <tr key={s.id}>
-                  <td>{s.date ? new Date(s.date).toLocaleString() : '—'}</td>
+                  <td>{formatShopDate(s.date, timeZone)}</td>
                   <td>{s.type}</td>
                   <td>{money(s.total)}</td>
                 </tr>
@@ -271,7 +274,7 @@ export function CustomersPage() {
                 description?: string;
               }>) || []).map((t, i) => (
                 <tr key={i}>
-                  <td>{t.date ? new Date(t.date).toLocaleDateString() : '—'}</td>
+                  <td>{formatShopDate(t.date, timeZone)}</td>
                   <td>{t.type}</td>
                   <td>{money(t.amount)}</td>
                   <td>{t.description}</td>

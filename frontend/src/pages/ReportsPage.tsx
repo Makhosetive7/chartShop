@@ -256,7 +256,7 @@ export function ReportsPage() {
         <PageTitle style={{ marginBottom: 8 }}>Reports</PageTitle>
         <PageLead style={{ marginBottom: 0 }}>
           Cash-flow, bestsellers, and profit — same figures as chat. Download
-          PDF like Telegram/WhatsApp export.
+          PDF like Telegram export (WhatsApp coming soon).
         </PageLead>
       </Header>
 

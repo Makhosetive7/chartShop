@@ -4,13 +4,6 @@ import styled, { keyframes } from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  differenceInCalendarDays,
-  format,
-  isThisYear,
-  isToday,
-  isYesterday,
-} from 'date-fns';
-import {
   ArrowUp,
   Loader2,
   MessageCircle,
@@ -27,7 +20,12 @@ import { useAuth } from '@/auth';
 import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { BrandMark } from '@/components/ui/BrandMark';
 import { ChatThreadSkeleton } from '@/components/skeletons/PageSkeletons';
-
+import { useShopTimezone } from '@/hooks/useShopTimezone';
+import {
+  formatShopDayLabel,
+  formatShopTime,
+  shopDayKey,
+} from '@/utils/dates';
 const SUGGESTIONS = [
   { cmd: 'help', label: 'Help', icon: Sparkles },
   { cmd: 'list', label: 'Products', icon: Package },
@@ -876,26 +874,9 @@ const bubbleMotion = {
   transition: { duration: 0.22, ease: 'easeOut' as const },
 };
 
-function dayKey(iso?: string) {
-  if (!iso) return '';
-  return format(new Date(iso), 'yyyy-MM-dd');
-}
-
-function formatDayLabel(iso: string) {
-  const date = new Date(iso);
-  if (isToday(date)) return 'Today';
-  if (isYesterday(date)) return 'Yesterday';
-  if (differenceInCalendarDays(new Date(), date) < 7) {
-    return format(date, 'EEEE');
-  }
-  if (isThisYear(date)) {
-    return format(date, 'EEEE, d MMMM');
-  }
-  return format(date, 'd MMMM yyyy');
-}
-
 export function ChatPage() {
   const { shop, isDemo } = useAuth();
+  const timeZone = useShopTimezone();
   const queryClient = useQueryClient();
   const guardDemoWrite = useGuardDemoWrite();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -1027,7 +1008,7 @@ export function ChatPage() {
                 <p>
                   {showingDemoFeed
                     ? 'Demo activity log — sales & commands across channels'
-                    : 'Same commands as Telegram & WhatsApp'}
+                    : 'Web chat commands for your shop'}
                 </p>
               </HeaderText>
             </HeaderLeft>
@@ -1052,7 +1033,7 @@ export function ChatPage() {
                 >
                   <strong>Couldn’t load chat history</strong>
                   <p>
-                    Your past commands from web, Telegram, and WhatsApp should
+                    Your past commands from web and Telegram should
                     appear here after login. Check your connection and try
                     again.
                   </p>
@@ -1082,8 +1063,8 @@ export function ChatPage() {
                   </div>
                   <strong>Run your shop from chat</strong>
                   <p>
-                    Sell, restock, check reports — the same commands you use on
-                    Telegram and WhatsApp, right here.
+                    Sell, restock, check reports — the same commands as Telegram,
+                    right here on the web. WhatsApp is coming soon.
                   </p>
                   <EmptyActions>
                     {SUGGESTIONS.slice(0, 4).map(({ cmd, label, icon: Icon }) => (
@@ -1105,15 +1086,17 @@ export function ChatPage() {
             </AnimatePresence>
 
             {messages.map((msg, index) => {
-              const day = dayKey(msg.createdAt);
-              const showDay = day && day !== lastDay;
+              const day = shopDayKey(msg.createdAt, timeZone);
+              const showDay = Boolean(day) && day !== lastDay;
               if (showDay) lastDay = day;
               const mine = msg.role === 'user';
               return (
                 <div key={msg.id || `${msg.role}-${index}-${msg.createdAt}`}>
                   {showDay ? (
                     <DayDivider>
-                      <span>{formatDayLabel(msg.createdAt!)}</span>
+                      <span>
+                        {formatShopDayLabel(msg.createdAt!, timeZone)}
+                      </span>
                     </DayDivider>
                   ) : null}
                   <MsgRow
@@ -1131,7 +1114,7 @@ export function ChatPage() {
                       {msg.text}
                       <Meta $mine={mine}>
                         {msg.createdAt
-                          ? format(new Date(msg.createdAt), 'HH:mm')
+                          ? formatShopTime(msg.createdAt, timeZone)
                           : ''}
                         {msg.channel && !mine ? ` · ${msg.channel}` : ''}
                         {msg.type === 'activity' ? ' · log' : ''}
@@ -1212,8 +1195,8 @@ export function ChatPage() {
 
             <Disclaimer>
               {showingDemoFeed
-                ? 'This shared demo is read-only. Scroll the log to see real shop activity from web, Telegram, and WhatsApp — then create your own shop to run commands.'
-                : 'ChartShop runs the same commands as Telegram & WhatsApp. Messages are logged in Activity across all channels.'}
+                ? 'This shared demo is read-only. Scroll the log to see real shop activity — then create your own shop to run commands.'
+                : 'ChartShop chat uses the same command language as Telegram. Messages are logged in Activity. WhatsApp is coming soon.'}
             </Disclaimer>
           </FooterInner>
         </Footer>

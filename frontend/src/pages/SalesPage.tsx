@@ -31,12 +31,15 @@ import {
   Tab,
 } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { useShopTimezone } from '@/hooks/useShopTimezone';
+import { formatShopDate } from '@/utils/dates';
 
 type Line = { productId: string; quantity: string; price: string };
 const emptyLine = (): Line => ({ productId: '', quantity: '1', price: '' });
 
 export function SalesPage() {
   const qc = useQueryClient();
+  const timeZone = useShopTimezone();
   const [mode, setMode] = useState<'cash' | 'credit' | 'customer' | 'laybye'>(
     'cash',
   );
@@ -357,7 +360,7 @@ export function SalesPage() {
                 return (
                   <tr key={saleId || `${s.date}-${s.total}`}>
                     <td>
-                      {s.date ? new Date(s.date).toLocaleString() : '—'}
+                      {formatShopDate(s.date, timeZone)}
                     </td>
                     <td>{s.type}</td>
                     <td>{s.customerName || '—'}</td>

@@ -203,8 +203,8 @@ export function SiteFooter() {
             ChartShop
           </Brand>
           <Blurb>
-            The till that lives in your chat — sales, stock, and credit across
-            Telegram, WhatsApp, and the web.
+            Sales, stock, and credit on the web today — Telegram available,
+            WhatsApp coming soon.
           </Blurb>
         </BrandCol>
 
