@@ -166,6 +166,14 @@ const ReasonCell = styled.div`
   line-height: 1.4;
 `;
 
+const Truncate = styled.span`
+  display: block;
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
 function saleTypeLabel(type: string) {
   return type.replace(/_/g, ' ');
 }
@@ -417,34 +425,37 @@ export function SalesPage() {
           <TableSkeleton
             columns={5}
             rows={6}
-            widths={['8rem', '4rem', '7rem', '4.5rem', '4rem']}
+            widths={['8rem', '4rem', '4.5rem', '7rem', '4rem']}
           />
         ) : (
           <Table>
             <thead>
               <tr>
-                <th>When</th>
-                <th>Type</th>
                 <th>Customer</th>
+                <th>Type</th>
                 <th>Total</th>
+                <th>When</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {(recentQ.data || []).map((s) => {
                 const saleId = s.id || String((s as { _id?: string })._id || '');
+                const customerName =
+                  s.customerName || (s.type === 'cash' ? 'Walk-in' : '—');
                 return (
                   <tr key={saleId || `${s.date}-${s.total}`}>
                     <td>
-                      {formatShopDate(s.date, timeZone)}
+                      <Truncate title={customerName}>{customerName}</Truncate>
                     </td>
                     <td>{s.type}</td>
-                    <td>{s.customerName || (s.type === 'cash' ? 'Walk-in' : '—')}</td>
                     <td>{money(s.total)}</td>
+                    <td>{formatShopDate(s.date, timeZone)}</td>
                     <td>
                       <Button
                         type="button"
                         $variant="ghost"
+                        $size="sm"
                         disabled={!saleId}
                         loading={busyKey === `cancel-${saleId}`}
                         onClick={() => {
