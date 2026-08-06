@@ -77,10 +77,10 @@ export function ClosingSection() {
         viewport={{ once: true }}
       >
         <div>
-          <h2>Open the till in your chat</h2>
+          <h2>Open your shop on the web</h2>
           <p>
-            First sale in a message. Stock that stays honest. Credit you can collect.
-            Same books on the web when you sit down.
+            First sale on the dashboard. Stock that stays honest. Credit you can
+            collect. Telegram works today — WhatsApp is coming next.
           </p>
             <CtaRow>
               <TryDemoButton variant="light" />

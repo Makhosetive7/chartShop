@@ -90,15 +90,17 @@ export function AboutSection() {
       <Grid>
         <Copy>
           <Eyebrow $tone="onDark">Why we built it</Eyebrow>
-          <h2>Because chat was already the shop floor</h2>
+          <h2>Because shops needed books that stick</h2>
           <p>
             We watched shops lose money to missing stock counts, forgotten credit, and
             end-of-day guesswork. Fancy POS tools felt heavy. Spreadsheets died by
-            Wednesday. But Telegram and WhatsApp never left anyone’s pocket.
+            Wednesday. Most teams already live on their phones — and on the web when
+            they sit down.
           </p>
           <p>
-            So ChartShop put the till where the work already happens — and kept a web
-            desk for when you need to sit down with the numbers.
+            So ChartShop starts with a clear web dashboard for daily ops, keeps
+            Telegram available for chat commands, and is building WhatsApp next —
+            where most Zimbabwe shops already message.
           </p>
             <ArrowButton to="/register" variant="light">
               Open ChartShop
@@ -114,9 +116,9 @@ export function AboutSection() {
           <Card>
             <p className="label">Where it runs</p>
             <div className="row">
-              <span className="chip">Telegram</span>
-              <span className="chip">WhatsApp</span>
               <span className="chip">Web</span>
+              <span className="chip">Telegram</span>
+              <span className="chip">WhatsApp soon</span>
             </div>
           </Card>
           <Card>

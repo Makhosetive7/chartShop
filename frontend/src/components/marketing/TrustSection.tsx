@@ -79,7 +79,7 @@ const ITEMS = [
   {
     icon: Smartphone,
     title: 'Same books everywhere',
-    text: 'A sale in Telegram shows on the web. Credit on WhatsApp is the same balance at the desk.',
+    text: 'A sale on the web shows everywhere you are signed in. Telegram commands hit the same ledger — WhatsApp will too when it ships.',
   },
   {
     icon: FileCheck,
@@ -103,7 +103,7 @@ export function TrustSection() {
     <Band id="security">
       <CenterIntro>
         <Eyebrow>Trust the till</Eyebrow>
-        <SectionTitle>Practical control for a chat-first shop</SectionTitle>
+        <SectionTitle>Practical control for a web-first shop</SectionTitle>
         <SectionLead>
           No enterprise theatre — just clear ownership of who can sell, change stock,
           and see the books.
@@ -130,7 +130,7 @@ export function TrustSection() {
             <Sparkles size={20} />
           </Icon>
           <h3>Ready when the next customer walks in</h3>
-          <p>Create your shop, then use the same user ID and PIN in chat.</p>
+          <p>Create your shop, then sign in on the web with the same username and PIN.</p>
           <div>
             <ArrowButton to="/register" variant="light">
               Create shop

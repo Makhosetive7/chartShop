@@ -124,7 +124,7 @@ const Sheet = styled.div`
 const PROBLEMS = [
   {
     title: 'The till and the chat disagree',
-    text: 'A sale in Telegram, a note in the book, cash in the drawer — by Friday nobody knows what actually sold.',
+    text: 'A sale in one place, a note in the book, cash in the drawer — by Friday nobody knows what actually sold.',
     bg: 'linear-gradient(160deg, #FAE8DC, #F5D5C0)',
     visual: 'till' as const,
   },

@@ -607,7 +607,7 @@ export function SettingsPage() {
       <Header>
         <PageTitle>Settings</PageTitle>
         <PageLead>
-          Keep the shop profile and PIN in sync across web, Telegram, and WhatsApp.
+          Keep the shop profile and PIN in sync on web and Telegram (WhatsApp coming soon).
         </PageLead>
       </Header>
 
@@ -909,8 +909,8 @@ export function SettingsPage() {
             <SectionCopy>
               <h2>Session</h2>
               <p>
-                Sign out of this browser only. Telegram and WhatsApp sessions stay
-                open until you log out there.
+                Sign out of this browser only. Telegram sessions stay linked until you
+                log out there.
               </p>
             </SectionCopy>
           </SectionHead>

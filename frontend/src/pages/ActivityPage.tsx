@@ -319,7 +319,7 @@ export function ActivityPage() {
       <Header>
         <PageTitle style={{ marginBottom: 8 }}>Activity</PageTitle>
         <PageLead style={{ marginBottom: 0 }}>
-          Every command from web, Telegram, and WhatsApp — one shop timeline.
+          Every command from web and Telegram — one shop timeline. WhatsApp will join when it ships.
         </PageLead>
       </Header>
 

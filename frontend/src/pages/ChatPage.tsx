@@ -1008,7 +1008,7 @@ export function ChatPage() {
                 <p>
                   {showingDemoFeed
                     ? 'Demo activity log — sales & commands across channels'
-                    : 'Same commands as Telegram & WhatsApp'}
+                    : 'Web chat commands for your shop'}
                 </p>
               </HeaderText>
             </HeaderLeft>
@@ -1033,7 +1033,7 @@ export function ChatPage() {
                 >
                   <strong>Couldn’t load chat history</strong>
                   <p>
-                    Your past commands from web, Telegram, and WhatsApp should
+                    Your past commands from web and Telegram should
                     appear here after login. Check your connection and try
                     again.
                   </p>
@@ -1063,8 +1063,8 @@ export function ChatPage() {
                   </div>
                   <strong>Run your shop from chat</strong>
                   <p>
-                    Sell, restock, check reports — the same commands you use on
-                    Telegram and WhatsApp, right here.
+                    Sell, restock, check reports — the same commands as Telegram,
+                    right here on the web. WhatsApp is coming soon.
                   </p>
                   <EmptyActions>
                     {SUGGESTIONS.slice(0, 4).map(({ cmd, label, icon: Icon }) => (
@@ -1195,8 +1195,8 @@ export function ChatPage() {
 
             <Disclaimer>
               {showingDemoFeed
-                ? 'This shared demo is read-only. Scroll the log to see real shop activity from web, Telegram, and WhatsApp — then create your own shop to run commands.'
-                : 'ChartShop runs the same commands as Telegram & WhatsApp. Messages are logged in Activity across all channels.'}
+                ? 'This shared demo is read-only. Scroll the log to see real shop activity — then create your own shop to run commands.'
+                : 'ChartShop chat uses the same command language as Telegram. Messages are logged in Activity. WhatsApp is coming soon.'}
             </Disclaimer>
           </FooterInner>
         </Footer>

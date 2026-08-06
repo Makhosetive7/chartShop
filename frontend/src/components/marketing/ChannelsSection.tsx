@@ -31,13 +31,44 @@ const ChannelTab = styled.button<{ $active: boolean }>`
   flex: 1;
   border: none;
   cursor: pointer;
-  padding: 12px 14px;
+  padding: 10px 8px;
   border-radius: 0;
   background: ${({ $active }) => ($active ? 'white' : 'transparent')};
   color: ${({ theme, $active }) => ($active ? theme.colors.maroon : 'rgba(255,255,255,0.75)')};
   font-weight: ${({ theme }) => theme.fontWeights.semibold};
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+`;
+
+const TabStatus = styled.span<{ $tone: 'live' | 'soon'; $active: boolean }>`
+  font-size: 0.62rem;
+  font-weight: ${({ theme }) => theme.fontWeights.bold};
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: ${({ $tone, $active, theme }) => {
+    if ($tone === 'live') {
+      return $active ? theme.colors.success : 'rgba(140, 220, 170, 0.95)';
+    }
+    return $active ? theme.colors.textMuted : 'rgba(255, 255, 255, 0.5)';
+  }};
+`;
+
+const StatusBadge = styled.span<{ $tone: 'live' | 'soon' }>`
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  font-size: 0.68rem;
+  font-weight: ${({ theme }) => theme.fontWeights.bold};
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: ${({ $tone, theme }) =>
+    $tone === 'live' ? theme.colors.success : theme.colors.textMuted};
+  background: ${({ $tone, theme }) =>
+    $tone === 'live' ? theme.colors.successTint : theme.colors.peachSoft};
 `;
 
 const Card = styled(motion.div)`
@@ -156,66 +187,72 @@ const Dot = styled.span`
 
 const CHANNELS = [
   {
-    id: 'telegram',
-    label: 'Telegram',
-    title: 'Full shop ops from Telegram',
-    sub: 'At the counter or on the pavement',
-    tone: 'linear-gradient(160deg, #5c1024, #c43b5a 55%, #f5a07a)',
-    challenge: 'You are busy selling — opening a laptop POS is not happening.',
+    id: 'web',
+    label: 'Web',
+    status: 'Available' as const,
+    statusTone: 'live' as const,
+    title: 'Run the shop from the dashboard',
+    sub: 'The primary way most shops use ChartShop today',
+    tone: 'linear-gradient(160deg, #2a1014, #4a0e1c 45%, #f5a07a)',
+    challenge: 'You need the whole day on one screen — sales, stock, credit, and reports.',
     solution:
-      'Message ChartShop like a colleague: sales, stock, credit, and PDF reports without leaving the chat you already live in.',
+      'Sign in with your username and PIN. Browse inventory, customers, and reports, or use web chat commands without leaving the browser.',
     results: [
-      'Full command set for daily ops',
-      'Receipts and stock updates in-thread',
-      'Same PIN as the web dashboard',
+      'Today’s till at a glance',
+      'Inventory and customer screens',
+      'Built for how shops work day to day',
     ],
-    visual: 'chat' as const,
+    visual: 'web' as const,
   },
   {
     id: 'whatsapp',
     label: 'WhatsApp',
-    title: 'Same books on WhatsApp',
-    sub: 'When that is where your team already chats',
+    status: 'Coming soon' as const,
+    statusTone: 'soon' as const,
+    title: 'Meeting shops where they already chat',
+    sub: 'On the roadmap — carefully, not rushed',
     tone: 'linear-gradient(160deg, #3d0a16, #8b1e3a 50%, #e85a4f)',
-    challenge: 'Staff already ping each other on WhatsApp — the till should meet them there.',
+    challenge: 'Most teams in Zimbabwe already ping each other on WhatsApp — the till should meet them there.',
     solution:
-      'Enable WhatsApp Cloud API and keep the same business rules: sell, stock, credit — mirrored to the web.',
+      'We are wiring WhatsApp Cloud API so the same sell, stock, and credit rules mirror to the web. It takes careful setup; we will open it when it is solid.',
     results: [
       'Familiar app for the whole team',
-      'Parity with Telegram shop logic',
-      'One ledger, not a second notebook',
+      'Same ledger as the web dashboard',
+      'Not live yet — watch this space',
     ],
     visual: 'chat' as const,
   },
   {
-    id: 'web',
-    label: 'Web',
-    title: 'The desk view when you need depth',
-    sub: 'Dashboard for stats, stock screens, and growing POS UI',
-    tone: 'linear-gradient(160deg, #2a1014, #4a0e1c 45%, #f5a07a)',
-    challenge: 'Chat is fast — but sometimes you want the whole day on one screen.',
+    id: 'telegram',
+    label: 'Telegram',
+    status: 'Available' as const,
+    statusTone: 'live' as const,
+    title: 'Full shop ops from Telegram',
+    sub: 'Ready today if your team prefers Telegram',
+    tone: 'linear-gradient(160deg, #5c1024, #c43b5a 55%, #f5a07a)',
+    challenge: 'Some teams already run work chats on Telegram and want the till there too.',
     solution:
-      'Sign in with the same user ID and PIN. Browse inventory, customers, and reports without typing commands.',
+      'Message ChartShop like a colleague: sales, stock, credit, and PDF reports — same PIN and books as the web.',
     results: [
-      'Today’s till at a glance',
-      'Inventory and customer screens',
-      'Built for when you sit down',
+      'Full command set for daily ops',
+      'Receipts and stock updates in-thread',
+      'Same username and PIN as the web',
     ],
-    visual: 'web' as const,
+    visual: 'chat' as const,
   },
 ] as const;
 
 export function ChannelsSection() {
-  const [id, setId] = useState<(typeof CHANNELS)[number]['id']>('telegram');
+  const [id, setId] = useState<(typeof CHANNELS)[number]['id']>('web');
   const active = CHANNELS.find((c) => c.id === id) ?? CHANNELS[0];
 
   return (
     <Band id="channels">
       <CenterIntro>
-        <Eyebrow $tone="onDark">Three doors, one shop</Eyebrow>
-        <SectionTitle $onDark>Counter, stall, or desk — same books</SectionTitle>
+        <Eyebrow $tone="onDark">One shop, clear channels</Eyebrow>
+        <SectionTitle $onDark>Web first — chat as it lands</SectionTitle>
         <SectionLead $onDark>
-          Pick the channel that fits the moment. ChartShop keeps the ledger in sync.
+          Use the dashboard now. Telegram works today. WhatsApp is coming next.
         </SectionLead>
       </CenterIntro>
       <ChannelTabs role="tablist" aria-label="Channels">
@@ -228,6 +265,9 @@ export function ChannelsSection() {
             onClick={() => setId(c.id)}
           >
             {c.label}
+            <TabStatus $tone={c.statusTone} $active={id === c.id}>
+              {c.status}
+            </TabStatus>
           </ChannelTab>
         ))}
       </ChannelTabs>
@@ -273,6 +313,7 @@ export function ChannelsSection() {
             )}
           </Visual>
           <Body>
+            <StatusBadge $tone={active.statusTone}>{active.status}</StatusBadge>
             <h3>{active.title}</h3>
             <p className="sub">{active.sub}</p>
             <Row>

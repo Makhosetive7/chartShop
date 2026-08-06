@@ -330,9 +330,9 @@ export function RegisterPage() {
     <AuthShell
       eyebrow="Open your shop"
       headline="Register the till in minutes"
-      lead="Pick a shop name, a username, and a 4-digit PIN — same credentials work in chat. You will get recovery codes once after signup."
-      showcaseTitle="First sale starts with a message"
-      showcaseLead="After register, you can sell from Telegram, WhatsApp, or this dashboard."
+      lead="Pick a shop name, a username, and a 4-digit PIN for the web dashboard. You will get recovery codes once after signup."
+      showcaseTitle="First sale starts on the web"
+      showcaseLead="After register, run the shop from the dashboard. Telegram works today — WhatsApp is next."
       preview={[
         { label: 'Shop ready', value: '✓' },
         { label: 'Try', value: 'sold 1 milk @ 22' },
