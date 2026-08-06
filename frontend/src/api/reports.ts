@@ -1,29 +1,76 @@
 import { api } from './client';
 import type { Shop } from './client';
 
+export type FlowBucket = {
+  amount?: number;
+  count?: number;
+};
+
 export type CashFlowData = {
   cashFlow?: {
-    inflows?: { total?: number };
-    outflows?: { total?: number };
+    inflows?: {
+      cashSales?: FlowBucket;
+      debtPayments?: FlowBucket;
+      laybyePayments?: FlowBucket;
+      total?: number;
+    };
+    outflows?: {
+      expenses?: FlowBucket;
+      refunds?: FlowBucket;
+      total?: number;
+    };
     net?: number;
   };
-  revenue?: { total?: number };
+  revenue?: {
+    cash?: FlowBucket;
+    credit?: FlowBucket;
+    completedLaybyes?: FlowBucket;
+    total?: number;
+  };
   profitability?: {
     expenses?: number;
     operatingResult?: number;
     profitMargin?: number;
     netProfit?: number;
+    cogs?: number;
+    grossProfit?: number;
+    grossMarginPct?: number | null;
+    hasProductCosts?: boolean;
+    salesWithCost?: number;
   };
-  outstanding?: { total?: number };
+  outstanding?: {
+    creditDue?: { amount?: number; customers?: number };
+    laybyeDue?: { amount?: number; count?: number };
+    total?: number;
+  };
   transactions?: { totalSales?: number; expenses?: number; refunds?: number };
+  period?: { startDate?: string; endDate?: string };
+};
+
+export type ProfitData = {
+  success?: boolean;
+  revenue?: number;
+  expenses?: number;
+  profit?: number;
+  period?: string;
+  startDate?: string;
+  endDate?: string;
+  salesCount?: number;
+  expensesCount?: number;
 };
 
 export type ReportResponse = {
   success: boolean;
   report?: string;
   message?: string;
-  data?: CashFlowData;
-  monthInfo?: { label?: string; year?: number };
+  data?: CashFlowData | ProfitData;
+  monthInfo?: {
+    label?: string;
+    year?: number;
+    daysElapsed?: number;
+    daysInMonth?: number;
+    isCurrentMonth?: boolean;
+  };
   days?: number;
   products?: Array<{
     productName: string;

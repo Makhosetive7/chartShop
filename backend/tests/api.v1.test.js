@@ -35,16 +35,24 @@ function request(server, { method = "GET", path, body, token } = {}) {
         },
       },
       (res) => {
-        let data = "";
-        res.on("data", (c) => (data += c));
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
         res.on("end", () => {
+          const buf = Buffer.concat(chunks);
+          const raw = buf.toString("utf8");
           let json = null;
           try {
-            json = data ? JSON.parse(data) : null;
+            json = raw ? JSON.parse(raw) : null;
           } catch {
-            json = data;
+            json = raw;
           }
-          resolve({ status: res.statusCode, body: json, raw: data });
+          resolve({
+            status: res.statusCode,
+            body: json,
+            raw,
+            buffer: buf,
+            headers: res.headers,
+          });
         });
       }
     );
@@ -261,6 +269,31 @@ describe("API v1", () => {
     });
     assert.equal(weekly.status, 200);
     assert.equal(weekly.body.success, true);
+
+    const profit = await request(server, {
+      path: "/api/v1/reports/profit?period=daily",
+      token,
+    });
+    assert.equal(profit.status, 200);
+    assert.equal(profit.body.success, true);
+    assert.ok(profit.body.data);
+    assert.equal(typeof profit.body.data.revenue, "number");
+    assert.equal(typeof profit.body.data.profit, "number");
+
+    for (const type of ["daily", "weekly", "monthly"]) {
+      const pdf = await request(server, {
+        path: `/api/v1/reports/export?type=${type}&download=1`,
+        token,
+      });
+      assert.equal(
+        pdf.status,
+        200,
+        `PDF ${type} failed: ${pdf.raw?.slice?.(0, 200) || pdf.status}`
+      );
+      assert.match(String(pdf.headers["content-type"] || ""), /pdf/i);
+      assert.equal(pdf.buffer.subarray(0, 5).toString("utf8"), "%PDF-");
+      assert.ok(pdf.buffer.length > 500, `${type} PDF too small`);
+    }
 
     const help = await request(server, {
       path: "/api/v1/help",
