@@ -17,12 +17,12 @@ import {
   Button,
   Table,
   Badge,
-  ErrorBanner,
-  SuccessBanner,
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate } from '@/utils/dates';
 
@@ -37,9 +37,11 @@ export function OrdersPage() {
   const [notes, setNotes] = useState('');
   const [productId, setProductId] = useState('');
   const [qty, setQty] = useState('1');
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
   const [statusBusy, setStatusBusy] = useState<string | null>(null);
+  const [cancelOrder, setCancelOrder] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
 
   const productsQ = useQuery({ queryKey: ['products', 'all'], queryFn: listProducts });
   const customersQ = useQuery({
@@ -64,13 +66,13 @@ export function OrdersPage() {
       });
     },
     onSuccess: () => {
-      setOk('Order placed.');
+      toastSuccess('Order placed.');
       setProductId('');
       setQty('1');
       setNotes('');
       void qc.invalidateQueries({ queryKey: ['orders'] });
     },
-    onError: (e) => setError(getErrorMessage(e)),
+    onError: (e) => toastError(getErrorMessage(e)),
   });
 
   const products = productsQ.data || [];
@@ -91,7 +93,6 @@ export function OrdersPage() {
 
   function onCreate(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     createM.mutate();
   }
 
@@ -102,13 +103,29 @@ export function OrdersPage() {
     return 'warning' as const;
   }
 
+  async function applyStatus(orderId: string, nextStatus: string) {
+    try {
+      setStatusBusy(`${orderId}:${nextStatus}`);
+      await updateOrderStatus(orderId, nextStatus);
+      toastSuccess(
+        nextStatus === 'cancelled'
+          ? 'Order cancelled.'
+          : `Order → ${nextStatus}`,
+      );
+      setCancelOrder(null);
+      void qc.invalidateQueries({ queryKey: ['orders'] });
+    } catch (err) {
+      toastError(getErrorMessage(err));
+    } finally {
+      setStatusBusy(null);
+    }
+  }
+
   return (
     <Page>
       <PageTitle>Orders</PageTitle>
       <PageLead>Pickup / delivery orders and status workflow.</PageLead>
 
-      {error ? <ErrorBanner>{error}</ErrorBanner> : null}
-      {ok ? <SuccessBanner>{ok}</SuccessBanner> : null}
 
       <Card>
         <h2 style={{ marginTop: 0 }}>New order</h2>
@@ -224,17 +241,15 @@ export function OrdersPage() {
                           $variant="ghost"
                           $size="sm"
                           loading={statusBusy === `${o.id}:${ns}`}
-                          onClick={async () => {
-                            try {
-                              setStatusBusy(`${o.id}:${ns}`);
-                              await updateOrderStatus(o.id, ns);
-                              setOk(`Order → ${ns}`);
-                              void qc.invalidateQueries({ queryKey: ['orders'] });
-                            } catch (err) {
-                              setError(getErrorMessage(err));
-                            } finally {
-                              setStatusBusy(null);
+                          onClick={() => {
+                            if (ns === 'cancelled') {
+                              setCancelOrder({
+                                id: o.id,
+                                label: o.customerName || o.shortId || o.id,
+                              });
+                              return;
                             }
+                            void applyStatus(o.id, ns);
                           }}
                         >
                           {statusBusy === `${o.id}:${ns}` ? '…' : ns}
@@ -249,6 +264,29 @@ export function OrdersPage() {
         )}
         {!ordersQ.isLoading && orders.length === 0 ? <p>No orders.</p> : null}
       </Card>
+
+      <ConfirmDialog
+        open={Boolean(cancelOrder)}
+        onOpenChange={(open) => {
+          if (!open) setCancelOrder(null);
+        }}
+        title="Cancel this order?"
+        description={
+          cancelOrder
+            ? `Cancel order for ${cancelOrder.label}. You can still view it under cancelled orders.`
+            : 'Cancel this order?'
+        }
+        confirmLabel="Cancel order"
+        cancelLabel="Keep order"
+        tone="danger"
+        loading={Boolean(
+          cancelOrder && statusBusy === `${cancelOrder.id}:cancelled`,
+        )}
+        onConfirm={() => {
+          if (!cancelOrder) return;
+          void applyStatus(cancelOrder.id, 'cancelled');
+        }}
+      />
     </Page>
   );
 }

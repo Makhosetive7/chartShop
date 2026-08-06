@@ -13,6 +13,7 @@ import {
   History,
   Package,
   ShoppingCart,
+  CalendarClock,
   Users,
   ClipboardList,
   Wallet,
@@ -52,6 +53,7 @@ const PRIMARY: LinkItem[] = [
 ];
 
 const MORE: LinkItem[] = [
+  { to: '/app/laybyes', icon: CalendarClock, label: 'Laybyes' },
   { to: '/app/customers', icon: Users, label: 'Customers' },
   { to: '/app/orders', icon: ClipboardList, label: 'Orders' },
   { to: '/app/expenses', icon: Wallet, label: 'Expenses' },

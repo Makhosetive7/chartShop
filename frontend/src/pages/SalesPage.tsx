@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import styled from 'styled-components';
 import { listProducts } from '@/api/products';
 import { listCustomers } from '@/api/customers';
 import {
@@ -10,8 +11,8 @@ import {
   listRecentSales,
   cancelSale,
   cancelLastSale,
-  createLaybye,
-  payLaybye,
+  fetchRefunds,
+  type RefundSale,
 } from '@/api/sales';
 import { getErrorMessage, money, type SaleItemInput } from '@/api/types';
 import {
@@ -25,31 +26,172 @@ import {
   Select,
   Button,
   Table,
-  ErrorBanner,
-  SuccessBanner,
+  Badge,
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
-import { formatShopDate } from '@/utils/dates';
+import { formatShopDate, formatShopDateTime } from '@/utils/dates';
 
 type Line = { productId: string; quantity: string; price: string };
 const emptyLine = (): Line => ({ productId: '', quantity: '1', price: '' });
 
+const REFUND_PERIODS = [
+  { days: 7, label: '7 days' },
+  { days: 30, label: '30 days' },
+  { days: 90, label: '90 days' },
+] as const;
+
+const SectionHead = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+`;
+
+const SectionCopy = styled.div`
+  min-width: 0;
+  flex: 1 1 220px;
+
+  h2 {
+    margin: 0 0 4px;
+  }
+
+  p {
+    margin: 0;
+    color: ${({ theme }) => theme.colors.textSecondary};
+    font-size: 0.9rem;
+    line-height: 1.45;
+    max-width: 36rem;
+  }
+`;
+
+const StatStrip = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+`;
+
+const Stat = styled.div`
+  padding: 12px 14px;
+  background: ${({ theme }) => theme.colors.cream};
+  border: 1px solid ${({ theme }) => theme.colors.border};
+  min-width: 0;
+
+  span {
+    display: block;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: ${({ theme }) => theme.colors.textMuted};
+    font-weight: ${({ theme }) => theme.fontWeights.semibold};
+    margin-bottom: 4px;
+  }
+
+  strong {
+    display: block;
+    font-size: 1.15rem;
+    letter-spacing: -0.02em;
+    color: ${({ theme }) => theme.colors.maroon};
+    overflow-wrap: anywhere;
+  }
+`;
+
+const PeriodTabs = styled.div`
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 4px;
+  background: ${({ theme }) => theme.colors.peachSoft};
+  flex: 0 0 auto;
+`;
+
+const PeriodTab = styled.button<{ $active?: boolean }>`
+  border: none;
+  background: ${({ theme, $active }) =>
+    $active ? theme.colors.surface : 'transparent'};
+  color: ${({ theme }) => theme.colors.maroon};
+  padding: 8px 12px;
+  font-weight: ${({ theme }) => theme.fontWeights.semibold};
+  font-size: 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: ${({ theme, $active }) => ($active ? theme.shadows.card : 'none')};
+  white-space: nowrap;
+
+  &:hover {
+    background: ${({ theme }) => theme.colors.surface};
+  }
+`;
+
+const EmptyState = styled.div`
+  padding: 28px 12px;
+  text-align: center;
+  color: ${({ theme }) => theme.colors.textSecondary};
+
+  strong {
+    display: block;
+    color: ${({ theme }) => theme.colors.textPrimary};
+    margin-bottom: 6px;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.45;
+  }
+`;
+
+const ItemsCell = styled.div`
+  white-space: normal;
+  max-width: 16rem;
+  line-height: 1.4;
+  color: ${({ theme }) => theme.colors.textSecondary};
+  font-size: 0.86rem;
+`;
+
+const ReasonCell = styled.div`
+  white-space: normal;
+  max-width: 14rem;
+  line-height: 1.4;
+`;
+
+function saleTypeLabel(type: string) {
+  return type.replace(/_/g, ' ');
+}
+
+function itemsSummary(sale: RefundSale) {
+  const items = sale.items || [];
+  if (!items.length) return '—';
+  const preview = items
+    .slice(0, 2)
+    .map((item) => `${item.quantity}× ${item.productName}`)
+    .join(', ');
+  if (items.length > 2) return `${preview} +${items.length - 2} more`;
+  return preview;
+}
+
 export function SalesPage() {
   const qc = useQueryClient();
   const timeZone = useShopTimezone();
-  const [mode, setMode] = useState<'cash' | 'credit' | 'customer' | 'laybye'>(
-    'cash',
-  );
+  const [mode, setMode] = useState<'cash' | 'credit' | 'customer'>('cash');
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [customer, setCustomer] = useState('');
-  const [deposit, setDeposit] = useState('0');
-  const [laybyePay, setLaybyePay] = useState({ customer: '', amount: '' });
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
+  const [refundDays, setRefundDays] = useState(30);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [cancelConfirm, setCancelConfirm] = useState<
+    null | { kind: 'last' } | { kind: 'sale'; id: string; label: string }
+  >(null);
 
   const productsQ = useQuery({ queryKey: ['products', 'all'], queryFn: listProducts });
   const customersQ = useQuery({
@@ -59,6 +201,12 @@ export function SalesPage() {
   const recentQ = useQuery({
     queryKey: ['sales', 'recent'],
     queryFn: () => listRecentSales(15),
+    staleTime: 0,
+    refetchOnMount: 'always',
+  });
+  const refundsQ = useQuery({
+    queryKey: ['sales', 'refunds', refundDays],
+    queryFn: () => fetchRefunds(refundDays),
     staleTime: 0,
     refetchOnMount: 'always',
   });
@@ -91,15 +239,9 @@ export function SalesPage() {
       if (mode === 'cash') return createCashSale(items);
       if (!customer.trim()) throw new Error('Customer is required.');
       if (mode === 'credit') return createCreditSale(customer.trim(), items);
-      if (mode === 'customer') return sellToCustomer(customer.trim(), items);
-      return createLaybye({
-        customer: customer.trim(),
-        items,
-        deposit: Number(deposit) || 0,
-      });
+      return sellToCustomer(customer.trim(), items);
     },
     onSuccess: (result) => {
-      setError(null);
       let total = '';
       if (result && typeof result === 'object') {
         if ('sale' in result && result.sale && typeof result.sale === 'object') {
@@ -108,30 +250,44 @@ export function SalesPage() {
           total = money(Number((result as { total: number }).total));
         }
       }
-      setOk(
-        mode === 'laybye'
-          ? 'Laybye created.'
-          : `Sale recorded${total ? ` · ${total}` : ''}.`,
-      );
+      toastSuccess(`Sale recorded${total ? ` · ${total}` : ''}.`);
       setLines([emptyLine()]);
       invalidate();
     },
-    onError: (e) => setError(getErrorMessage(e)),
+    onError: (e) => toastError(getErrorMessage(e)),
   });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setOk(null);
     sellM.mutate();
+  }
+
+  async function runCancelConfirmed() {
+    if (!cancelConfirm) return;
+    try {
+      if (cancelConfirm.kind === 'last') {
+        setBusyKey('cancel-last');
+        await cancelLastSale('Cancelled from web');
+        toastSuccess('Sale cancelled.');
+      } else {
+        setBusyKey(`cancel-${cancelConfirm.id}`);
+        await cancelSale(cancelConfirm.id, 'Cancelled from web');
+        toastSuccess('Sale cancelled.');
+      }
+      setCancelConfirm(null);
+      invalidate();
+      void recentQ.refetch();
+    } catch (err) {
+      toastError(getErrorMessage(err));
+    } finally {
+      setBusyKey(null);
+    }
   }
 
   return (
     <Page>
       <PageTitle>Sales</PageTitle>
-      <PageLead>Cash, credit, customer sales, laybye, and cancellations.</PageLead>
-
-      {error ? <ErrorBanner>{error}</ErrorBanner> : null}
-      {ok ? <SuccessBanner>{ok}</SuccessBanner> : null}
+      <PageLead>Cash, credit, customer sales, and cancellations.</PageLead>
 
       <Tabs>
         {(
@@ -139,7 +295,6 @@ export function SalesPage() {
             ['cash', 'Cash'],
             ['credit', 'Credit'],
             ['customer', 'Sell to customer'],
-            ['laybye', 'Laybye'],
           ] as const
         ).map(([key, label]) => (
           <Tab
@@ -171,18 +326,6 @@ export function SalesPage() {
                   ))}
                 </datalist>
               </Field>
-              {mode === 'laybye' ? (
-                <Field>
-                  Deposit
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={deposit}
-                    onChange={(e) => setDeposit(e.target.value)}
-                  />
-                </Field>
-              ) : null}
             </Row>
           ) : null}
 
@@ -259,82 +402,15 @@ export function SalesPage() {
       </Card>
 
       <Card>
-        <h2 style={{ marginTop: 0 }}>Laybye payment</h2>
-        <Row>
-          <Field>
-            Customer
-            <Input
-              value={laybyePay.customer}
-              onChange={(e) =>
-                setLaybyePay({ ...laybyePay, customer: e.target.value })
-              }
-            />
-          </Field>
-          <Field>
-            Amount
-            <Input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={laybyePay.amount}
-              onChange={(e) =>
-                setLaybyePay({ ...laybyePay, amount: e.target.value })
-              }
-            />
-          </Field>
-          <Button
-            type="button"
-            loading={busyKey === 'laybye'}
-            onClick={async () => {
-              try {
-                setError(null);
-                setBusyKey('laybye');
-                const res = await payLaybye(
-                  laybyePay.customer.trim(),
-                  Number(laybyePay.amount),
-                );
-                setOk(
-                  res.completed
-                    ? 'Laybye completed.'
-                    : 'Laybye payment recorded.',
-                );
-                setLaybyePay({ customer: '', amount: '' });
-                invalidate();
-              } catch (err) {
-                setError(getErrorMessage(err));
-              } finally {
-                setBusyKey(null);
-              }
-            }}
-          >
-            {busyKey === 'laybye' ? 'Paying…' : 'Pay laybye'}
-          </Button>
-        </Row>
-      </Card>
-
-      <Card>
         <Row style={{ justifyContent: 'space-between', marginBottom: 12 }}>
           <h2 style={{ margin: 0 }}>Recent sales</h2>
           <Button
             type="button"
             $variant="danger"
             loading={busyKey === 'cancel-last'}
-            onClick={async () => {
-              if (!confirm('Cancel the last sale?')) return;
-              try {
-                setBusyKey('cancel-last');
-                const res = await cancelLastSale('Cancelled from web');
-                setOk(res.message || 'Last sale cancelled.');
-                invalidate();
-                void recentQ.refetch();
-              } catch (err) {
-                setError(getErrorMessage(err));
-              } finally {
-                setBusyKey(null);
-              }
-            }}
+            onClick={() => setCancelConfirm({ kind: 'last' })}
           >
-            {busyKey === 'cancel-last' ? 'Cancelling…' : 'Cancel last'}
+            Cancel last
           </Button>
         </Row>
         {recentQ.isLoading ? (
@@ -363,7 +439,7 @@ export function SalesPage() {
                       {formatShopDate(s.date, timeZone)}
                     </td>
                     <td>{s.type}</td>
-                    <td>{s.customerName || '—'}</td>
+                    <td>{s.customerName || (s.type === 'cash' ? 'Walk-in' : '—')}</td>
                     <td>{money(s.total)}</td>
                     <td>
                       <Button
@@ -371,26 +447,18 @@ export function SalesPage() {
                         $variant="ghost"
                         disabled={!saleId}
                         loading={busyKey === `cancel-${saleId}`}
-                        onClick={async () => {
+                        onClick={() => {
                           if (!saleId) return;
-                          if (!confirm('Cancel this sale?')) return;
-                          try {
-                            setBusyKey(`cancel-${saleId}`);
-                            const res = await cancelSale(
-                              saleId,
-                              'Cancelled from web',
-                            );
-                            setOk(res.message || 'Sale cancelled.');
-                            invalidate();
-                            void recentQ.refetch();
-                          } catch (err) {
-                            setError(getErrorMessage(err));
-                          } finally {
-                            setBusyKey(null);
-                          }
+                          setCancelConfirm({
+                            kind: 'sale',
+                            id: saleId,
+                            label: `${s.type} · ${money(s.total)}${
+                              s.customerName ? ` · ${s.customerName}` : ''
+                            }`,
+                          });
                         }}
                       >
-                        {busyKey === `cancel-${saleId}` ? '…' : 'Cancel'}
+                        Cancel
                       </Button>
                     </td>
                   </tr>
@@ -403,6 +471,139 @@ export function SalesPage() {
           <p>No recent sales.</p>
         ) : null}
       </Card>
+
+      <Card>
+        <SectionHead>
+          <SectionCopy>
+            <h2>Refunds / cancellations</h2>
+            <p>
+              Cancelled sales in the selected window. Stock and credit are
+              already reversed when a sale is cancelled above.
+            </p>
+          </SectionCopy>
+          <PeriodTabs>
+            {REFUND_PERIODS.map(({ days, label }) => (
+              <PeriodTab
+                key={days}
+                type="button"
+                $active={refundDays === days}
+                onClick={() => setRefundDays(days)}
+              >
+                {label}
+              </PeriodTab>
+            ))}
+          </PeriodTabs>
+        </SectionHead>
+
+        {refundsQ.isError ? (
+          <p style={{ color: 'inherit', marginTop: 0 }}>
+            {getErrorMessage(refundsQ.error, 'Could not load refunds.')}
+          </p>
+        ) : null}
+
+        {!refundsQ.isLoading && !refundsQ.isError ? (
+          <StatStrip>
+            <Stat>
+              <span>Total refunded</span>
+              <strong>{money(refundsQ.data?.totalRefundAmount)}</strong>
+            </Stat>
+            <Stat>
+              <span>Cancellations</span>
+              <strong>{(refundsQ.data?.sales || []).length}</strong>
+            </Stat>
+            <Stat>
+              <span>Period</span>
+              <strong>Last {refundDays} days</strong>
+            </Stat>
+          </StatStrip>
+        ) : null}
+
+        {refundsQ.isLoading ? (
+          <TableSkeleton
+            columns={5}
+            rows={4}
+            widths={['8rem', '5rem', '10rem', '5rem', '8rem']}
+          />
+        ) : null}
+
+        {!refundsQ.isLoading && !refundsQ.isError && (refundsQ.data?.sales || []).length ? (
+          <Table>
+            <thead>
+              <tr>
+                <th>Cancelled</th>
+                <th>Type</th>
+                <th>Items</th>
+                <th>Customer</th>
+                <th>Amount</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(refundsQ.data?.sales || []).map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    {s.cancelledAt
+                      ? formatShopDateTime(s.cancelledAt, timeZone)
+                      : '—'}
+                  </td>
+                  <td>
+                    <Badge $tone="danger">{saleTypeLabel(s.type)}</Badge>
+                  </td>
+                  <td>
+                    <ItemsCell>{itemsSummary(s)}</ItemsCell>
+                  </td>
+                  <td>{s.customerName || (s.type === 'cash' ? 'Walk-in' : '—')}</td>
+                  <td>{money(s.total)}</td>
+                  <td>
+                    <ReasonCell>{s.cancellationReason || '—'}</ReasonCell>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        ) : null}
+
+        {!refundsQ.isLoading &&
+        !refundsQ.isError &&
+        !(refundsQ.data?.sales || []).length ? (
+          <EmptyState>
+            <strong>No cancellations in the last {refundDays} days</strong>
+            <p>
+              When you cancel a sale from Recent sales, it will show up here
+              with the amount and reason.
+            </p>
+          </EmptyState>
+        ) : null}
+      </Card>
+
+      <ConfirmDialog
+        open={Boolean(cancelConfirm)}
+        onOpenChange={(open) => {
+          if (!open) setCancelConfirm(null);
+        }}
+        title={
+          cancelConfirm?.kind === 'last'
+            ? 'Cancel last sale?'
+            : 'Cancel this sale?'
+        }
+        description={
+          cancelConfirm?.kind === 'last'
+            ? 'This reverses the most recent sale and returns items to stock. This cannot be undone from the till.'
+            : `This reverses ${cancelConfirm?.label || 'the sale'} and returns items to stock. This cannot be undone from the till.`
+        }
+        confirmLabel="Cancel sale"
+        cancelLabel="Keep sale"
+        tone="danger"
+        loading={
+          cancelConfirm?.kind === 'last'
+            ? busyKey === 'cancel-last'
+            : Boolean(
+                cancelConfirm?.kind === 'sale' &&
+                  busyKey === `cancel-${cancelConfirm.id}`,
+              )
+        }
+        onConfirm={runCancelConfirmed}
+      />
     </Page>
   );
 }

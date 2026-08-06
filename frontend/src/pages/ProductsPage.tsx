@@ -11,6 +11,7 @@ import {
   deleteProduct,
 } from '@/api/products';
 import { getErrorMessage, money, type Product } from '@/api/types';
+import { useAuth } from '@/auth';
 import {
   Page,
   PageTitle,
@@ -22,14 +23,14 @@ import {
   Button,
   Table,
   Badge,
-  ErrorBanner,
-  SuccessBanner,
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { ProductsSummarySkeleton } from '@/components/skeletons/PageSkeletons';
+import { toastError, toastSuccess } from '@/lib/toast';
 
 type FilterTab = 'all' | 'low' | 'out';
 
@@ -132,20 +133,32 @@ function stockStatus(p: Product): 'ok' | 'low' | 'out' | 'off' {
 
 export function ProductsPage() {
   const qc = useQueryClient();
+  const { shop } = useAuth();
   const guardDemoWrite = useGuardDemoWrite();
+  const defaultThreshold = String(
+    (shop?.settings as { lowStockAlert?: number } | undefined)?.lowStockAlert ??
+      10,
+  );
   const [tab, setTab] = useState<FilterTab>('all');
   const [query, setQuery] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: '',
     price: '',
     costPrice: '',
     stock: '0',
-    lowStockThreshold: '5',
+    lowStockThreshold: defaultThreshold,
   });
   const [stockEdit, setStockEdit] = useState<Record<string, string>>({});
   const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
+
+  useEffect(() => {
+    setForm((prev) =>
+      prev.name || prev.price || prev.costPrice
+        ? prev
+        : { ...prev, lowStockThreshold: defaultThreshold },
+    );
+  }, [defaultThreshold]);
 
   const productsQ = useQuery({
     queryKey: ['products', 'all'],
@@ -153,15 +166,6 @@ export function ProductsPage() {
   });
 
   const products = productsQ.data || [];
-
-  useEffect(() => {
-    if (!ok && !error) return;
-    const t = window.setTimeout(() => {
-      setOk(null);
-      setError(null);
-    }, 3000);
-    return () => window.clearTimeout(t);
-  }, [ok, error]);
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ['products'] });
@@ -171,18 +175,17 @@ export function ProductsPage() {
   const createM = useMutation({
     mutationFn: createProduct,
     onSuccess: () => {
-      setOk('Product added.');
-      setError(null);
+      toastSuccess('Product added.');
       setForm({
         name: '',
         price: '',
         costPrice: '',
         stock: '0',
-        lowStockThreshold: '5',
+        lowStockThreshold: defaultThreshold,
       });
       invalidate();
     },
-    onError: (e) => setError(getErrorMessage(e)),
+    onError: (e) => toastError(getErrorMessage(e)),
   });
 
   const counts = useMemo(() => {
@@ -208,13 +211,12 @@ export function ProductsPage() {
   function onCreate(e: FormEvent) {
     e.preventDefault();
     if (guardDemoWrite('change products')) return;
-    setOk(null);
     createM.mutate({
       name: form.name.trim(),
       price: Number(form.price),
       costPrice: form.costPrice === '' ? null : Number(form.costPrice),
       stock: Number(form.stock) || 0,
-      lowStockThreshold: Number(form.lowStockThreshold) || 5,
+      lowStockThreshold: Number(form.lowStockThreshold) || Number(defaultThreshold) || 10,
     });
   }
 
@@ -224,10 +226,10 @@ export function ProductsPage() {
     if (guardDemoWrite('change products')) return;
     try {
       await updateProduct(p.id, { price });
-      setOk(`Updated price for ${p.name}`);
+      toastSuccess(`Updated price for ${p.name}`);
       invalidate();
     } catch (err) {
-      setError(getErrorMessage(err));
+      toastError(getErrorMessage(err));
     }
   }
 
@@ -240,10 +242,10 @@ export function ProductsPage() {
     if (guardDemoWrite('change products')) return;
     try {
       await updateProduct(p.id, { costPrice });
-      setOk(`Updated cost for ${p.name}`);
+      toastSuccess(`Updated cost for ${p.name}`);
       invalidate();
     } catch (err) {
-      setError(getErrorMessage(err));
+      toastError(getErrorMessage(err));
     }
   }
 
@@ -256,25 +258,31 @@ export function ProductsPage() {
       setRowBusy(key);
       await updateStock(p.id, { op, quantity });
       setStockEdit((prev) => ({ ...prev, [p.id]: '' }));
-      setOk(op === '+' ? `Added stock to ${p.name}` : `Reduced stock for ${p.name}`);
+      toastSuccess(
+        op === '+' ? `Added stock to ${p.name}` : `Reduced stock for ${p.name}`,
+      );
       invalidate();
     } catch (err) {
-      setError(getErrorMessage(err));
+      toastError(getErrorMessage(err));
     } finally {
       setRowBusy(null);
     }
   }
 
-  async function removeProduct(p: Product) {
-    if (!confirm(`Delete ${p.name}?`)) return;
-    if (guardDemoWrite('change products')) return;
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    if (guardDemoWrite('change products')) {
+      setDeleteTarget(null);
+      return;
+    }
     try {
-      setRowBusy(`del:${p.id}`);
-      await deleteProduct(p.id, true);
-      setOk(`Deleted ${p.name}`);
+      setRowBusy(`del:${deleteTarget.id}`);
+      await deleteProduct(deleteTarget.id, true);
+      toastSuccess(`Deleted ${deleteTarget.name}`);
+      setDeleteTarget(null);
       invalidate();
     } catch (err) {
-      setError(getErrorMessage(err));
+      toastError(getErrorMessage(err));
     } finally {
       setRowBusy(null);
     }
@@ -288,9 +296,6 @@ export function ProductsPage() {
           Catalogue, stock levels, pricing, and low-stock alerts.
         </PageLead>
       </HeaderBlock>
-
-      {error ? <ErrorBanner>{error}</ErrorBanner> : null}
-      {ok ? <SuccessBanner>{ok}</SuccessBanner> : null}
 
       {productsQ.isLoading ? (
         <ProductsSummarySkeleton />
@@ -493,7 +498,7 @@ export function ProductsPage() {
                         $variant="danger"
                         $size="sm"
                         loading={rowBusy === `del:${p.id}`}
-                        onClick={() => void removeProduct(p)}
+                        onClick={() => setDeleteTarget(p)}
                       >
                         {rowBusy === `del:${p.id}` ? '…' : 'Delete'}
                       </Button>
@@ -510,6 +515,24 @@ export function ProductsPage() {
           </p>
         ) : null}
       </Card>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Delete product?"
+        description={
+          deleteTarget
+            ? `Remove ${deleteTarget.name} from the catalogue. This cannot be undone.`
+            : 'Remove this product from the catalogue.'
+        }
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        tone="danger"
+        loading={Boolean(deleteTarget && rowBusy === `del:${deleteTarget.id}`)}
+        onConfirm={confirmDelete}
+      />
     </Page>
   );
 }

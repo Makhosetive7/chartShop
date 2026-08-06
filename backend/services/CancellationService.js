@@ -230,53 +230,79 @@ class CancellationService {
   }
 
   /**
-   * Get refunds report
+   * Structured refunds data for API + chat formatting.
+   */
+  async getRefundsData(shopId, days = 30) {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const cancelledSales = await Sale.find({
+      shopId,
+      isCancelled: true,
+      cancelledAt: { $gte: startDate },
+    }).sort({ cancelledAt: -1 });
+
+    const totalRefundAmount = cancelledSales.reduce(
+      (sum, sale) => sum + sale.total,
+      0
+    );
+
+    const sales = cancelledSales.map((sale) => ({
+      id: String(sale._id),
+      type: sale.type,
+      total: sale.total,
+      customerName: sale.customerName || null,
+      items: sale.items,
+      cancelledAt: sale.cancelledAt,
+      cancellationReason: sale.cancellationReason || null,
+      date: sale.date,
+    }));
+
+    return { days, sales, totalRefundAmount };
+  }
+
+  formatRefundsMessage({ days, sales, totalRefundAmount }) {
+    if (!sales.length) {
+      return `*REFUNDS REPORT*\n\nNo refunds/cancellations in the last ${days} days.`;
+    }
+
+    let report = `*REFUNDS REPORT - Last ${days} Days*\n\n`;
+    report += `Total Refunded: $${totalRefundAmount.toFixed(2)}\n`;
+    report += `Total Cancellations: ${sales.length}\n`;
+    report += `Refund Rate: ${(
+      (sales.length / (sales.length + 100)) *
+      100
+    ).toFixed(1)}%\n\n`;
+
+    report += `*Recent Cancellations:*\n`;
+    sales.slice(0, 10).forEach((sale, index) => {
+      const itemsSummary = (sale.items || [])
+        .map((item) => `${item.quantity}x ${item.productName}`)
+        .join(", ");
+      const when = sale.cancelledAt
+        ? new Date(sale.cancelledAt).toLocaleDateString()
+        : "—";
+
+      report += `\n${index + 1}. ${when}\n`;
+      report += `   Amount: $${sale.total.toFixed(2)}\n`;
+      report += `   Items: ${itemsSummary}\n`;
+      report += `   Reason: ${sale.cancellationReason || "—"}\n`;
+    });
+
+    if (sales.length > 10) {
+      report += `\n... and ${sales.length - 10} more cancellations`;
+    }
+
+    return report;
+  }
+
+  /**
+   * Get refunds report (chat-formatted text)
    */
   async getRefundsReport(shopId, days = 30) {
     try {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
-
-      const cancelledSales = await Sale.find({
-        shopId,
-        isCancelled: true,
-        cancelledAt: { $gte: startDate },
-      }).sort({ cancelledAt: -1 });
-
-      if (cancelledSales.length === 0) {
-        return `*REFUNDS REPORT*\n\nNo refunds/cancellations in the last ${days} days.`;
-      }
-
-      const totalRefundAmount = cancelledSales.reduce(
-        (sum, sale) => sum + sale.total,
-        0
-      );
-
-      let report = `*REFUNDS REPORT - Last ${days} Days*\n\n`;
-      report += `Total Refunded: $${totalRefundAmount.toFixed(2)}\n`;
-      report += `Total Cancellations: ${cancelledSales.length}\n`;
-      report += `Refund Rate: ${(
-        (cancelledSales.length / (cancelledSales.length + 100)) *
-        100
-      ).toFixed(1)}%\n\n`;
-
-      report += `*Recent Cancellations:*\n`;
-      cancelledSales.slice(0, 10).forEach((sale, index) => {
-        const itemsSummary = sale.items
-          .map((item) => `${item.quantity}x ${item.productName}`)
-          .join(", ");
-
-        report += `\n${index + 1}. ${sale.cancelledAt.toLocaleDateString()}\n`;
-        report += `   Amount: $${sale.total.toFixed(2)}\n`;
-        report += `   Items: ${itemsSummary}\n`;
-        report += `   Reason: ${sale.cancellationReason}\n`;
-      });
-
-      if (cancelledSales.length > 10) {
-        report += `\n... and ${cancelledSales.length - 10} more cancellations`;
-      }
-
-      return report;
+      const data = await this.getRefundsData(shopId, days);
+      return this.formatRefundsMessage(data);
     } catch (error) {
       console.error("Refunds report error:", error);
       return "Failed to generate refunds report. Please try again.";
@@ -294,7 +320,9 @@ class CancellationService {
       })
         .sort({ date: -1 })
         .limit(limit)
-        .select("date total items type");
+        .select(
+          "date total items type status amountPaid balanceDue costTotal profit isCancelled customerId customerName customerPhone"
+        );
 
       if (recentSales.length === 0) {
         return { success: false, message: "No recent sales found." };
@@ -313,6 +341,9 @@ class CancellationService {
 
         message += `${index + 1}. ${sale.date.toLocaleString()}\n`;
         message += `   Amount: $${sale.total.toFixed(2)} (${sale.type || "cash"})\n`;
+        if (sale.customerName) {
+          message += `   Customer: ${sale.customerName}\n`;
+        }
         message += `   Items: ${itemsSummary}${moreItems}\n\n`;
       });
 

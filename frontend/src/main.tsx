@@ -5,6 +5,7 @@ import { ThemeProvider } from 'styled-components';
 import { AuthProvider } from '@/auth';
 import { theme } from '@/styles/theme';
 import { GlobalStyles } from '@/styles/GlobalStyles';
+import { AppToaster } from '@/components/ui/AppToaster';
 import App from './App';
 
 const queryClient = new QueryClient({
@@ -24,6 +25,7 @@ createRoot(document.getElementById('root')!).render(
         <GlobalStyles />
         <AuthProvider>
           <App />
+          <AppToaster />
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>

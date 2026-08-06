@@ -9,6 +9,7 @@ import {
   updateProfileDescription,
   updateProfilePin,
   updateProfileUsername,
+  updateShopSettings,
 } from '@/api/reports';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDateTime } from '@/utils/dates';
@@ -16,6 +17,7 @@ import {
   Building2,
   KeyRound,
   LogOut,
+  Settings2,
   Shield,
 } from 'lucide-react';import {
   checkUsername,
@@ -35,17 +37,29 @@ import {
   Field,
   Input,
   TextArea,
+  Select,
   Button,
-  ErrorBanner,
-  SuccessBanner,
   Badge,
 } from '@/components/ui/primitives';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SettingsProfileSkeleton } from '@/components/skeletons/PageSkeletons';
+import { toastError, toastSuccess } from '@/lib/toast';
 import {
   buildLocalSuggestions,
   sanitizeUsernameInput,
   validateUsername,
 } from '@/utils/username';
+
+const TIMEZONE_OPTIONS = [
+  'Africa/Harare',
+  'Africa/Johannesburg',
+  'Africa/Lusaka',
+  'Africa/Maputo',
+  'Africa/Nairobi',
+  'Africa/Lagos',
+  'Africa/Cairo',
+  'UTC',
+] as const;
 
 const Header = styled.header`
   margin-bottom: ${({ theme }) => theme.space[5]};
@@ -317,9 +331,10 @@ export function SettingsPage() {
     shop?.businessDescription || '',
   );
   const [pins, setPins] = useState({ oldPin: '', newPin: '', confirmPin: '' });
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
+  const [timezone, setTimezone] = useState('Africa/Harare');
+  const [lowStockAlert, setLowStockAlert] = useState('10');
   const [loggingOut, setLoggingOut] = useState(false);
+  const [regenConfirmOpen, setRegenConfirmOpen] = useState(false);
   const [usernameAvailability, setUsernameAvailability] =
     useState<UsernameAvailability>({ status: 'idle' });
 
@@ -343,16 +358,13 @@ export function SettingsPage() {
     setName(loaded.businessName || '');
     setUsername(loaded.username || '');
     setDescription(loaded.businessDescription || '');
+    const nextSettings = (loaded.settings || {}) as {
+      timezone?: string;
+      lowStockAlert?: number;
+    };
+    setTimezone(nextSettings.timezone || 'Africa/Harare');
+    setLowStockAlert(String(nextSettings.lowStockAlert ?? 10));
   }, [profileQ.data?.shop]);
-
-  useEffect(() => {
-    if (!ok && !error) return;
-    const t = window.setTimeout(() => {
-      setOk(null);
-      setError(null);
-    }, 3500);
-    return () => window.clearTimeout(t);
-  }, [ok, error]);
 
   useEffect(() => {
     const normalized = username.trim().toLowerCase();
@@ -425,20 +437,18 @@ export function SettingsPage() {
   const saveName = useMutation({
     mutationFn: () => updateProfileName(name.trim()),
     onSuccess: () => {
-      setOk('Business name updated.');
-      setError(null);
+      toastSuccess('Business name updated.');
       updateShop({ businessName: name.trim() });
       void qc.invalidateQueries({ queryKey: ['profile'] });
     },
-    onError: (e) => setError(getErrorMessage(e)),
+    onError: (e) => toastError(getErrorMessage(e)),
   });
 
   const saveUsername = useMutation({
     mutationFn: () => updateProfileUsername(username.trim().toLowerCase()),
     onSuccess: (data) => {
       const next = data.shop?.username || username.trim().toLowerCase();
-      setOk(data.message || 'Username updated.');
-      setError(null);
+      toastSuccess(data.message || 'Username updated.');
       setUsername(next);
       updateShop({ username: next });
       setUsernameAvailability({
@@ -449,7 +459,7 @@ export function SettingsPage() {
       void qc.invalidateQueries({ queryKey: ['profile'] });
     },
     onError: (e) => {
-      setError(getErrorMessage(e));
+      toastError(getErrorMessage(e));
       const desired = username.trim().toLowerCase();
       setUsernameAvailability({
         status: 'ready',
@@ -463,23 +473,43 @@ export function SettingsPage() {
   const saveDesc = useMutation({
     mutationFn: () => updateProfileDescription(description.trim()),
     onSuccess: () => {
-      setOk('Description updated.');
-      setError(null);
+      toastSuccess('Description updated.');
       updateShop({ businessDescription: description.trim() });
       void qc.invalidateQueries({ queryKey: ['profile'] });
     },
-    onError: (e) => setError(getErrorMessage(e)),
+    onError: (e) => toastError(getErrorMessage(e)),
   });
 
   const savePin = useMutation({
     mutationFn: () => updateProfilePin(pins.oldPin, pins.newPin),
     onSuccess: () => {
-      setOk('PIN updated.');
-      setError(null);
+      toastSuccess('PIN updated.');
       setPins({ oldPin: '', newPin: '', confirmPin: '' });
     },
-    onError: (e) => setError(getErrorMessage(e)),
+    onError: (e) => toastError(getErrorMessage(e)),
   });
+
+  const saveSettings = useMutation({
+    mutationFn: () =>
+      updateShopSettings({
+        timezone: timezone.trim(),
+        lowStockAlert: Number(lowStockAlert),
+      }),
+    onSuccess: (data) => {
+      toastSuccess(data.message || 'Shop preferences updated.');
+      if (data.shop) {
+        updateShop({ settings: data.shop.settings });
+      }
+      void qc.invalidateQueries({ queryKey: ['profile'] });
+      void qc.invalidateQueries({ queryKey: ['me'] });
+    },
+    onError: (e) => toastError(getErrorMessage(e)),
+  });
+
+  function onSettings(e: FormEvent) {
+    e.preventDefault();
+    saveSettings.mutate();
+  }
 
   const recoveryQ = useQuery({
     queryKey: ['recovery-status'],
@@ -493,22 +523,21 @@ export function SettingsPage() {
     mutationFn: regenerateRecoveryCodes,
     onSuccess: (data) => {
       if (!data.success || !data.recoveryCodes?.length) {
-        setError(data.error || 'Could not regenerate codes');
+        toastError(data.error || 'Could not regenerate codes');
         return;
       }
       setFreshCodes(data.recoveryCodes);
-      setOk('New recovery codes issued — save them now.');
-      setError(null);
+      setRegenConfirmOpen(false);
+      toastSuccess('New recovery codes issued — save them now.');
       void qc.invalidateQueries({ queryKey: ['recovery-status'] });
     },
-    onError: (e) => setError(getErrorMessage(e)),
+    onError: (e) => toastError(getErrorMessage(e)),
   });
 
   function onName(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     if (!name.trim()) {
-      setError('Business name is required.');
+      toastError('Business name is required.');
       return;
     }
     saveName.mutate();
@@ -516,10 +545,9 @@ export function SettingsPage() {
 
   function onUsername(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     const validation = validateUsername(username);
     if (!validation.valid) {
-      setError(validation.message);
+      toastError(validation.message);
       setUsernameAvailability({
         status: 'ready',
         available: false,
@@ -532,11 +560,11 @@ export function SettingsPage() {
       usernameAvailability.status === 'ready' &&
       !usernameAvailability.available
     ) {
-      setError(usernameAvailability.message || 'Username is not available.');
+      toastError(usernameAvailability.message || 'Username is not available.');
       return;
     }
     if (validation.normalized === (shop?.username || '').toLowerCase()) {
-      setOk('Username unchanged.');
+      toastSuccess('Username unchanged.');
       return;
     }
     saveUsername.mutate();
@@ -544,9 +572,8 @@ export function SettingsPage() {
 
   function onDesc(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     if (!description.trim()) {
-      setError('Description is required.');
+      toastError('Description is required.');
       return;
     }
     saveDesc.mutate();
@@ -554,13 +581,12 @@ export function SettingsPage() {
 
   function onPin(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     if (!/^\d{4}$/.test(pins.newPin)) {
-      setError('New PIN must be exactly 4 digits.');
+      toastError('New PIN must be exactly 4 digits.');
       return;
     }
     if (pins.newPin !== pins.confirmPin) {
-      setError('New PIN and confirmation do not match.');
+      toastError('New PIN and confirmation do not match.');
       return;
     }
     savePin.mutate();
@@ -611,9 +637,6 @@ export function SettingsPage() {
         </PageLead>
       </Header>
 
-      {error ? <ErrorBanner>{error}</ErrorBanner> : null}
-      {ok ? <SuccessBanner>{ok}</SuccessBanner> : null}
-
       <Hero>
         <HeroTop>
           <ShopBlock>
@@ -651,16 +674,82 @@ export function SettingsPage() {
           </HeroStat>
           <HeroStat>
             <span>Currency</span>
-            <strong>{settings.currency || 'USD'}</strong>
+            <strong>USD</strong>
           </HeroStat>
           <HeroStat>
-            <span>Low-stock alert</span>
-            <strong>{settings.lowStockAlert ?? 10}</strong>
+            <span>Timezone</span>
+            <strong>{settings.timezone || timezone || 'Africa/Harare'}</strong>
           </HeroStat>
         </HeroGrid>
       </Hero>
 
       <Stack>
+        <Card>
+          <SectionHead>
+            <IconBadge>
+              <Settings2 size={18} />
+            </IconBadge>
+            <SectionCopy>
+              <h2>Shop preferences</h2>
+              <p>
+                Timezone for reports and day boundaries. Low-stock default
+                applies to new products only.
+              </p>
+            </SectionCopy>
+          </SectionHead>
+
+          <form onSubmit={onSettings}>
+            <Row>
+              <Field>
+                Currency
+                <FieldHint>Prices are always in USD for this market.</FieldHint>
+                <Input value="USD" readOnly disabled />
+              </Field>
+              <Field>
+                Timezone
+                <Select
+                  value={timezone}
+                  onChange={(e) => {
+                    setTimezone(e.target.value);
+                  }}
+                >
+                  {!TIMEZONE_OPTIONS.includes(
+                    timezone as (typeof TIMEZONE_OPTIONS)[number],
+                  ) && timezone ? (
+                    <option value={timezone}>{timezone}</option>
+                  ) : null}
+                  {TIMEZONE_OPTIONS.map((tz) => (
+                    <option key={tz} value={tz}>
+                      {tz}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field>
+                Low-stock default
+                <FieldHint>
+                  Used as the default threshold for new products
+                </FieldHint>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={lowStockAlert}
+                  onChange={(e) => {
+                    setLowStockAlert(e.target.value);
+                  }}
+                  required
+                />
+              </Field>
+            </Row>
+            <FormActions>
+              <Button type="submit" loading={saveSettings.isPending}>
+                {saveSettings.isPending ? 'Saving…' : 'Save preferences'}
+              </Button>
+            </FormActions>
+          </form>
+        </Card>
+
         <Card>
           <SectionHead>
             <IconBadge>
@@ -688,7 +777,6 @@ export function SettingsPage() {
                 value={username}
                 onChange={(e) => {
                   setUsername(sanitizeUsernameInput(e.target.value));
-                  setError(null);
                 }}
                 placeholder="e.g. musa"
                 autoComplete="username"
@@ -716,7 +804,6 @@ export function SettingsPage() {
                         type="button"
                         onClick={() => {
                           setUsername(s);
-                          setError(null);
                         }}
                       >
                         @{s}
@@ -878,16 +965,7 @@ export function SettingsPage() {
                   <Button
                     type="button"
                     loading={regenCodes.isPending}
-                    onClick={() => {
-                      if (
-                        !window.confirm(
-                          'This revokes unused old codes and shows a new set once. Continue?',
-                        )
-                      ) {
-                        return;
-                      }
-                      regenCodes.mutate();
-                    }}
+                    onClick={() => setRegenConfirmOpen(true)}
                   >
                     {regenCodes.isPending
                       ? 'Generating…'
@@ -924,6 +1002,18 @@ export function SettingsPage() {
           </Button>
         </SessionCard>
       </Stack>
+
+      <ConfirmDialog
+        open={regenConfirmOpen}
+        onOpenChange={setRegenConfirmOpen}
+        title="Regenerate recovery codes?"
+        description="This revokes unused old codes and shows a new set once. Save the new codes offline before leaving this page."
+        confirmLabel="Generate codes"
+        cancelLabel="Keep existing"
+        tone="danger"
+        loading={regenCodes.isPending}
+        onConfirm={() => regenCodes.mutate()}
+      />
     </Page>
   );
 }

@@ -53,6 +53,11 @@ router.patch(
   requireApiAuth,
   authController.updateProfilePin
 );
+router.patch(
+  "/auth/profile/settings",
+  requireApiAuth,
+  authController.updateProfileSettings
+);
 
 // Products
 router.get("/products", requireApiAuth, productController.listProducts);
@@ -85,6 +90,7 @@ router.post(
 router.post("/sales/:id/cancel", requireApiAuth, saleController.cancelSale);
 
 // Laybye
+router.get("/laybye", requireApiAuth, saleController.listLaybyes);
 router.post("/laybye", requireApiAuth, saleController.createLaybye);
 router.post("/laybye/pay", requireApiAuth, saleController.payLaybye);
 router.post("/laybye/complete", requireApiAuth, saleController.completeLaybye);

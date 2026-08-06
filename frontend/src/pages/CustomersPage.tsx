@@ -1,13 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  listCustomers,
-  createCustomer,
-  getCustomerHistory,
-  getCreditHistory,
-  recordPayment,
-} from '@/api/customers';
+import { listCustomers, createCustomer } from '@/api/customers';
 import { getErrorMessage, money } from '@/api/types';
 import {
   Page,
@@ -20,13 +14,11 @@ import {
   Button,
   Table,
   Badge,
-  ErrorBanner,
-  SuccessBanner,
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
-import { CustomerDetailSkeleton } from '@/components/skeletons/PageSkeletons';
+import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate } from '@/utils/dates';
 
@@ -35,53 +27,24 @@ export function CustomersPage() {
   const timeZone = useShopTimezone();
   const [filter, setFilter] = useState<'all' | 'active'>('all');
   const [form, setForm] = useState({ name: '', phone: '', email: '' });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [payAmount, setPayAmount] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
 
   const listQ = useQuery({
     queryKey: ['customers', filter],
     queryFn: () => listCustomers(filter),
   });
 
-  const historyQ = useQuery({
-    queryKey: ['customers', selectedId, 'history'],
-    queryFn: () => getCustomerHistory(selectedId!),
-    enabled: Boolean(selectedId),
-  });
-
-  const creditQ = useQuery({
-    queryKey: ['customers', selectedId, 'credit'],
-    queryFn: () => getCreditHistory(selectedId!),
-    enabled: Boolean(selectedId),
-  });
-
   const createM = useMutation({
     mutationFn: createCustomer,
     onSuccess: () => {
-      setOk('Customer added.');
+      toastSuccess('Customer added.');
       setForm({ name: '', phone: '', email: '' });
       void qc.invalidateQueries({ queryKey: ['customers'] });
     },
-    onError: (e) => setError(getErrorMessage(e)),
-  });
-
-  const payM = useMutation({
-    mutationFn: () => recordPayment(selectedId!, Number(payAmount)),
-    onSuccess: () => {
-      setOk('Payment recorded.');
-      setPayAmount('');
-      void qc.invalidateQueries({ queryKey: ['customers'] });
-      void historyQ.refetch();
-      void creditQ.refetch();
-    },
-    onError: (e) => setError(getErrorMessage(e)),
+    onError: (e) => toastError(getErrorMessage(e)),
   });
 
   function onCreate(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     createM.mutate({
       name: form.name.trim(),
       phone: form.phone.trim(),
@@ -94,10 +57,7 @@ export function CustomersPage() {
   return (
     <Page>
       <PageTitle>Customers</PageTitle>
-      <PageLead>Profiles, credit balances, payments, and purchase history.</PageLead>
-
-      {error ? <ErrorBanner>{error}</ErrorBanner> : null}
-      {ok ? <SuccessBanner>{ok}</SuccessBanner> : null}
+      <PageLead>Customer profiles and balances for this shop.</PageLead>
 
       <Card>
         <h2 style={{ marginTop: 0 }}>Add customer</h2>
@@ -149,9 +109,9 @@ export function CustomersPage() {
       <Card>
         {listQ.isLoading ? (
           <TableSkeleton
-            columns={6}
+            columns={7}
             rows={7}
-            widths={['8rem', '6rem', '5rem', '5rem', '3.5rem', '3.5rem']}
+            widths={['8rem', '6rem', '7rem', '5rem', '5rem', '3.5rem', '6rem']}
           />
         ) : (
           <Table>
@@ -159,10 +119,11 @@ export function CustomersPage() {
               <tr>
                 <th>Name</th>
                 <th>Phone</th>
+                <th>Email</th>
                 <th>Spent</th>
                 <th>Balance</th>
                 <th>Visits</th>
-                <th />
+                <th>Last purchase</th>
               </tr>
             </thead>
             <tbody>
@@ -170,6 +131,7 @@ export function CustomersPage() {
                 <tr key={c.id}>
                   <td>{c.name}</td>
                   <td>{c.phone}</td>
+                  <td>{c.email || '—'}</td>
                   <td>{money(c.totalSpent)}</td>
                   <td>
                     {c.currentBalance > 0 ? (
@@ -180,14 +142,9 @@ export function CustomersPage() {
                   </td>
                   <td>{c.totalVisits}</td>
                   <td>
-                    <Button
-                      type="button"
-                      $variant="ghost"
-                      $size="sm"
-                      onClick={() => setSelectedId(c.id)}
-                    >
-                      Open
-                    </Button>
+                    {c.lastPurchaseDate
+                      ? formatShopDate(c.lastPurchaseDate, timeZone)
+                      : '—'}
                   </td>
                 </tr>
               ))}
@@ -198,92 +155,6 @@ export function CustomersPage() {
           <p>No customers.</p>
         ) : null}
       </Card>
-
-      {selectedId && (historyQ.isLoading || creditQ.isLoading) ? (
-        <CustomerDetailSkeleton />
-      ) : null}
-
-      {selectedId && historyQ.data ? (
-        <Card>
-          <h2 style={{ marginTop: 0 }}>
-            {historyQ.data.customer.name}
-          </h2>
-          <p>
-            Balance owed:{' '}
-            <strong>{money(historyQ.data.customer.currentBalance)}</strong>
-          </p>
-
-          <Row>
-            <Field>
-              Record payment
-              <Input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={payAmount}
-                onChange={(e) => setPayAmount(e.target.value)}
-              />
-            </Field>
-            <Button
-              type="button"
-              loading={payM.isPending}
-              onClick={() => {
-                setError(null);
-                payM.mutate();
-              }}
-            >
-              {payM.isPending ? 'Applying…' : 'Apply payment'}
-            </Button>
-          </Row>
-
-          <h3>Recent sales</h3>
-          <Table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(historyQ.data.sales || []).map((s) => (
-                <tr key={s.id}>
-                  <td>{formatShopDate(s.date, timeZone)}</td>
-                  <td>{s.type}</td>
-                  <td>{money(s.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-
-          <h3>Credit ledger</h3>
-          <Table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Amount</th>
-                <th>Note</th>
-              </tr>
-            </thead>
-            <tbody>
-              {((creditQ.data?.transactions as Array<{
-                date?: string;
-                type?: string;
-                amount?: number;
-                description?: string;
-              }>) || []).map((t, i) => (
-                <tr key={i}>
-                  <td>{formatShopDate(t.date, timeZone)}</td>
-                  <td>{t.type}</td>
-                  <td>{money(t.amount)}</td>
-                  <td>{t.description}</td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        </Card>
-      ) : null}
     </Page>
   );
 }

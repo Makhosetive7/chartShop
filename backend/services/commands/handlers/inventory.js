@@ -1,5 +1,6 @@
 import Product from "../../../models/Product.js";
 import Sale from "../../../models/Sale.js";
+import Shop from "../../../models/Shop.js";
 
 export async function handleAddProduct(shopId, text) {
   try {
@@ -19,7 +20,16 @@ export async function handleAddProduct(shopId, text) {
     const price = parseFloat(match[3]);
     const costPrice = match[4] != null ? parseFloat(match[4]) : null;
     const stock = match[5] ? parseInt(match[5]) : 0;
-    const lowStockThreshold = match[6] ? parseInt(match[6]) : 10;
+    const shop = await Shop.findById(shopId).select("settings.lowStockAlert");
+    const shopDefaultThreshold =
+      shop?.settings?.lowStockAlert != null
+        ? Number(shop.settings.lowStockAlert)
+        : 10;
+    const lowStockThreshold = match[6]
+      ? parseInt(match[6])
+      : Number.isFinite(shopDefaultThreshold)
+        ? shopDefaultThreshold
+        : 10;
     const trackStock = !!match[5];
 
     if (isNaN(price) || price <= 0) {

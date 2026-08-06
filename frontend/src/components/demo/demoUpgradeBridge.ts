@@ -21,7 +21,8 @@ export function actionLabelFromRequestUrl(url?: string): string {
   const path = String(url || '').toLowerCase();
   if (path.includes('/chat')) return 'use chat commands';
   if (path.includes('/products')) return 'change products';
-  if (path.includes('/sales') || path.includes('/laybye')) return 'record sales';
+  if (path.includes('/laybye')) return 'manage laybyes';
+  if (path.includes('/sales')) return 'record sales';
   if (path.includes('/customers')) return 'manage customers';
   if (path.includes('/orders')) return 'manage orders';
   if (path.includes('/expenses')) return 'log expenses';

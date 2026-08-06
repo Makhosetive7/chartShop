@@ -479,6 +479,85 @@ export async function updateProfileDescription(req, res) {
   }
 }
 
+function isValidTimezone(tz) {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Update shop preferences: timezone and low-stock default (currency stays USD). */
+export async function updateProfileSettings(req, res) {
+  try {
+    const shop = await Shop.findById(req.shopId);
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        error: "Shop not found.",
+      });
+    }
+
+    if (!shop.settings) {
+      shop.settings = {};
+    }
+
+    const hasTimezone = Object.prototype.hasOwnProperty.call(
+      req.body || {},
+      "timezone"
+    );
+    const hasLowStock = Object.prototype.hasOwnProperty.call(
+      req.body || {},
+      "lowStockAlert"
+    );
+
+    if (!hasTimezone && !hasLowStock) {
+      return res.status(400).json({
+        success: false,
+        error: "Provide timezone and/or lowStockAlert.",
+      });
+    }
+
+    if (hasTimezone) {
+      const timezone = String(req.body.timezone || "").trim();
+      if (!timezone || !isValidTimezone(timezone)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid timezone. Use an IANA name like Africa/Harare.",
+        });
+      }
+      shop.settings.timezone = timezone;
+    }
+
+    if (hasLowStock) {
+      const lowStockAlert = parseInt(req.body.lowStockAlert, 10);
+      if (!Number.isFinite(lowStockAlert) || lowStockAlert < 0) {
+        return res.status(400).json({
+          success: false,
+          error: "lowStockAlert must be an integer >= 0.",
+        });
+      }
+      shop.settings.lowStockAlert = lowStockAlert;
+    }
+
+    shop.markModified("settings");
+    await shop.save();
+
+    return res.json({
+      success: true,
+      shop: publicShop(shop),
+      message: "Shop settings updated.",
+    });
+  } catch (error) {
+    console.error("[api/auth/profile/settings]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to update settings.",
+    });
+  }
+}
+
 /** One-shot PIN change (API equivalent of chat multi-step pin edit). */
 export async function updateProfilePin(req, res) {
   try {

@@ -14,12 +14,11 @@ import {
   Select,
   Button,
   Table,
-  ErrorBanner,
-  SuccessBanner,
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
 import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
+import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate } from '@/utils/dates';
 
@@ -45,8 +44,6 @@ export function ExpensesPage() {
     category: 'other',
     paymentMethod: 'cash',
   });
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
 
   const listQ = useQuery({
     queryKey: ['expenses', period],
@@ -61,7 +58,7 @@ export function ExpensesPage() {
   const createM = useMutation({
     mutationFn: createExpense,
     onSuccess: () => {
-      setOk('Expense recorded.');
+      toastSuccess('Expense recorded.');
       setForm({
         amount: '',
         description: '',
@@ -71,12 +68,11 @@ export function ExpensesPage() {
       void qc.invalidateQueries({ queryKey: ['expenses'] });
       void qc.invalidateQueries({ queryKey: ['stats'] });
     },
-    onError: (e) => setError(getErrorMessage(e)),
+    onError: (e) => toastError(getErrorMessage(e)),
   });
 
   function onCreate(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     createM.mutate({
       amount: Number(form.amount),
       description: form.description.trim(),
@@ -95,8 +91,6 @@ export function ExpensesPage() {
       <PageTitle>Expenses</PageTitle>
       <PageLead>Record spend and review period totals / category mix.</PageLead>
 
-      {error ? <ErrorBanner>{error}</ErrorBanner> : null}
-      {ok ? <SuccessBanner>{ok}</SuccessBanner> : null}
 
       <Card>
         <form onSubmit={onCreate}>
