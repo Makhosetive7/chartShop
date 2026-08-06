@@ -308,16 +308,33 @@ export function ReportsBodySkeleton({
 }) {
   return (
     <div aria-busy="true" aria-label="Loading report">
-      {variant !== 'profit' ? (
-        <KpiGrid $cols={variant === 'best' ? 3 : 6}>
-          {Array.from({ length: variant === 'best' ? 3 : 6 }, (_, i) => (
+      {variant !== 'best' ? (
+        <>
+          <KpiCard style={{ marginBottom: 12, padding: 24 }}>
+            <Skeleton $w="6rem" $h="0.75rem" $mb="10px" />
+            <Skeleton $w="40%" $h="2rem" $mb="8px" />
+            <Skeleton $w="55%" $h="0.75rem" />
+          </KpiCard>
+          <KpiGrid $cols={4}>
+            {Array.from({ length: 4 }, (_, i) => (
+              <KpiCard key={i}>
+                <Skeleton $w="5rem" $h="0.7rem" $mb="10px" />
+                <Skeleton $w="65%" $h="1.25rem" $mb="8px" />
+                <Skeleton $w="4rem" $h="0.65rem" />
+              </KpiCard>
+            ))}
+          </KpiGrid>
+        </>
+      ) : (
+        <KpiGrid $cols={4}>
+          {Array.from({ length: 4 }, (_, i) => (
             <KpiCard key={i}>
               <Skeleton $w="5rem" $h="0.7rem" $mb="10px" />
               <Skeleton $w="65%" $h="1.25rem" />
             </KpiCard>
           ))}
         </KpiGrid>
-      ) : null}
+      )}
 
       {variant === 'best' ? (
         <Card>
@@ -329,16 +346,26 @@ export function ReportsBodySkeleton({
           />
         </Card>
       ) : (
-        <Card>
-          <SkeletonStack $gap="12px">
-            <Skeleton $w="40%" $h="0.95rem" />
-            <Skeleton $w="92%" $h="0.85rem" />
-            <Skeleton $w="85%" $h="0.85rem" />
-            <Skeleton $w="78%" $h="0.85rem" />
-            <Skeleton $w="70%" $h="0.85rem" />
-            <Skeleton $w="55%" $h="0.85rem" />
-          </SkeletonStack>
-        </Card>
+        <PanelsGrid>
+          <Card>
+            <Skeleton $w="10rem" $h="1rem" $mb="16px" />
+            <SkeletonStack $gap="12px">
+              <Skeleton $w="92%" $h="0.85rem" />
+              <Skeleton $w="85%" $h="0.85rem" />
+              <Skeleton $w="78%" $h="0.85rem" />
+              <Skeleton $w="70%" $h="0.85rem" />
+            </SkeletonStack>
+          </Card>
+          <Card>
+            <Skeleton $w="12rem" $h="1rem" $mb="16px" />
+            <SkeletonStack $gap="12px">
+              <Skeleton $w="90%" $h="0.85rem" />
+              <Skeleton $w="82%" $h="0.85rem" />
+              <Skeleton $w="74%" $h="0.85rem" />
+              <Skeleton $w="66%" $h="0.85rem" />
+            </SkeletonStack>
+          </Card>
+        </PanelsGrid>
       )}
     </div>
   );
