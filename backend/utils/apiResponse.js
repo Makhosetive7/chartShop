@@ -20,6 +20,7 @@ export function publicUser(user) {
     displayName: obj.displayName || obj.username,
     role: obj.role || "member",
     isActive: obj.isActive !== false,
+    mustSetPin: Boolean(obj.mustSetPin),
     lastLogin: obj.lastLogin || null,
     createdAt: obj.createdAt,
     channels: {

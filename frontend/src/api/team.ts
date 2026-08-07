@@ -89,3 +89,36 @@ export async function removeTeamMember(
     throw error;
   }
 }
+
+export async function regenerateSetupCode(
+  userId: string,
+): Promise<{
+  success: boolean;
+  member?: TeamMember;
+  setupCode?: string | null;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const { data } = await api.post<{
+      success: boolean;
+      member: TeamMember;
+      setupCode?: string | null;
+      message?: string;
+    }>(`/team/${userId}/setup-code`);
+    return {
+      success: true,
+      member: data.member,
+      setupCode: data.setupCode || null,
+      message: data.message,
+    };
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const message =
+        (error.response?.data as { error?: string } | undefined)?.error ||
+        'Could not regenerate setup code';
+      return { success: false, error: message };
+    }
+    throw error;
+  }
+}

@@ -174,3 +174,52 @@ export async function updateMemberRole(req, res) {
   }
 }
 
+export async function regenerateSetupCode(req, res) {
+  try {
+    const userId = String(req.params.userId || "").trim();
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: "userId is required.",
+      });
+    }
+
+    const result = await AuthService.regenerateSetupCode({
+      shopId: req.shopId,
+      userId,
+      actingUserId: req.userId,
+    });
+
+    if (!result.success) {
+      const status = /not found/i.test(result.message || "") ? 404 : 400;
+      return res.status(status).json({
+        success: false,
+        error: stripMarkdown(result.message),
+      });
+    }
+
+    await ActivityService.log({
+      shopId: req.shopId,
+      userId: req.userId,
+      channel: req.channel || "web",
+      action: "team.member.setup_code",
+      summary: result.message,
+      entityType: "user",
+      entityId: userId,
+    });
+
+    return res.json({
+      success: true,
+      member: result.user,
+      setupCode: result.setupCode,
+      message: stripMarkdown(result.message),
+    });
+  } catch (error) {
+    console.error("[api/team/setup-code]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to regenerate setup code.",
+    });
+  }
+}
+

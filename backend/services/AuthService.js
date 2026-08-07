@@ -76,13 +76,14 @@ class AuthService {
     if (!user) return null;
     const doc = typeof user.toObject === "function" ? user.toObject() : user;
     return {
-      id: doc._id,
+      id: doc._id != null ? String(doc._id) : null,
       _id: doc._id,
-      shopId: doc.shopId,
+      shopId: doc.shopId != null ? String(doc.shopId) : null,
       username: doc.username,
       displayName: doc.displayName,
       role: doc.role,
       isActive: doc.isActive !== false,
+      mustSetPin: Boolean(doc.mustSetPin),
       lastLogin: doc.lastLogin || null,
       createdAt: doc.createdAt || null,
       channels: {
@@ -1586,6 +1587,64 @@ class AuthService {
     // Same shape family as recovery codes for familiarity: cs-xxxx-xxxx
     const raw = crypto.randomBytes(4).toString("hex");
     return `cs-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
+  }
+
+  /**
+   * Admin: issue a fresh one-time setup code for a pending invite (mustSetPin).
+   * Invalidates any previous code. Does not work after the member has set a PIN.
+   */
+  async regenerateSetupCode({ shopId, userId, actingUserId }) {
+    if (!shopId || !userId) {
+      return { success: false, message: "shopId and userId are required." };
+    }
+
+    const shop = await Shop.findById(shopId);
+    if (!shop || shop.isActive === false) {
+      return { success: false, message: "Shop not found." };
+    }
+    if (shop.isDemo) {
+      return {
+        success: false,
+        message: "Demo shops cannot regenerate setup codes.",
+      };
+    }
+
+    const user = await User.findOne({ _id: userId, shopId });
+    if (!user || user.isActive === false || user.removedAt) {
+      return { success: false, message: "Team member not found." };
+    }
+
+    if (!user.mustSetPin) {
+      return {
+        success: false,
+        message:
+          "This member already set a PIN. They can sign in or use a recovery code if locked out.",
+      };
+    }
+
+    if (
+      actingUserId &&
+      String(actingUserId) === String(user._id)
+    ) {
+      return {
+        success: false,
+        message: "Ask another admin to regenerate your setup code.",
+      };
+    }
+
+    const setupCode = this.generateSetupCode();
+    user.setupCodeHash = hashRecoveryCode(normalizeRecoveryCode(setupCode));
+    user.mustSetPin = true;
+    user.loginAttempts = 0;
+    user.lockedUntil = null;
+    await user.save();
+
+    return {
+      success: true,
+      user: this.toPublicUser(user),
+      setupCode,
+      message: `New setup code for @${user.username}. Share it once — the old code no longer works.`,
+    };
   }
 
   /**

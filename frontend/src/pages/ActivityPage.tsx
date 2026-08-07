@@ -283,6 +283,7 @@ function actionLabel(action: string) {
   if (action === 'auth.display_name') return 'Display name';
   if (action === 'auth.pin') return 'PIN change';
   if (action === 'auth.setup_pin') return 'PIN setup';
+  if (action === 'team.member.setup_code') return 'Setup code';
   return action;
 }
 

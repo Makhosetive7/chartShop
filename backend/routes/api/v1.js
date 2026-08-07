@@ -80,6 +80,12 @@ router.patch(
   requireAdmin,
   teamController.updateMemberRole
 );
+router.post(
+  "/team/:userId/setup-code",
+  requireApiAuth,
+  requireAdmin,
+  teamController.regenerateSetupCode
+);
 router.delete(
   "/team/:userId",
   requireApiAuth,
