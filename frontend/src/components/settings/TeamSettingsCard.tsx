@@ -35,9 +35,9 @@ const IconBadge = styled.div`
   width: 36px;
   height: 36px;
   flex-shrink: 0;
-  border-radius: 10px;
-  background: ${({ theme }) => theme.colors.surfaceMuted};
-  color: ${({ theme }) => theme.colors.brand};
+  border-radius: 0;
+  background: ${({ theme }) => theme.colors.peachSoft};
+  color: ${({ theme }) => theme.colors.maroon};
 `;
 
 const SectionCopy = styled.div`
