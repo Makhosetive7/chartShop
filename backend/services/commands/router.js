@@ -23,6 +23,8 @@ import {
   handleEditProduct,
   handleSetThreshold,
   handleListProducts,
+  handleVariantAdd,
+  handlePackAdd,
 } from "./handlers/inventory.js";
 
 import {
@@ -207,6 +209,20 @@ async function processCommand(actorId, text, channelHint) {
 
   if (command.startsWith("laybye")) {
     return await handleLayBye(shop._id, text, actorUserId);
+  }
+
+  if (command.startsWith("variant add") || command.startsWith("variant ")) {
+    if (command.startsWith("variant add")) {
+      return await handleVariantAdd(shop._id, text);
+    }
+    return `*Variant commands*\n\n• variant add [product] [label] [price] stock [qty]\n\nExamples:\n• variant add coke 500ml 1.20 stock 48\n• variant add "cavela shoes" "Size 2" 450 stock 8`;
+  }
+
+  if (command.startsWith("pack add") || command.startsWith("pack ")) {
+    if (command.startsWith("pack add")) {
+      return await handlePackAdd(shop._id, text);
+    }
+    return `*Pack commands*\n\n• pack add [product] [variant?] [label] [units] [price]\n\nExamples:\n• pack add coke 500ml Crate 24 25\n• pack add eggs Tray 30 5.50`;
   }
 
   if (command.startsWith("add ")) {

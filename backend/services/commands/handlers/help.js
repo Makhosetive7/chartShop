@@ -33,21 +33,22 @@ PRODUCT MANAGEMENT
 Add/Edit:
 • add bread 2.50 stock 100 - Add product
 • add bread 2.50 cost 1.20 stock 100 - With cost (margin)
+• variant add coke 500ml 1.20 stock 48 - Add size/option
+• variant add "cavela shoes" "Size 2" 450 stock 8
+• pack add coke 500ml Crate 24 25 - Sell multiples (crate/tray)
+• pack add eggs Tray 30 5.50
 • price bread 2.75 - Update price
 • edit bread cost 1.20 - Set / update cost
 • stock +bread 80 - Update stock
-• stock +"sports shoes" 30
+• stock +"cavela shoes" size 2 5 - Stock a size
+• stock +coke 500ml 24
 • stock -bread 20 - Reduce stock
-• stock -"blue butterfly heels" 30
 • edit bread price 2.60 - Edit details
 • edit "brown bread" name "Whole Wheat Bread"
-• edit "blue butterfly heels" trackstock false
-• edit "blue butterfly heels" threshold 5
-• edit "mince meat" price 1.50
 • delete bread - Remove product
 
 View:
-• list - All products
+• list - All products (shows variants & packs)
 • low stock - Low inventory
 
 ====================
@@ -55,6 +56,10 @@ SALES & TRANSACTIONS
 ====================
 Record Sales:
 • sell 2 bread 1 milk - Standard sale
+• sell 1 coke crate - Pack sale (shared stock)
+• sell 1 coke 500ml - Specific size
+• sell 1 coke 500ml crate - Size + pack
+• sell 2 cavela size 2 - Shoe/size variant
 • sell 2 "velvet cake" 1.50 1 "blue butterfly heels" 25.00
 • sell 3 bread 2.25 - Custom price 
 

@@ -104,6 +104,36 @@ router.post(
   requireApiAuth,
   productController.updateStock
 );
+router.post(
+  "/products/:id/variants",
+  requireApiAuth,
+  productController.addVariant
+);
+router.patch(
+  "/products/:id/variants/:variantId",
+  requireApiAuth,
+  productController.updateVariant
+);
+router.delete(
+  "/products/:id/variants/:variantId",
+  requireApiAuth,
+  productController.deleteVariant
+);
+router.post(
+  "/products/:id/variants/:variantId/packs",
+  requireApiAuth,
+  productController.addPack
+);
+router.patch(
+  "/products/:id/variants/:variantId/packs/:packId",
+  requireApiAuth,
+  productController.updatePack
+);
+router.delete(
+  "/products/:id/variants/:variantId/packs/:packId",
+  requireApiAuth,
+  productController.deletePack
+);
 router.delete("/products/:id", requireApiAuth, productController.deleteProduct);
 
 // Sales

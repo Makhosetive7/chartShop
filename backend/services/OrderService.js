@@ -2,6 +2,12 @@ import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import Customer from "../models/Customer.js";
 import CustomerService from "./CustomerService.js";
+import InventoryService from "./InventoryService.js";
+import {
+  ensureVariants,
+  getPrimaryVariant,
+  findPack,
+} from "../utils/productVariants.js";
 
 class OrderService {
   /**
@@ -13,7 +19,7 @@ class OrderService {
     itemsText,
     orderType = "pickup",
     notes = "",
-    { createdByUserId } = {}
+    { createdByUserId, preParsedItems } = {}
   ) {
     try {
       // Find or create customer
@@ -29,13 +35,32 @@ class OrderService {
         };
       }
 
-      // Parse order items
-      const itemsResult = await this.parseOrderItems(shopId, itemsText);
-      if (!itemsResult.success) {
-        return itemsResult;
-      }
+      let items;
+      let total;
 
-      const { items, total } = itemsResult;
+      if (Array.isArray(preParsedItems) && preParsedItems.length > 0) {
+        items = preParsedItems.map((item) => ({
+          productId: item.productId || item.product?._id,
+          productName: item.productName || item.product?.name,
+          variantId: item.variantId || null,
+          variantLabel: item.variantLabel || "",
+          packId: item.packId || null,
+          packLabel: item.packLabel || "",
+          unitsPerPack: item.unitsPerPack || 1,
+          baseUnitsDeducted: item.baseUnitsDeducted ?? item.quantity,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.total,
+        }));
+        total = items.reduce((sum, item) => sum + item.total, 0);
+      } else {
+        const itemsResult = await this.parseOrderItems(shopId, itemsText);
+        if (!itemsResult.success) {
+          return itemsResult;
+        }
+        items = itemsResult.items;
+        total = itemsResult.total;
+      }
 
       // Create order
       const order = await Order.create({
@@ -125,12 +150,25 @@ class OrderService {
         }
 
         // Use custom price if provided, otherwise use product price
-        const price = customPrice !== null ? customPrice : product.price;
+        ensureVariants(product);
+        const variant = getPrimaryVariant(product);
+        const pack = findPack(variant, null);
+        const price =
+          customPrice !== null
+            ? customPrice
+            : pack?.price ?? product.price;
         const itemTotal = quantity * price;
+        const unitsPerPack = pack?.unitsPerPack || 1;
 
         items.push({
           productId: product._id,
           productName: product.name,
+          variantId: variant?._id || null,
+          variantLabel: variant?.label || "",
+          packId: pack?._id || null,
+          packLabel: pack?.label || "",
+          unitsPerPack,
+          baseUnitsDeducted: quantity * unitsPerPack,
           quantity,
           price: price,
           total: itemTotal,
@@ -230,12 +268,15 @@ class OrderService {
    */
   async deductOrderStock(order) {
     try {
-      for (const item of order.items) {
-        const product = await Product.findById(item.productId);
-        if (product && product.trackStock) {
-          product.stock -= item.quantity;
-          await product.save();
-        }
+      const items = (order.items || []).map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        baseUnitsDeducted: item.baseUnitsDeducted ?? item.quantity,
+        variantId: item.variantId || null,
+      }));
+      const result = await InventoryService.deductSaleItems(items);
+      if (!result.success) {
+        throw new Error(result.message || "Failed to deduct order stock");
       }
     } catch (error) {
       console.error("Deduct order stock error:", error);

@@ -462,10 +462,20 @@ export async function createLaybye(req, res) {
     }
 
     for (const item of parsed.items) {
-      if (item.product.trackStock && item.product.stock < item.quantity) {
+      const need = item.baseUnitsDeducted ?? item.quantity;
+      const variantStock =
+        item.variantId && item.product.variants
+          ? item.product.variants.id?.(item.variantId)?.stock ??
+            item.product.stock
+          : item.product.stock;
+      const tracks =
+        item.variantId && item.product.variants?.id?.(item.variantId)
+          ? item.product.variants.id(item.variantId).trackStock
+          : item.product.trackStock;
+      if (tracks && variantStock < need) {
         return res.status(409).json({
           success: false,
-          error: `Insufficient stock for ${item.product.name}: need ${item.quantity}, have ${item.product.stock}`,
+          error: `Insufficient stock for ${item.productName || item.product.name}: need ${need}, have ${variantStock}`,
         });
       }
     }
@@ -477,7 +487,13 @@ export async function createLaybye(req, res) {
       customerPhone: customer.phone,
       items: parsed.items.map((item) => ({
         productId: item.product._id,
-        productName: item.product.name,
+        productName: item.productName || item.product.name,
+        variantId: item.variantId || null,
+        variantLabel: item.variantLabel || "",
+        packId: item.packId || null,
+        packLabel: item.packLabel || "",
+        unitsPerPack: item.unitsPerPack || 1,
+        baseUnitsDeducted: item.baseUnitsDeducted ?? item.quantity,
         quantity: item.quantity,
         price: item.price,
         total: item.total,

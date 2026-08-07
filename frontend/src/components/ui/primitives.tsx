@@ -54,16 +54,22 @@ export const Card = styled.section`
 export const Row = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: ${({ theme }) => theme.space[3]};
+  column-gap: ${({ theme }) => theme.space[3]};
+  row-gap: ${({ theme }) => theme.space[5]};
   align-items: end;
   min-width: 0;
   max-width: 100%;
+
+  /* Consecutive form rows (name → price → stock, etc.) */
+  & + & {
+    margin-top: ${({ theme }) => theme.space[4]};
+  }
 `;
 
 export const Field = styled.label`
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: ${({ theme }) => theme.space[2]};
   font-size: 0.85rem;
   font-weight: ${({ theme }) => theme.fontWeights.semibold};
   color: ${({ theme }) => theme.colors.textPrimary};

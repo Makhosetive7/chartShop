@@ -2,9 +2,7 @@ import axios from 'axios';
 
 export function getErrorMessage(error: unknown, fallback = 'Something went wrong.') {
   if (axios.isAxiosError(error)) {
-    const data = error.response?.data as
-      | { error?: string; code?: string }
-      | undefined;
+    const data = error.response?.data as { error?: string; code?: string } | undefined;
     if (error.response?.status === 403 && data?.code === 'DEMO_READ_ONLY') {
       return '';
     }
@@ -20,6 +18,32 @@ export function isDemoReadOnlyError(error: unknown): boolean {
   return error.response?.status === 403 && data?.code === 'DEMO_READ_ONLY';
 }
 
+export type ProductPack = {
+  id: string;
+  label: string;
+  unitsPerPack: number;
+  price: number;
+  costPrice: number | null;
+  barcode?: string | null;
+  isActive: boolean;
+  sortOrder?: number;
+};
+
+export type ProductVariant = {
+  id: string;
+  label: string;
+  baseUnit: string;
+  price: number;
+  costPrice: number | null;
+  stock: number;
+  lowStockThreshold: number;
+  trackStock: boolean;
+  barcode?: string | null;
+  isActive: boolean;
+  sortOrder?: number;
+  packs: ProductPack[];
+};
+
 export type Product = {
   id: string;
   name: string;
@@ -29,11 +53,14 @@ export type Product = {
   trackStock: boolean;
   lowStockThreshold: number;
   isActive: boolean;
+  variants?: ProductVariant[];
 };
 
 export type SaleItemInput = {
   productId?: string;
   name?: string;
+  variantId?: string;
+  packId?: string;
   quantity: number;
   price?: number;
 };
@@ -52,6 +79,8 @@ export type Sale = {
   customerName?: string;
   items: Array<{
     productName: string;
+    variantLabel?: string;
+    packLabel?: string;
     quantity: number;
     price: number;
     total: number;

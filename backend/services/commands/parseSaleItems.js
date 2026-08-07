@@ -1,5 +1,6 @@
 import Product from "../../models/Product.js";
 import { escapeMarkdown } from "../../utils/escapeMarkdown.js";
+import { resolveLineFromTokens } from "./chatProductResolve.js";
 
 function tokenize(itemsText) {
   const tokens = [];
@@ -39,35 +40,23 @@ function looksLikeNextItemStart(tokens, i) {
   return Boolean(nameTok?.value);
 }
 
-async function resolveProduct(shopId, productName) {
-  const escapedProductName = productName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-  let product = await Product.findOne({
-    shopId,
-    name: { $regex: new RegExp(`^${escapedProductName}$`, "i") },
-    isActive: true,
-  });
-
-  if (!product) {
-    product = await Product.findOne({
-      shopId,
-      name: { $regex: productName, $options: "i" },
-      isActive: true,
-    });
-  }
-
-  return product;
-}
-
 /**
  * Parse sale items from text.
- * Supports: `2 bread`, `2 "brown bread"`, `1 bread 2.50`, `2 milk 1 bread`
+ * Supports:
+ * - `2 bread`, `2 "brown bread"`, `1 bread 2.50`, `2 milk 1 bread`
+ * - `1 coke crate`, `1 coke 500ml`, `1 coke 500ml crate`
+ * - `2 cavela size 2`, `1 "cavela shoes" "Size 3"`
  */
 export async function parseSaleItems(shopId, itemsText) {
   try {
     const tokens = tokenize(itemsText || "");
     if (tokens.length === 0) {
       return `No valid items found. Please check format.`;
+    }
+
+    const products = await Product.find({ shopId, isActive: true });
+    if (!products.length) {
+      return `No products yet. Add one with: add bread 2.50 stock 50`;
     }
 
     const items = [];
@@ -89,17 +78,12 @@ export async function parseSaleItems(shopId, itemsText) {
         return `Missing product name for quantity ${quantity}.`;
       }
 
-      const nameTok = tokens[i];
-      if (isNumberToken(nameTok) && !nameTok.quoted) {
-        return `Missing product name for quantity ${quantity}.`;
+      const resolved = resolveLineFromTokens(products, tokens, i, quantity);
+      if (resolved.error) {
+        return resolved.error;
       }
 
-      const productName = nameTok.value.replace(/^"+|"+$/g, "").trim();
-      if (!productName) {
-        return `Missing product name for quantity ${quantity}.`;
-      }
-
-      i += 1;
+      i += resolved.consumed;
 
       let price = null;
       if (i < tokens.length && isNumberToken(tokens[i])) {
@@ -110,28 +94,26 @@ export async function parseSaleItems(shopId, itemsText) {
         }
       }
 
-      const product = await resolveProduct(shopId, productName);
-      if (!product) {
-        return `Product "${escapeMarkdown(productName)}" not found. Type "list" to see products.`;
-      }
-
-      const finalPrice = price !== null ? price : product.price;
+      const { product, sell } = resolved;
+      const finalPrice = price !== null ? price : sell.pack.price;
       const itemTotal = quantity * finalPrice;
-      const unitCost =
-        typeof product.costPrice === "number" && product.costPrice >= 0
-          ? product.costPrice
-          : null;
 
       items.push({
         productId: product._id,
-        product: product,
-        productName: product.name,
+        product,
+        productName: sell.displayName,
+        variantId: sell.variant._id,
+        variantLabel: sell.variant.label || "",
+        packId: sell.pack._id,
+        packLabel: sell.pack.label || "",
+        unitsPerPack: sell.unitsPerPack,
+        baseUnitsDeducted: sell.baseUnits,
         quantity,
         price: finalPrice,
-        standardPrice: product.price,
+        standardPrice: sell.pack.price,
         isCustomPrice: price !== null,
-        costPrice: unitCost,
-        costTotal: unitCost !== null ? unitCost * quantity : null,
+        costPrice: sell.packCost,
+        costTotal: sell.packCost !== null ? sell.packCost * quantity : null,
         total: itemTotal,
       });
     }

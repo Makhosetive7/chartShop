@@ -1,13 +1,7 @@
 import { useMemo, useState } from 'react';
 import styled from 'styled-components';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Globe,
-  MessageCircle,
-  Phone,
-  Search,
-  Server,
-} from 'lucide-react';
+import { Globe, MessageCircle, Phone, Search, Server } from 'lucide-react';
 import { fetchActivity, type ActivityItem } from '@/api/chat';
 import {
   Page,
@@ -24,11 +18,7 @@ import {
   ActivityStatsSkeleton,
 } from '@/components/skeletons/PageSkeletons';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
-import {
-  formatShopDayLabel,
-  formatShopTime,
-  shopDayKey,
-} from '@/utils/dates';
+import { formatShopDayLabel, formatShopTime, shopDayKey } from '@/utils/dates';
 
 const CHANNELS = ['all', 'web', 'telegram', 'whatsapp', 'system'] as const;
 const ACTIONS = [
@@ -267,6 +257,8 @@ function actionLabel(action: string) {
   if (action === 'product.update') return 'Product edit';
   if (action === 'product.stock') return 'Stock';
   if (action === 'product.delete') return 'Product removed';
+  if (action === 'product.variant.add') return 'Product option';
+  if (action === 'product.pack.add') return 'Product pack';
   if (action === 'customer.create') return 'Customer';
   if (action === 'customer.credit') return 'Credit';
   if (action === 'customer.payment') return 'Payment';
@@ -411,18 +403,10 @@ export function ActivityPage() {
           ))}
         </Tabs>
         <Tabs style={{ marginBottom: 0 }}>
-          <Tab
-            type="button"
-            $active={!mineOnly}
-            onClick={() => setMineOnly(false)}
-          >
+          <Tab type="button" $active={!mineOnly} onClick={() => setMineOnly(false)}>
             Everyone
           </Tab>
-          <Tab
-            type="button"
-            $active={mineOnly}
-            onClick={() => setMineOnly(true)}
-          >
+          <Tab type="button" $active={mineOnly} onClick={() => setMineOnly(true)}>
             My activity
           </Tab>
         </Tabs>
@@ -460,97 +444,95 @@ export function ActivityPage() {
       {isLoading ? (
         <ActivityListSkeleton />
       ) : (
-      <List>
-        {filtered.map((row) => {
-          const day = shopDayKey(row.createdAt, timeZone);
-          const showDay = day !== lastDay;
-          if (showDay) lastDay = day;
-          const Icon = channelIcon(row.channel);
-          const { input, reply } = getChatParts(row);
-          const open = Boolean(expanded[row.id]);
-          const canExpand = Boolean(input || reply);
-          const who = actorLabel(row);
+        <List>
+          {filtered.map((row) => {
+            const day = shopDayKey(row.createdAt, timeZone);
+            const showDay = day !== lastDay;
+            if (showDay) lastDay = day;
+            const Icon = channelIcon(row.channel);
+            const { input, reply } = getChatParts(row);
+            const open = Boolean(expanded[row.id]);
+            const canExpand = Boolean(input || reply);
+            const who = actorLabel(row);
 
-          return (
-            <div key={row.id}>
-              {showDay ? (
-                <DayLabel>{formatShopDayLabel(row.createdAt, timeZone)}</DayLabel>
-              ) : null}
-              <Item>
-                <Top>
-                  <Meta>
-                    <ChannelPill $channel={row.channel}>
-                      <Icon size={12} />
-                      {row.channel}
-                    </ChannelPill>
-                    <Badge
-                      $tone={
-                        row.action === 'auth.login'
-                          ? 'success'
-                          : row.action === 'chat.turn'
-                            ? 'info'
-                            : 'warning'
+            return (
+              <div key={row.id}>
+                {showDay ? (
+                  <DayLabel>{formatShopDayLabel(row.createdAt, timeZone)}</DayLabel>
+                ) : null}
+                <Item>
+                  <Top>
+                    <Meta>
+                      <ChannelPill $channel={row.channel}>
+                        <Icon size={12} />
+                        {row.channel}
+                      </ChannelPill>
+                      <Badge
+                        $tone={
+                          row.action === 'auth.login'
+                            ? 'success'
+                            : row.action === 'chat.turn'
+                              ? 'info'
+                              : 'warning'
+                        }
+                      >
+                        {actionLabel(row.action)}
+                      </Badge>
+                      {who ? <Badge $tone="info">{who}</Badge> : null}
+                    </Meta>
+                    <Time>{formatShopTime(row.createdAt, timeZone)}</Time>
+                  </Top>
+
+                  <Summary>{row.summary}</Summary>
+
+                  {canExpand ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpanded((prev) => ({ ...prev, [row.id]: !prev[row.id] }))
                       }
+                      style={{
+                        marginTop: 10,
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#8B1E3A',
+                        fontWeight: 600,
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
                     >
-                      {actionLabel(row.action)}
-                    </Badge>
-                    {who ? <Badge $tone="info">{who}</Badge> : null}
-                  </Meta>
-                  <Time>{formatShopTime(row.createdAt, timeZone)}</Time>
-                </Top>
+                      {open ? 'Hide details' : 'Show command & reply'}
+                    </button>
+                  ) : null}
 
-                <Summary>{row.summary}</Summary>
-
-                {canExpand ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpanded((prev) => ({ ...prev, [row.id]: !prev[row.id] }))
-                    }
-                    style={{
-                      marginTop: 10,
-                      border: 'none',
-                      background: 'transparent',
-                      color: '#8B1E3A',
-                      fontWeight: 600,
-                      fontSize: '0.82rem',
-                      cursor: 'pointer',
-                      padding: 0,
-                    }}
-                  >
-                    {open ? 'Hide details' : 'Show command & reply'}
-                  </button>
-                ) : null}
-
-                {open && canExpand ? (
-                  <Detail>
-                    {input ? (
-                      <Bubble $tone="in">
-                        <strong>Command</strong>
-                        {input}
-                      </Bubble>
-                    ) : null}
-                    {reply ? (
-                      <Bubble $tone="out">
-                        <strong>Reply</strong>
-                        {reply}
-                      </Bubble>
-                    ) : null}
-                  </Detail>
-                ) : null}
-              </Item>
-            </div>
-          );
-        })}
-      </List>
+                  {open && canExpand ? (
+                    <Detail>
+                      {input ? (
+                        <Bubble $tone="in">
+                          <strong>Command</strong>
+                          {input}
+                        </Bubble>
+                      ) : null}
+                      {reply ? (
+                        <Bubble $tone="out">
+                          <strong>Reply</strong>
+                          {reply}
+                        </Bubble>
+                      ) : null}
+                    </Detail>
+                  ) : null}
+                </Item>
+              </div>
+            );
+          })}
+        </List>
       )}
 
       {!isLoading && filtered.length === 0 ? (
         <Card>
           <Empty>
-            <strong>
-              {items.length === 0 ? 'No activity yet' : 'No matches'}
-            </strong>
+            <strong>{items.length === 0 ? 'No activity yet' : 'No matches'}</strong>
             {items.length === 0
               ? 'Open Chat and send help, or sign in again to see the first events.'
               : 'Try another channel, action, or search term.'}
