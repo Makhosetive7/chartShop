@@ -147,7 +147,7 @@ export function OrdersPage() {
     <Page>
       <PageTitle>Orders</PageTitle>
       <PageLead>
-        Pickup / delivery orders — pending until completed or cancelled. Choose size/pack
+        Pickup / delivery orders — pending until completed or cancelled. Choose option/pack
         when the product has options.
       </PageLead>
 

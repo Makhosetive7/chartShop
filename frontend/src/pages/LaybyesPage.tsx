@@ -105,7 +105,7 @@ export function LaybyesPage() {
       <PageTitle>Laybyes</PageTitle>
       <PageLead>
         Create agreements, take deposits and installments, and complete when paid in full.
-        Pick size/pack when a product has options.
+        Pick option/pack when a product has them.
       </PageLead>
 
       <Card>
