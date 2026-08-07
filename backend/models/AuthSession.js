@@ -29,6 +29,11 @@ const authSessionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Shop",
     },
+    /** Person who logged in (required for type: session after multi-user). */
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
     loginTime: Date,
     lastActivity: Date,
     step: String,
@@ -51,6 +56,7 @@ authSessionSchema.index(
 );
 authSessionSchema.index({ sessionToken: 1 }, { sparse: true });
 authSessionSchema.index({ shopId: 1, type: 1 });
+authSessionSchema.index({ userId: 1, type: 1 });
 authSessionSchema.index({ expireAt: 1 }, { expireAfterSeconds: 0 });
 
 export default mongoose.model("AuthSession", authSessionSchema);

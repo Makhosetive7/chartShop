@@ -1,34 +1,11 @@
 import mongoose from "mongoose";
 
-const channelsSchema = new mongoose.Schema(
-  {
-    telegramChatId: {
-      type: String,
-      default: null,
-    },
-    whatsappPhone: {
-      type: String,
-      default: null,
-    },
-  },
-  { _id: false }
-);
-
+/**
+ * Shop = business / tenant. Login credentials and channel links live on User.
+ * Legacy fields (username, pin, channels, …) may still exist on old documents
+ * until migrateUsersFromShops runs; they are not used by auth after migration.
+ */
 const shopSchema = new mongoose.Schema({
-  /** Canonical login identity — case-insensitive, unique.
-   * New registrations: 3–15 letters + optional trailing digits (see usernamePolicy).
-   * Schema stays permissive so grandfathered / demo usernames (underscores, ≤32) still save.
-   */
-  username: {
-    type: String,
-    required: true,
-    unique: true,
-    trim: true,
-    lowercase: true,
-    minlength: 3,
-    maxlength: 32,
-    match: /^[a-z0-9_]+$/,
-  },
   businessName: {
     type: String,
     required: true,
@@ -43,16 +20,7 @@ const shopSchema = new mongoose.Schema({
     minlength: 10,
     maxlength: 500,
   },
-  pin: {
-    type: String,
-    required: true,
-  },
-  /** Linked messaging transports (not login identity). */
-  channels: {
-    type: channelsSchema,
-    default: () => ({}),
-  },
-  /** Admin/disable flag — not "currently logged in". */
+  /** Admin/disable flag — disables the whole business for every user. */
   isActive: {
     type: Boolean,
     default: true,
@@ -77,19 +45,6 @@ const shopSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-  lastLogin: {
-    type: Date,
-  },
-  lastLogout: {
-    type: Date,
-  },
-  loginAttempts: {
-    type: Number,
-    default: 0,
-  },
-  lockedUntil: {
-    type: Date,
-  },
   settings: {
     currency: {
       type: String,
@@ -107,33 +62,6 @@ const shopSchema = new mongoose.Schema({
 });
 
 shopSchema.index({ businessName: 1 });
-shopSchema.index(
-  { "channels.telegramChatId": 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      "channels.telegramChatId": { $type: "string" },
-    },
-  }
-);
-shopSchema.index(
-  { "channels.whatsappPhone": 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      "channels.whatsappPhone": { $type: "string" },
-    },
-  }
-);
-
-shopSchema.methods.isLocked = function () {
-  return this.lockedUntil && this.lockedUntil > new Date();
-};
-
-shopSchema.methods.resetLoginAttempts = function () {
-  this.loginAttempts = 0;
-  this.lockedUntil = null;
-  return this.save();
-};
+shopSchema.index({ isDemo: 1, demoSector: 1 });
 
 export default mongoose.model("Shop", shopSchema);

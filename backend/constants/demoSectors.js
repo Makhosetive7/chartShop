@@ -195,13 +195,13 @@ export function getDemoSector(id) {
   return DEMO_SECTORS.find((s) => s.id === id) || null;
 }
 
-export function publicDemoSector(sector, shop) {
+export function publicDemoSector(sector, shop, adminUser = null) {
   return {
     id: sector.id,
     label: sector.label,
     blurb: sector.blurb,
     businessName: shop?.businessName || sector.businessName,
-    username: shop?.username || sector.username,
+    username: adminUser?.username || sector.username,
     available: Boolean(shop),
   };
 }

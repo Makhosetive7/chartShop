@@ -2,7 +2,7 @@ import Customer from "../models/Customer.js";
 import Sale from "../models/Sale.js";
 
 class CustomerService {
-  async addCustomer(shopId, name, phone, email = "") {
+  async addCustomer(shopId, name, phone, email = "", { createdByUserId } = {}) {
     try {
       console.log('[CustomerService] Adding customer:', { shopId, name, phone, email });
 
@@ -56,6 +56,7 @@ class CustomerService {
         loyaltyPoints: 0,
         currentBalance: 0,
         isActive: true,
+        ...(createdByUserId != null ? { createdByUserId } : {}),
       };
 
       console.log('[CustomerService] Creating customer with data:', customerData);

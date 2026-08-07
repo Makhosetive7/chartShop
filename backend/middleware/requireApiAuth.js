@@ -1,4 +1,5 @@
 import Shop from "../models/Shop.js";
+import User from "../models/User.js";
 import AuthService from "../services/AuthService.js";
 import SessionStore from "../services/sessionStore.js";
 
@@ -17,7 +18,7 @@ function isDemoSafeRequest(req) {
 
 /**
  * Require Authorization: Bearer <sessionToken> for /api/v1 routes.
- * Sets req.username, req.shopId, req.shop, req.sessionToken, req.channel, req.channelKey.
+ * Sets req.user, req.userId, req.username, req.role, req.shopId, req.shop, …
  * Demo shops are read-only (except logout).
  */
 export async function requireApiAuth(req, res, next) {
@@ -68,10 +69,33 @@ export async function requireApiAuth(req, res, next) {
       });
     }
 
+    let user = null;
+    if (session.userId) {
+      user = await User.findById(session.userId);
+    }
+    // Legacy sessions (pre multi-user): no userId — refuse and force re-login.
+    if (!user || user.isActive === false || user.removedAt) {
+      await SessionStore.deleteLoginSessionByToken(sessionToken);
+      return res.status(401).json({
+        success: false,
+        error: "Invalid or expired session. Please login again.",
+      });
+    }
+
+    if (String(user.shopId) !== String(shop._id)) {
+      await SessionStore.deleteLoginSessionByToken(sessionToken);
+      return res.status(401).json({
+        success: false,
+        error: "Invalid session.",
+      });
+    }
+
     await SessionStore.touchLoginSessionByToken(sessionToken);
 
-    req.username = shop.username;
-    req.userId = shop.username; // backward-compatible alias
+    req.user = user;
+    req.userId = String(user._id);
+    req.username = user.username;
+    req.role = user.role;
     req.shopId = shop._id;
     req.shop = shop;
     req.isDemo = Boolean(shop.isDemo);
@@ -96,4 +120,15 @@ export async function requireApiAuth(req, res, next) {
       error: "Authentication failed.",
     });
   }
+}
+
+/** Admin-only routes (team management, etc.). Must run after requireApiAuth. */
+export function requireAdmin(req, res, next) {
+  if (req.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      error: "Admin access required.",
+    });
+  }
+  return next();
 }

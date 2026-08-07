@@ -1,5 +1,6 @@
 import ExpenseService from "../../services/ExpenseService.js";
 import { stripMarkdown } from "../../utils/apiResponse.js";
+import { logApiActivity } from "../../utils/logApiActivity.js";
 
 function serializeExpense(e) {
   if (!e) return null;
@@ -28,7 +29,8 @@ export async function createExpense(req, res) {
       description,
       category,
       paymentMethod,
-      receiptNumber
+      receiptNumber,
+      { createdByUserId: req.userId }
     );
 
     if (!result.success) {
@@ -37,6 +39,14 @@ export async function createExpense(req, res) {
         error: stripMarkdown(result.message),
       });
     }
+
+    await logApiActivity(req, {
+      action: "expense.recorded",
+      summary: `Recorded expense $${Number(amount).toFixed(2)} — ${category}`,
+      entityType: "expense",
+      entityId: result.expense?._id,
+      metadata: { amount, category, description },
+    });
 
     return res.status(201).json({
       success: true,

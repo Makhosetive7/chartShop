@@ -10,9 +10,11 @@ import {
 import { createTestShop } from "./helpers/fixtures.js";
 import AuthService from "../services/AuthService.js";
 import SessionStore from "../services/sessionStore.js";
+import User from "../models/User.js";
 
 describe("auth session survives restart", () => {
   let shop;
+  let user;
   let username;
   const channel = "telegram";
   const channelKey = "tg_test_chat_1";
@@ -30,6 +32,7 @@ describe("auth session survives restart", () => {
       telegramChatId: channelKey,
     });
     shop = created.shop;
+    user = created.user;
     username = created.username;
   });
 
@@ -42,12 +45,13 @@ describe("auth session survives restart", () => {
   });
 
   it("keeps login after mongoose disconnect/reconnect (process restart)", async () => {
-    await AuthService.createLoginSession(shop._id, channel, channelKey);
+    await AuthService.createLoginSession(shop, user, channel, channelKey);
     assert.equal(await AuthService.isAuthenticated(channel, channelKey), true);
 
     const before = await SessionStore.getLoginSession(channel, channelKey);
     assert.ok(before);
     assert.equal(String(before.shopId), String(shop._id));
+    assert.equal(String(before.userId), String(user._id));
 
     await mongoose.disconnect();
     await mongoose.connect(testMongoUri(), { serverSelectionTimeoutMS: 8000 });
@@ -60,7 +64,7 @@ describe("auth session survives restart", () => {
   });
 
   it("logout clears persisted session across reconnect", async () => {
-    await AuthService.createLoginSession(shop._id, channel, channelKey);
+    await AuthService.createLoginSession(shop, user, channel, channelKey);
     await AuthService.logout(channel, channelKey);
 
     await mongoose.disconnect();
@@ -71,8 +75,8 @@ describe("auth session survives restart", () => {
   });
 
   it("allows concurrent web + telegram sessions", async () => {
-    const webToken = await AuthService.createLoginSession(shop._id, "web", null);
-    await AuthService.createLoginSession(shop._id, channel, channelKey);
+    const webToken = await AuthService.createLoginSession(shop, user, "web", null);
+    await AuthService.createLoginSession(shop, user, channel, channelKey);
 
     assert.equal(await AuthService.isAuthenticated("web", webToken), true);
     assert.equal(await AuthService.isAuthenticated(channel, channelKey), true);
@@ -92,7 +96,7 @@ describe("auth session survives restart", () => {
     });
     assert.equal(result.success, true);
 
-    const refreshed = await AuthService.findShopByUsername(unbound.username);
+    const refreshed = await User.findById(unbound.user._id);
     assert.equal(refreshed.channels.telegramChatId, "999888777");
 
     await wipeShopData({

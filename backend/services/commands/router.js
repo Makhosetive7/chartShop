@@ -175,12 +175,14 @@ async function processCommand(actorId, text, channelHint) {
   await AuthService.updateActivity(channel, channelKey);
 
   const shop = await AuthService.getAuthenticatedShop(channel, channelKey);
+  const actorUser = await AuthService.getAuthenticatedUser(channel, channelKey);
+  const actorUserId = actorUser?._id ? String(actorUser._id) : null;
   if (!shop || shop.isActive === false) {
     return `*Session Error*\n\nPlease login again: \`login your_username 1234\``;
   }
 
   if (command.startsWith("sell to")) {
-    return await handleSellToCustomer(shop._id, text);
+    return await handleSellToCustomer(shop._id, text, actorUserId);
   }
 
   if (
@@ -188,27 +190,27 @@ async function processCommand(actorId, text, channelHint) {
     !command.includes("to") &&
     !command.includes("credit")
   ) {
-    return await handleCashSale(shop._id, text);
+    return await handleCashSale(shop._id, text, actorUserId);
   }
 
   if (command.startsWith("credit sale")) {
-    return await handleCreditSale(shop._id, text);
+    return await handleCreditSale(shop._id, text, actorUserId);
   }
 
   if (command.startsWith("laybye pay")) {
-    return await handleLayByePayment(shop._id, text);
+    return await handleLayByePayment(shop._id, text, actorUserId);
   }
 
   if (command.startsWith("laybye complete")) {
-    return await handleLayByeComplete(shop._id, text);
+    return await handleLayByeComplete(shop._id, text, actorUserId);
   }
 
   if (command.startsWith("laybye")) {
-    return await handleLayBye(shop._id, text);
+    return await handleLayBye(shop._id, text, actorUserId);
   }
 
   if (command.startsWith("add ")) {
-    return await handleAddProduct(shop._id, text);
+    return await handleAddProduct(shop._id, text, actorUserId);
   }
 
   if (command === "list" || command === "products") {
@@ -264,11 +266,11 @@ async function processCommand(actorId, text, channelHint) {
   }
 
   if (command.startsWith("cancel")) {
-    return await handleCancelSale(shop._id, text);
+    return await handleCancelSale(shop._id, text, actorUserId);
   }
 
   if (command.startsWith("customer") || command.startsWith("customers")) {
-    return await handleCustomerCommands(shop._id, text);
+    return await handleCustomerCommands(shop._id, text, actorUserId);
   }
 
   if (command.startsWith("credit history")) {
@@ -276,15 +278,15 @@ async function processCommand(actorId, text, channelHint) {
   }
 
   if (command.startsWith("credit ")) {
-    return await handleCustomerCredit(shop._id, text);
+    return await handleCustomerCredit(shop._id, text, actorUserId);
   }
 
   if (command.startsWith("payment ")) {
-    return await handleCustomerPayment(shop._id, text);
+    return await handleCustomerPayment(shop._id, text, actorUserId);
   }
 
   if (command.startsWith("order") || command.startsWith("orders")) {
-    return await handleOrderCommands(shop._id, text);
+    return await handleOrderCommands(shop._id, text, actorUserId);
   }
 
   if (
@@ -293,7 +295,7 @@ async function processCommand(actorId, text, channelHint) {
     command.startsWith("complete order") ||
     command.startsWith("cancel order")
   ) {
-    return await handleOrderStatusUpdate(shop._id, text);
+    return await handleOrderStatusUpdate(shop._id, text, actorUserId);
   }
 
   if (
@@ -304,7 +306,7 @@ async function processCommand(actorId, text, channelHint) {
   }
 
   if (command.startsWith("expense ") && !command.startsWith("expenses")) {
-    return await handleExpenseRecording(shop._id, text);
+    return await handleExpenseRecording(shop._id, text, actorUserId);
   }
 
   if (command.startsWith("expenses")) {

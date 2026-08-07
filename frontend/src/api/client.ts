@@ -45,7 +45,8 @@ api.interceptors.response.use(
           path === '/' ||
           path.startsWith('/login') ||
           path.startsWith('/register') ||
-          path.startsWith('/recover');
+          path.startsWith('/recover') ||
+          path.startsWith('/setup');
         if (!isPublic) {
           window.location.assign('/login');
         }
@@ -71,11 +72,28 @@ export type Shop = {
   };
 };
 
+export type User = {
+  id: string;
+  shopId?: string | null;
+  username: string;
+  displayName: string;
+  role: 'admin' | 'member';
+  isActive?: boolean;
+  lastLogin?: string | null;
+  createdAt?: string;
+  channels?: {
+    telegramLinked?: boolean;
+    whatsappLinked?: boolean;
+  };
+};
+
 export type LoginResponse = {
   success: boolean;
   token: string;
   shop: Shop;
+  user?: User | null;
   error?: string;
+  code?: string;
   suggestions?: string[];
   recoveryCodes?: string[];
 };

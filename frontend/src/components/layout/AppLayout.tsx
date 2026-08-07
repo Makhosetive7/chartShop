@@ -413,7 +413,7 @@ function pathMatches(pathname: string, to: string, end?: boolean) {
 }
 
 export function AppLayout() {
-  const { shop, logout } = useAuth();
+  const { shop, user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -427,6 +427,11 @@ export function AppLayout() {
     () => shop?.businessName || 'Your shop',
     [shop?.businessName],
   );
+  const userLabel = useMemo(() => {
+    if (!user?.username) return null;
+    const role = user.role === 'admin' ? 'admin' : 'member';
+    return `@${user.username} · ${role}`;
+  }, [user?.username, user?.role]);
 
   useEffect(() => {
     setMoreOpen(false);
@@ -454,7 +459,10 @@ export function AppLayout() {
           <BrandMark size={34} />
           <BrandText>
             <strong>ChartShop</strong>
-            <ShopChip title={shopName}>{shopName}</ShopChip>
+            <ShopChip title={userLabel ? `${shopName} · ${userLabel}` : shopName}>
+              {shopName}
+              {userLabel ? ` · ${userLabel}` : ''}
+            </ShopChip>
           </BrandText>
         </BrandBlock>
         <LogoutSlot>

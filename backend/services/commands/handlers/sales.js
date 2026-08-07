@@ -15,10 +15,11 @@ import {
   generateLayByeCompletionReceipt,
 } from "../helpers.js";
 
-export async function handleCancelSale(shopId, text) {
+export async function handleCancelSale(shopId, text, actorUserId = null) {
   try {
     const parts = text.replace("cancel", "").trim().split(" ");
     const command = parts[0]?.toLowerCase();
+    const cancelOpts = { cancelledBy: actorUserId || "unknown" };
 
     if (!command) {
       // Show recent sales for cancellation
@@ -30,7 +31,11 @@ export async function handleCancelSale(shopId, text) {
 
     if (command === "last") {
       const reason = parts.slice(1).join(" ") || "No reason provided";
-      const result = await CancellationService.cancelLastSale(shopId, reason);
+      const result = await CancellationService.cancelLastSale(
+        shopId,
+        reason,
+        cancelOpts
+      );
       return result.message;
     }
 
@@ -45,7 +50,8 @@ export async function handleCancelSale(shopId, text) {
       const result = await CancellationService.cancelSpecificSale(
         shopId,
         saleIdentifier,
-        reason
+        reason,
+        cancelOpts
       );
       return result.message;
     }
@@ -61,7 +67,8 @@ export async function handleCancelSale(shopId, text) {
       const result = await CancellationService.cancelSpecificSale(
         shopId,
         command,
-        reason
+        reason,
+        cancelOpts
       );
       return result.message;
     }
@@ -73,7 +80,7 @@ export async function handleCancelSale(shopId, text) {
   }
 }
 
-export async function handleCashSale(shopId, text) {
+export async function handleCashSale(shopId, text, actorUserId = null) {
   try {
     const itemsText = text.replace("sell ", "").trim();
     const items = await parseSaleItems(shopId, itemsText);
@@ -99,6 +106,7 @@ export async function handleCashSale(shopId, text) {
         status: "completed",
         amountPaid: total,
         balanceDue: 0,
+        ...(actorUserId ? { createdByUserId: actorUserId } : {}),
       });
     } catch (createError) {
       await InventoryService.restoreSaleItems(items);
@@ -112,7 +120,7 @@ export async function handleCashSale(shopId, text) {
   }
 }
 
-export async function handleCreditSale(shopId, text) {
+export async function handleCreditSale(shopId, text, actorUserId = null) {
   try {
     const match = text.match(
       /^credit\s+sale\s+to\s+(?:"([^"]+)"|(\S+))\s+(.+)$/i
@@ -163,6 +171,7 @@ export async function handleCreditSale(shopId, text) {
         amountPaid: 0,
         balanceDue: totalAmount,
         status: "completed",
+        ...(actorUserId ? { createdByUserId: actorUserId } : {}),
       });
 
       // Update customer balance
@@ -191,7 +200,7 @@ export async function handleCreditSale(shopId, text) {
   }
 }
 
-export async function handleLayBye(shopId, text) {
+export async function handleLayBye(shopId, text, actorUserId = null) {
   try {
     const match = text.match(
       /^laybye\s+(?:for\s+)?(?:"([^"]+)"|(\S+))\s+(.+?)(?:\s+deposit\s+(\d+(?:\.\d+)?))?$/i
@@ -265,6 +274,7 @@ export async function handleLayBye(shopId, text) {
       status: "active",
       reservedStock: false,
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      ...(actorUserId ? { createdByUserId: actorUserId } : {}),
     });
 
     // LayBye collection is source of truth; optional customer history if present
@@ -286,7 +296,7 @@ export async function handleLayBye(shopId, text) {
   }
 }
 
-export async function handleLayByePayment(shopId, text) {
+export async function handleLayByePayment(shopId, text, actorUserId = null) {
   try {
     const match = text.match(
       /^laybye\s+pay\s+(?:"([^"]+)"|(\S+))\s+(\d+(?:\.\d+)?)$/i
@@ -331,7 +341,7 @@ export async function handleLayByePayment(shopId, text) {
 
     // Check if fully paid
     if (laybye.balanceDue <= 0) {
-      await completeLayBye(shopId, laybye);
+      await completeLayBye(shopId, laybye, actorUserId);
       return generateLayByeCompletionReceipt(laybye);
     } else {
       await laybye.save();
@@ -343,7 +353,7 @@ export async function handleLayByePayment(shopId, text) {
   }
 }
 
-export async function completeLayBye(shopId, laybye) {
+export async function completeLayBye(shopId, laybye, actorUserId = null) {
   try {
     const itemsForStock = laybye.items.map((item) => ({
       productId: item.productId,
@@ -380,6 +390,7 @@ export async function completeLayBye(shopId, laybye) {
         balanceDue: 0,
         status: "completed",
         laybyeId: laybye._id,
+        ...(actorUserId ? { createdByUserId: actorUserId } : {}),
       });
 
       // Update laybye status
@@ -407,7 +418,7 @@ export async function completeLayBye(shopId, laybye) {
   }
 }
 
-export async function handleLayByeComplete(shopId, text) {
+export async function handleLayByeComplete(shopId, text, actorUserId = null) {
   try {
     const match = text.match(/laybye\s+complete\s+(\S+)/i);
 
@@ -438,7 +449,7 @@ Check balance: laybye pay ${customerIdentifier} 0`;
     }
 
     // Complete the laybye
-    const completedSale = await completeLayBye(shopId, laybye);
+    const completedSale = await completeLayBye(shopId, laybye, actorUserId);
 
     return generateLayByeCompletionReceipt(laybye);
   } catch (error) {

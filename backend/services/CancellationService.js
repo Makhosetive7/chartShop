@@ -7,7 +7,7 @@ class CancellationService {
   /**
    * Cancel the most recent sale
    */
-  async cancelLastSale(shopId, reason = "No reason provided") {
+  async cancelLastSale(shopId, reason = "No reason provided", { cancelledBy } = {}) {
     try {
       const lastSale = await Sale.findOne({
         shopId,
@@ -18,7 +18,7 @@ class CancellationService {
         return { success: false, message: "No recent sales found to cancel." };
       }
 
-      return await this.processCancellation(lastSale, reason);
+      return await this.processCancellation(lastSale, reason, { cancelledBy });
     } catch (error) {
       console.error("Cancel last sale error:", error);
       return {
@@ -34,7 +34,8 @@ class CancellationService {
   async cancelSpecificSale(
     shopId,
     saleIdentifier,
-    reason = "No reason provided"
+    reason = "No reason provided",
+    { cancelledBy } = {}
   ) {
     try {
       let sale;
@@ -66,7 +67,7 @@ class CancellationService {
         };
       }
 
-      return await this.processCancellation(sale, reason);
+      return await this.processCancellation(sale, reason, { cancelledBy });
     } catch (error) {
       console.error("Cancel specific sale error:", error);
       return {
@@ -116,7 +117,7 @@ class CancellationService {
   /**
    * Full reversal: restore stock, reverse credit balance if needed, mark cancelled.
    */
-  async processCancellation(sale, reason) {
+  async processCancellation(sale, reason, { cancelledBy } = {}) {
     try {
       if (sale.isCancelled) {
         return {
@@ -135,7 +136,7 @@ class CancellationService {
         sale.isCancelled = true;
         sale.cancelledAt = new Date();
         sale.cancellationReason = reason;
-        sale.cancelledBy = "owner";
+        sale.cancelledBy = cancelledBy || "unknown";
         sale.status = "cancelled";
 
         if (session) {

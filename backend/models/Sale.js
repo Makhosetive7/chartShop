@@ -69,6 +69,12 @@ const saleSchema = new mongoose.Schema({
   cancelledAt: Date,
   cancellationReason: String,
   cancelledBy: String,
+  /** User who recorded the sale (multi-user attribution). */
+  createdByUserId: {
+    type: String,
+    default: null,
+    index: true,
+  },
   originalSaleId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Sale",

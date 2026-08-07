@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { api, type LoginResponse, type Shop } from './client';
+import { api, type LoginResponse, type Shop, type User } from './client';
 import {
   DEMO_PIN,
   DEMO_SECTOR_FALLBACK,
@@ -34,10 +34,16 @@ export async function login(
     return data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      const message =
-        (error.response?.data as { error?: string } | undefined)?.error ||
-        'Login failed';
-      return { success: false, token: '', shop: null as unknown as Shop, error: message };
+      const payload = error.response?.data as
+        | { error?: string; code?: string }
+        | undefined;
+      return {
+        success: false,
+        token: '',
+        shop: null as unknown as Shop,
+        error: payload?.error || 'Login failed',
+        code: payload?.code,
+      };
     }
     throw error;
   }
@@ -203,6 +209,32 @@ export async function redeemRecovery(
   }
 }
 
+export type SetupPinInput = {
+  username: string;
+  setupCode: string;
+  newPin: string;
+};
+
+export async function setupPin(
+  input: SetupPinInput,
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const { data } = await api.post<{ success: boolean; message?: string }>(
+      '/auth/setup-pin',
+      input,
+    );
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const message =
+        (error.response?.data as { error?: string } | undefined)?.error ||
+        'Could not set PIN';
+      return { success: false, error: message };
+    }
+    throw error;
+  }
+}
+
 export type RecoveryStatus = {
   success: boolean;
   hasCodes: boolean;
@@ -248,12 +280,20 @@ export async function logout(): Promise<void> {
   } finally {
     localStorage.removeItem('chartshop_token');
     localStorage.removeItem('chartshop_shop');
+    localStorage.removeItem('chartshop_user');
   }
 }
 
-export async function fetchMe(): Promise<Shop> {
-  const { data } = await api.get<{ success: boolean; shop: Shop }>('/auth/me');
-  return markDemoShop(data.shop);
+export async function fetchMe(): Promise<{ shop: Shop; user: User | null }> {
+  const { data } = await api.get<{
+    success: boolean;
+    shop: Shop;
+    user?: User | null;
+  }>('/auth/me');
+  return {
+    shop: markDemoShop(data.shop),
+    user: data.user || null,
+  };
 }
 
 export type { StatsOverview } from './stats';

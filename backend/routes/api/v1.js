@@ -1,6 +1,7 @@
 import express from "express";
-import { requireApiAuth } from "../../middleware/requireApiAuth.js";
+import { requireApiAuth, requireAdmin } from "../../middleware/requireApiAuth.js";
 import * as authController from "../../controllers/api/authController.js";
+import * as teamController from "../../controllers/api/teamController.js";
 import * as productController from "../../controllers/api/productController.js";
 import * as saleController from "../../controllers/api/saleController.js";
 import * as customerController from "../../controllers/api/customerController.js";
@@ -22,6 +23,7 @@ router.post("/auth/demo", authController.enterDemo);
 router.get("/auth/status", authController.status);
 router.get("/auth/username", authController.checkUsername);
 router.post("/auth/recovery/redeem", authController.redeemRecovery);
+router.post("/auth/setup-pin", authController.setupPin);
 
 // Auth (session)
 router.post("/auth/logout", requireApiAuth, authController.logout);
@@ -54,9 +56,35 @@ router.patch(
   authController.updateProfilePin
 );
 router.patch(
+  "/auth/profile/display-name",
+  requireApiAuth,
+  authController.updateProfileDisplayName
+);
+router.patch(
   "/auth/profile/settings",
   requireApiAuth,
   authController.updateProfileSettings
+);
+
+// Team
+router.get("/team", requireApiAuth, teamController.listMembers);
+router.post(
+  "/team",
+  requireApiAuth,
+  requireAdmin,
+  teamController.addMember
+);
+router.patch(
+  "/team/:userId/role",
+  requireApiAuth,
+  requireAdmin,
+  teamController.updateMemberRole
+);
+router.delete(
+  "/team/:userId",
+  requireApiAuth,
+  requireAdmin,
+  teamController.removeMember
 );
 
 // Products

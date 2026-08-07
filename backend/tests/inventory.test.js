@@ -14,6 +14,7 @@ import Product from "../models/Product.js";
 
 describe("InventoryService stock atomics", () => {
   let shop;
+  let username;
   let product;
 
   before(async () => {
@@ -27,6 +28,7 @@ describe("InventoryService stock atomics", () => {
   beforeEach(async () => {
     const created = await createTestShop();
     shop = created.shop;
+    username = created.username;
     product = await createTestProduct(shop._id, {
       name: "p4stock",
       price: 1,
@@ -35,7 +37,7 @@ describe("InventoryService stock atomics", () => {
   });
 
   afterEach(async () => {
-    await wipeShopData({ shopId: shop._id, username: shop.username });
+    await wipeShopData({ shopId: shop._id, username });
   });
 
   it("deducts stock when quantity is available", async () => {

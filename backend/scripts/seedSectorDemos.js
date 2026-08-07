@@ -96,9 +96,15 @@ function buildLineItems(products, itemCount = 1) {
 }
 
 async function wipeShopByUsername(username) {
-  const existing = await Shop.findOne({ username });
-  if (!existing) return;
-  const shopId = existing._id;
+  const User = (await import("../models/User.js")).default;
+  const existingUser = await User.findOne({ username });
+  let shopId = existingUser?.shopId;
+  if (!shopId) {
+    // Pre-migration leftover
+    const existing = await Shop.findOne({ username });
+    if (!existing) return;
+    shopId = existing._id;
+  }
   const ActivityLog = (await import("../models/ActivityLog.js")).default;
   await Promise.all([
     Sale.deleteMany({ shopId }),
@@ -107,6 +113,7 @@ async function wipeShopByUsername(username) {
     Product.deleteMany({ shopId }),
     Customer.deleteMany({ shopId }),
     ActivityLog.deleteMany({ shopId }),
+    User.deleteMany({ shopId }),
     Shop.deleteOne({ _id: shopId }),
   ]);
   console.log(`Removed previous ${username}`);
@@ -115,17 +122,15 @@ async function wipeShopByUsername(username) {
 async function seedSector(sector) {
   await wipeShopByUsername(sector.username);
 
+  const User = (await import("../models/User.js")).default;
   const hashedPin = await bcrypt.hash(sector.pin, 12);
   const years = sector.years || 1;
   const registeredAt = addDays(new Date(), -(years * 365 + 14));
   const [salesMin, salesMax] = sector.salesPerWeek || [3, 4];
 
   const shop = await Shop.create({
-    username: sector.username,
     businessName: sector.businessName,
     businessDescription: sector.businessDescription,
-    pin: hashedPin,
-    channels: {},
     isActive: true,
     isDemo: true,
     demoSector: sector.id,
@@ -136,6 +141,18 @@ async function seedSector(sector) {
       timezone: "Africa/Harare",
       lowStockAlert: sector.lowStockAlert ?? 10,
     },
+  });
+
+  const adminUser = await User.create({
+    shopId: shop._id,
+    username: sector.username,
+    displayName: sector.businessName,
+    pin: hashedPin,
+    role: "admin",
+    channels: {},
+    isActive: true,
+    removedAt: null,
+    createdAt: registeredAt,
   });
 
   const shopDefaultThreshold = sector.lowStockAlert ?? 10;
@@ -266,6 +283,7 @@ async function seedSector(sector) {
 
   await seedDemoActivityLog({
     shop,
+    user: adminUser,
     products,
     salesDocs,
     expenseDocs,
@@ -525,6 +543,7 @@ async function seedLaybyesAndRefunds({ shop, products, customers }) {
  */
 async function seedDemoActivityLog({
   shop,
+  user,
   products,
   salesDocs,
   expenseDocs,
@@ -532,7 +551,7 @@ async function seedDemoActivityLog({
   featureExtras,
 }) {
   const ActivityLog = (await import("../models/ActivityLog.js")).default;
-  const actor = shop.username;
+  const actor = user?._id != null ? String(user._id) : sector.username;
   const logs = [];
 
   const push = (row) => {

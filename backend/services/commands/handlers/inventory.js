@@ -2,7 +2,7 @@ import Product from "../../../models/Product.js";
 import Sale from "../../../models/Sale.js";
 import Shop from "../../../models/Shop.js";
 
-export async function handleAddProduct(shopId, text) {
+export async function handleAddProduct(shopId, text, actorUserId = null) {
   try {
     // Remove the "add " prefix
     const input = text.replace("add ", "").trim();
@@ -65,6 +65,7 @@ export async function handleAddProduct(shopId, text) {
       stock,
       lowStockThreshold,
       trackStock,
+      ...(actorUserId ? { createdByUserId: actorUserId } : {}),
     });
 
     let response = `*Product added!*\n\n`;

@@ -22,10 +22,12 @@ export async function dropLegacyAuthIndexes() {
 
   // Ensure new schema indexes exist
   const Shop = (await import("../../models/Shop.js")).default;
+  const User = (await import("../../models/User.js")).default;
   const AuthSession = (await import("../../models/AuthSession.js")).default;
   const RecoveryCode = (await import("../../models/RecoveryCode.js")).default;
   await Promise.all([
     Shop.syncIndexes(),
+    User.syncIndexes(),
     AuthSession.syncIndexes(),
     RecoveryCode.syncIndexes(),
   ]);
@@ -49,7 +51,7 @@ export async function disconnectTestDb() {
 }
 
 /**
- * Delete docs for a shop + related auth sessions.
+ * Delete docs for a shop + related auth sessions and users.
  */
 export async function wipeShopData({
   shopId,
@@ -61,9 +63,19 @@ export async function wipeShopData({
   const Sale = (await import("../../models/Sale.js")).default;
   const Customer = (await import("../../models/Customer.js")).default;
   const Shop = (await import("../../models/Shop.js")).default;
+  const User = (await import("../../models/User.js")).default;
   const Expense = (await import("../../models/Expense.js")).default;
   const AuthSession = (await import("../../models/AuthSession.js")).default;
   const RecoveryCode = (await import("../../models/RecoveryCode.js")).default;
+  const ActivityLog = (await import("../../models/ActivityLog.js")).default;
+  const Order = (await import("../../models/Order.js")).default;
+  const LayBye = (await import("../../models/LayBye.js")).default;
+
+  const uname = username || telegramId;
+
+  if (uname) {
+    await User.deleteMany({ username: String(uname).toLowerCase() });
+  }
 
   if (shopId) {
     await Promise.all([
@@ -73,17 +85,30 @@ export async function wipeShopData({
       Expense.deleteMany({ shopId }),
       AuthSession.deleteMany({ shopId }),
       RecoveryCode.deleteMany({ shopId }),
+      ActivityLog.deleteMany({ shopId }),
+      Order.deleteMany({ shopId }),
+      LayBye.deleteMany({ shopId }),
+      User.deleteMany({ shopId }),
       Shop.deleteOne({ _id: shopId }),
     ]);
   }
 
-  const uname = username || telegramId;
-  if (uname) {
-    await Shop.deleteMany({ username: String(uname).toLowerCase() });
-  }
-
   if (channelKey) {
     await AuthSession.deleteMany({ channelKey: String(channelKey) });
+    await User.updateMany(
+      {
+        $or: [
+          { "channels.telegramChatId": String(channelKey) },
+          { "channels.whatsappPhone": String(channelKey) },
+        ],
+      },
+      {
+        $set: {
+          "channels.telegramChatId": null,
+          "channels.whatsappPhone": null,
+        },
+      }
+    );
   }
 
   // Legacy cleanup for old telegramId-keyed sessions during transition

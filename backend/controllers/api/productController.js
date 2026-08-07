@@ -1,5 +1,6 @@
 import Product from "../../models/Product.js";
 import Sale from "../../models/Sale.js";
+import { logApiActivity } from "../../utils/logApiActivity.js";
 
 function serializeProduct(p) {
   return {
@@ -139,6 +140,15 @@ export async function createProduct(req, res) {
           : 10,
       trackStock,
       isActive: true,
+      createdByUserId: req.userId,
+    });
+
+    await logApiActivity(req, {
+      action: "product.create",
+      summary: `Added product ${name}`,
+      entityType: "product",
+      entityId: product._id,
+      metadata: { name, price, stock },
     });
 
     return res.status(201).json({
@@ -228,6 +238,13 @@ export async function updateProduct(req, res) {
     }
 
     await product.save();
+    await logApiActivity(req, {
+      action: "product.update",
+      summary: `Updated product ${product.name}`,
+      entityType: "product",
+      entityId: product._id,
+      metadata: { name: product.name },
+    });
     return res.json({ success: true, product: serializeProduct(product) });
   } catch (error) {
     console.error("[api/products/update]", error);
@@ -270,6 +287,13 @@ export async function updateStock(req, res) {
     }
 
     await product.save();
+    await logApiActivity(req, {
+      action: "product.stock",
+      summary: `Stock update ${product.name} → ${product.stock}`,
+      entityType: "product",
+      entityId: product._id,
+      metadata: { stock: product.stock, op, quantity },
+    });
     return res.json({ success: true, product: serializeProduct(product) });
   } catch (error) {
     console.error("[api/products/stock]", error);
@@ -303,6 +327,13 @@ export async function deleteProduct(req, res) {
 
     product.isActive = false;
     await product.save();
+    await logApiActivity(req, {
+      action: "product.delete",
+      summary: `Deleted product ${product.name}`,
+      entityType: "product",
+      entityId: product._id,
+      metadata: { name: product.name },
+    });
     return res.json({
       success: true,
       message: `Product ${product.name} deleted.`,
