@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAuth } from '@/auth';
-import type { Shop } from '@/api/client';
+import type { Shop, User } from '@/api/client';
 import { checkUsername } from '@/api/auth';
 import { ArrowButton } from '@/components/marketing/marketingPrimitives';
 import { TryDemoButton } from '@/components/demo/TryDemoButton';
@@ -121,6 +121,7 @@ export function RegisterPage() {
   const [pendingSession, setPendingSession] = useState<{
     token: string;
     shop: Shop;
+    user: User | null;
   } | null>(null);
 
   useEffect(() => {
@@ -190,7 +191,11 @@ export function RegisterPage() {
 
   function finishRegistration() {
     if (pendingSession) {
-      establishSession(pendingSession.token, pendingSession.shop);
+      establishSession(
+        pendingSession.token,
+        pendingSession.shop,
+        pendingSession.user,
+      );
     }
     setIssuedCodes(null);
     setPendingSession(null);
@@ -239,10 +244,14 @@ export function RegisterPage() {
           businessDescription.trim() || 'General merchandise',
       });
       if (result.recoveryCodes.length > 0) {
-        setPendingSession({ token: result.token, shop: result.shop });
+        setPendingSession({
+          token: result.token,
+          shop: result.shop,
+          user: result.user,
+        });
         setIssuedCodes(result.recoveryCodes);
       } else {
-        establishSession(result.token, result.shop);
+        establishSession(result.token, result.shop, result.user);
         navigate('/app', { replace: true });
       }
     } catch (err) {
@@ -330,7 +339,7 @@ export function RegisterPage() {
     <AuthShell
       eyebrow="Open your shop"
       headline="Register the till in minutes"
-      lead="Pick a shop name, a username, and a 4-digit PIN for the web dashboard. You will get recovery codes once after signup."
+      lead="Create the shop and your admin login. You can add teammates later in Settings."
       showcaseTitle="First sale starts on the web"
       showcaseLead="After register, run the shop from the dashboard. Telegram works today — WhatsApp is next."
       preview={[

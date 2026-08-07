@@ -30,23 +30,28 @@ class SessionStore {
     channelKey,
     sessionToken,
     shopId,
+    userId,
     loginTime,
   }) {
     const now = new Date();
     const key = String(channelKey);
+    const $set = {
+      channel,
+      channelKey: key,
+      type: "session",
+      sessionToken,
+      shopId,
+      loginTime: loginTime || now,
+      lastActivity: now,
+      expireAt: ttlDate(SESSION_TTL_MS),
+    };
+    if (userId) {
+      $set.userId = userId;
+    }
     return AuthSession.findOneAndUpdate(
       identityFilter(channel, key, "session"),
       {
-        $set: {
-          channel,
-          channelKey: key,
-          type: "session",
-          sessionToken,
-          shopId,
-          loginTime: loginTime || now,
-          lastActivity: now,
-          expireAt: ttlDate(SESSION_TTL_MS),
-        },
+        $set,
         $unset: { step: 1, data: 1, startTime: 1 },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -99,6 +104,12 @@ class SessionStore {
   async deleteLoginSessionsByShopId(shopId) {
     if (!shopId) return;
     await AuthSession.deleteMany({ type: "session", shopId });
+  }
+
+  /** End every login session for a user (leave shop / PIN change). */
+  async deleteLoginSessionsByUserId(userId) {
+    if (!userId) return;
+    await AuthSession.deleteMany({ type: "session", userId });
   }
 
   async upsertRegistration(channel, channelKey, { step, data, startTime }) {

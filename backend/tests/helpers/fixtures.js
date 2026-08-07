@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import Shop from "../../models/Shop.js";
+import User from "../../models/User.js";
 import Product from "../../models/Product.js";
 import Customer from "../../models/Customer.js";
 
@@ -53,14 +54,13 @@ export async function createTestShop(overrides = {}) {
   }
 
   const shop = await Shop.create({
-    username,
     businessName: overrides.businessName || "Phase4 Test Shop",
     businessDescription:
       overrides.businessDescription ||
       "Phase four golden path test shop description",
-    pin: hashedPin,
-    channels,
     isActive: true,
+    isDemo: Boolean(overrides.isDemo),
+    demoSector: overrides.demoSector || null,
     settings: {
       currency: "USD",
       timezone: overrides.timezone || "Africa/Harare",
@@ -69,10 +69,22 @@ export async function createTestShop(overrides = {}) {
     },
   });
 
+  const user = await User.create({
+    shopId: shop._id,
+    username,
+    displayName: overrides.displayName || username,
+    pin: hashedPin,
+    role: overrides.role || "admin",
+    channels,
+    isActive: true,
+    removedAt: null,
+  });
+
   return {
     shop,
-    username: shop.username,
-    telegramId: shop.username, // legacy alias used by older tests
+    user,
+    username: user.username,
+    telegramId: user.username, // legacy alias used by older tests
     pin,
   };
 }

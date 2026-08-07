@@ -48,7 +48,7 @@ export async function sendChatMessage(req, res) {
 
     await ActivityService.logChatTurn({
       shopId: req.shopId,
-      userId: req.username || req.userId,
+      userId: req.userId || req.username,
       channel: "web",
       input: message,
       reply: reply.text,

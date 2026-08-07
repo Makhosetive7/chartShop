@@ -74,6 +74,11 @@ const laybyeSchema = new mongoose.Schema({
         default: false
     },
 
+    createdByUserId: {
+        type: String,
+        default: null,
+    },
+
     createdAt: {
         type: Date,
         default: Date.now

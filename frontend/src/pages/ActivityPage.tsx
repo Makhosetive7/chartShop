@@ -31,7 +31,17 @@ import {
 } from '@/utils/dates';
 
 const CHANNELS = ['all', 'web', 'telegram', 'whatsapp', 'system'] as const;
-const ACTIONS = ['all', 'chat.turn', 'auth.login'] as const;
+const ACTIONS = [
+  'all',
+  'chat.turn',
+  'auth.login',
+  'sale.cash',
+  'sale.credit',
+  'sale.cancelled',
+  'expense.recorded',
+  'product.create',
+  'product.stock',
+] as const;
 
 type ChannelFilter = (typeof CHANNELS)[number];
 type ActionFilter = (typeof ACTIONS)[number];
@@ -248,7 +258,42 @@ function channelIcon(channel: string) {
 function actionLabel(action: string) {
   if (action === 'chat.turn') return 'Chat';
   if (action === 'auth.login') return 'Login';
+  if (action === 'sale.cash') return 'Cash sale';
+  if (action === 'sale.credit') return 'Credit sale';
+  if (action === 'sale.to_customer') return 'Sale';
+  if (action === 'sale.cancelled') return 'Cancelled';
+  if (action === 'expense.recorded') return 'Expense';
+  if (action === 'product.create') return 'New product';
+  if (action === 'product.update') return 'Product edit';
+  if (action === 'product.stock') return 'Stock';
+  if (action === 'product.delete') return 'Product removed';
+  if (action === 'customer.create') return 'Customer';
+  if (action === 'customer.credit') return 'Credit';
+  if (action === 'customer.payment') return 'Payment';
+  if (action === 'laybye.created') return 'Laybye';
+  if (action === 'laybye.payment') return 'Laybye pay';
+  if (action === 'laybye.completed') return 'Laybye done';
+  if (action === 'order.create') return 'Order';
+  if (action === 'order.status') return 'Order status';
+  if (action.startsWith('team.')) return 'Team';
+  if (action === 'shop.name') return 'Shop name';
+  if (action === 'shop.description') return 'Shop about';
+  if (action === 'shop.settings') return 'Settings';
+  if (action === 'auth.username') return 'Username';
+  if (action === 'auth.display_name') return 'Display name';
+  if (action === 'auth.pin') return 'PIN change';
+  if (action === 'auth.setup_pin') return 'PIN setup';
   return action;
+}
+
+function actorLabel(row: ActivityItem) {
+  if (row.actorDisplayName && row.actorUsername) {
+    return `${row.actorDisplayName} (@${row.actorUsername})`;
+  }
+  if (row.actorUsername) return `@${row.actorUsername}`;
+  if (row.actorDisplayName) return row.actorDisplayName;
+  if (row.actorId && !/^[a-f0-9]{24}$/i.test(row.actorId)) return row.actorId;
+  return null;
 }
 
 function getChatParts(row: ActivityItem) {
@@ -261,16 +306,18 @@ export function ActivityPage() {
   const timeZone = useShopTimezone();
   const [channel, setChannel] = useState<ChannelFilter>('all');
   const [action, setAction] = useState<ActionFilter>('all');
+  const [mineOnly, setMineOnly] = useState(false);
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['activity', channel, action],
+    queryKey: ['activity', channel, action, mineOnly],
     queryFn: () =>
       fetchActivity({
         limit: 120,
         channel: channel === 'all' ? undefined : channel,
         action: action === 'all' ? undefined : action,
+        mine: mineOnly || undefined,
       }),
   });
 
@@ -302,10 +349,13 @@ export function ActivityPage() {
     if (!q) return items;
     return items.filter((row) => {
       const { input, reply } = getChatParts(row);
+      const actor =
+        `${row.actorDisplayName || ''} ${row.actorUsername || ''} ${row.actorId || ''}`.toLowerCase();
       return (
         row.summary.toLowerCase().includes(q) ||
         row.action.toLowerCase().includes(q) ||
         row.channel.toLowerCase().includes(q) ||
+        actor.includes(q) ||
         input.toLowerCase().includes(q) ||
         reply.toLowerCase().includes(q)
       );
@@ -319,7 +369,7 @@ export function ActivityPage() {
       <Header>
         <PageTitle style={{ marginBottom: 8 }}>Activity</PageTitle>
         <PageLead style={{ marginBottom: 0 }}>
-          Every command from web and Telegram — one shop timeline. WhatsApp will join when it ships.
+          Shop timeline across web, Telegram, and WhatsApp — see who did what.
         </PageLead>
       </Header>
 
@@ -358,6 +408,22 @@ export function ActivityPage() {
               {c}
             </Tab>
           ))}
+        </Tabs>
+        <Tabs style={{ marginBottom: 0 }}>
+          <Tab
+            type="button"
+            $active={!mineOnly}
+            onClick={() => setMineOnly(false)}
+          >
+            Everyone
+          </Tab>
+          <Tab
+            type="button"
+            $active={mineOnly}
+            onClick={() => setMineOnly(true)}
+          >
+            My activity
+          </Tab>
         </Tabs>
         <Tabs style={{ marginBottom: 0 }}>
           {ACTIONS.map((a) => (
@@ -402,6 +468,7 @@ export function ActivityPage() {
           const { input, reply } = getChatParts(row);
           const open = Boolean(expanded[row.id]);
           const canExpand = Boolean(input || reply);
+          const who = actorLabel(row);
 
           return (
             <div key={row.id}>
@@ -426,6 +493,7 @@ export function ActivityPage() {
                     >
                       {actionLabel(row.action)}
                     </Badge>
+                    {who ? <Badge $tone="info">{who}</Badge> : null}
                   </Meta>
                   <Time>{formatShopTime(row.createdAt, timeZone)}</Time>
                 </Top>

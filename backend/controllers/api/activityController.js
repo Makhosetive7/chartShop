@@ -7,6 +7,10 @@ export async function listActivity(req, res) {
       action: req.query.action,
       channel: req.query.channel,
       before: req.query.before,
+      actorId:
+        req.query.mine === "1" || req.query.mine === "true"
+          ? req.userId
+          : req.query.actorId || null,
     });
     return res.json({ success: true, items });
   } catch (error) {

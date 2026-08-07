@@ -41,6 +41,17 @@ export function LoginPage() {
       await login(username.trim().toLowerCase(), pin.trim());
       navigate('/app', { replace: true });
     } catch (err) {
+      const code =
+        err && typeof err === 'object' && 'code' in err
+          ? String((err as { code?: string }).code || '')
+          : '';
+      if (code === 'MUST_SET_PIN') {
+        navigate(
+          `/setup?username=${encodeURIComponent(username.trim().toLowerCase())}`,
+          { replace: true },
+        );
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setPending(false);
@@ -51,7 +62,7 @@ export function LoginPage() {
     <AuthShell
       eyebrow="Welcome back"
       headline="Open the till again"
-      lead="Sign in with your shop username and PIN."
+      lead="Sign in with your username and PIN."
       showcaseTitle="Your shop picks up where you left off"
       showcaseLead="Sales, stock, and credit stay synced on the web — Telegram if you use it."
       preview={[
@@ -73,6 +84,13 @@ export function LoginPage() {
               label="Use a recovery code"
             />
           </div>
+          <div>
+            <AuthSwitchLink
+              prompt="Invited to a team?"
+              to="/setup"
+              label="Set your PIN"
+            />
+          </div>
         </div>
       }
       onSubmit={onSubmit}
@@ -87,7 +105,7 @@ export function LoginPage() {
     >
       <Field>
         Username
-        <Hint>Same username on web and Telegram (WhatsApp coming soon)</Hint>
+        <Hint>Your personal login — same on web, Telegram, and WhatsApp</Hint>
         <Input
           value={username}
           onChange={(e) => setUsername(e.target.value)}

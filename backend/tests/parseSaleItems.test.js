@@ -13,6 +13,7 @@ import { parseSaleItems } from "../services/commands/parseSaleItems.js";
 
 describe("parseSaleItems", () => {
   let shop;
+  let username;
 
   before(async () => {
     await connectTestDb();
@@ -25,6 +26,7 @@ describe("parseSaleItems", () => {
   beforeEach(async () => {
     const created = await createTestShop();
     shop = created.shop;
+    username = created.username;
     await createTestProduct(shop._id, {
       name: "brown bread",
       price: 2.5,
@@ -44,7 +46,7 @@ describe("parseSaleItems", () => {
   });
 
   afterEach(async () => {
-    await wipeShopData({ shopId: shop._id, username: shop.username });
+    await wipeShopData({ shopId: shop._id, username });
   });
 
   it("parses quoted multi-word product names", async () => {

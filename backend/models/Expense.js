@@ -60,6 +60,12 @@ const expenseSchema = new mongoose.Schema({
     default: Date.now,
   },
   receiptNumber: String,
+  /** User who recorded the expense. */
+  createdByUserId: {
+    type: String,
+    default: null,
+    index: true,
+  },
   isRecurring: {
     type: Boolean,
     default: false,

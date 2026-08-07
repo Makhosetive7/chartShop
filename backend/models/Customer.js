@@ -79,6 +79,10 @@ const customerSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  createdByUserId: {
+    type: String,
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

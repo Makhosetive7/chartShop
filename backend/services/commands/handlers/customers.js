@@ -6,7 +6,7 @@ import { buildSaleLineItems } from "../salePricing.js";
 import { generateCustomerReceipt } from "../helpers.js";
 import { escapeMarkdown } from "../../../utils/escapeMarkdown.js";
 
-export async function handleCustomerCommands(shopId, text) {
+export async function handleCustomerCommands(shopId, text, actorUserId = null) {
   try {
     console.log("[CommandService] Customer command received:", text);
     console.log("[CommandService] Shop ID:", shopId);
@@ -15,7 +15,7 @@ export async function handleCustomerCommands(shopId, text) {
 
     // customer add [name] [phone] [email?]
     if (lowerText.includes("add")) {
-      return await handleAddCustomer(shopId, text);
+      return await handleAddCustomer(shopId, text, actorUserId);
     }
 
     // customers (list all)
@@ -61,7 +61,7 @@ export async function handleCustomerCommands(shopId, text) {
   }
 }
 
-export async function handleAddCustomer(shopId, text) {
+export async function handleAddCustomer(shopId, text, actorUserId = null) {
   try {
     console.log("[CommandService] Adding customer from text:", text);
 
@@ -91,7 +91,8 @@ export async function handleAddCustomer(shopId, text) {
       shopId,
       name,
       phone,
-      email
+      email,
+      { createdByUserId: actorUserId }
     );
     return result.message;
   } catch (error) {
@@ -100,7 +101,7 @@ export async function handleAddCustomer(shopId, text) {
   }
 }
 
-export async function handleSellToCustomer(shopId, text) {
+export async function handleSellToCustomer(shopId, text, actorUserId = null) {
   try {
     console.log("[CommandService] Sell to customer:", text);
 
@@ -132,7 +133,8 @@ export async function handleSellToCustomer(shopId, text) {
     const result = await processSaleWithCustomer(
       shopId,
       itemsText,
-      customer
+      customer,
+      actorUserId
     );
     return result;
   } catch (error) {
@@ -141,7 +143,7 @@ export async function handleSellToCustomer(shopId, text) {
   }
 }
 
-export async function handleCustomerPayment(shopId, text) {
+export async function handleCustomerPayment(shopId, text, actorUserId = null) {
   try {
     console.log("[CommandService] Customer payment:", text);
 
@@ -293,7 +295,12 @@ export async function handleCreditHistory(shopId, text) {
 }
 
 
-export async function processSaleWithCustomer(shopId, itemsText, customer) {
+export async function processSaleWithCustomer(
+  shopId,
+  itemsText,
+  customer,
+  actorUserId = null
+) {
   try {
     console.log("[CommandService] Processing sale with customer:", {
       customerId: customer._id,
@@ -333,6 +340,7 @@ export async function processSaleWithCustomer(shopId, itemsText, customer) {
         status: "completed",
         amountPaid: total,
         balanceDue: 0,
+        ...(actorUserId ? { createdByUserId: actorUserId } : {}),
       });
     } catch (createError) {
       await InventoryService.restoreSaleItems(items);
@@ -363,7 +371,7 @@ export async function processSaleWithCustomer(shopId, itemsText, customer) {
  * Ledger-style credit (no stock deduct). Item parsing uses shared parseSaleItems.
  * Prefer `credit sale to` for full credit sales with stock + Sale records.
  */
-export async function handleCustomerCredit(shopId, text) {
+export async function handleCustomerCredit(shopId, text, actorUserId = null) {
   try {
     const match = text.match(
       /^credit\s+(?:"([^"]+)"|(\S+))\s+(.+)$/i

@@ -9,6 +9,7 @@ import {
   updateProfileDescription,
   updateProfilePin,
   updateProfileUsername,
+  updateProfileDisplayName,
   updateShopSettings,
 } from '@/api/reports';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
@@ -28,6 +29,7 @@ import { getErrorMessage } from '@/api/types';
 import { useAuth } from '@/auth';
 import { BrandMark } from '@/components/ui/BrandMark';
 import { RecoveryCodesPanel } from '@/components/auth/RecoveryCodesPanel';
+import { TeamSettingsCard } from '@/components/settings/TeamSettingsCard';
 import {
   Page,
   PageTitle,
@@ -322,11 +324,16 @@ function suggestionsFromError(error: unknown): string[] {
 }
 
 export function SettingsPage() {
-  const { shop, logout, updateShop } = useAuth();
+  const { shop, user, logout, updateShop, updateUser, isAdmin } = useAuth();
   const qc = useQueryClient();
   const timeZone = useShopTimezone();
   const [name, setName] = useState(shop?.businessName || '');
-  const [username, setUsername] = useState(shop?.username || '');
+  const [username, setUsername] = useState(
+    user?.username || shop?.username || '',
+  );
+  const [displayName, setDisplayName] = useState(
+    user?.displayName || user?.username || '',
+  );
   const [description, setDescription] = useState(
     shop?.businessDescription || '',
   );
@@ -356,7 +363,8 @@ export function SettingsPage() {
     const loaded = profileQ.data?.shop;
     if (!loaded) return;
     setName(loaded.businessName || '');
-    setUsername(loaded.username || '');
+    setUsername(loaded.username || user?.username || '');
+    setDisplayName(user?.displayName || loaded.username || user?.username || '');
     setDescription(loaded.businessDescription || '');
     const nextSettings = (loaded.settings || {}) as {
       timezone?: string;
@@ -364,11 +372,11 @@ export function SettingsPage() {
     };
     setTimezone(nextSettings.timezone || 'Africa/Harare');
     setLowStockAlert(String(nextSettings.lowStockAlert ?? 10));
-  }, [profileQ.data?.shop]);
+  }, [profileQ.data?.shop, user?.username, user?.displayName]);
 
   useEffect(() => {
     const normalized = username.trim().toLowerCase();
-    const current = (shop?.username || '').toLowerCase();
+    const current = (user?.username || shop?.username || '').toLowerCase();
     if (!normalized) {
       setUsernameAvailability({ status: 'idle' });
       return;
@@ -432,7 +440,7 @@ export function SettingsPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [username, shop?.username]);
+  }, [username, user?.username, shop?.username]);
 
   const saveName = useMutation({
     mutationFn: () => updateProfileName(name.trim()),
@@ -451,6 +459,7 @@ export function SettingsPage() {
       toastSuccess(data.message || 'Username updated.');
       setUsername(next);
       updateShop({ username: next });
+      updateUser({ username: next });
       setUsernameAvailability({
         status: 'ready',
         available: true,
@@ -468,6 +477,20 @@ export function SettingsPage() {
         suggestions: mergeSuggestions(suggestionsFromError(e), desired),
       });
     },
+  });
+
+  const saveDisplayName = useMutation({
+    mutationFn: () => updateProfileDisplayName(displayName.trim()),
+    onSuccess: (data) => {
+      const next =
+        data.user?.displayName || displayName.trim();
+      toastSuccess(data.message || 'Display name updated.');
+      setDisplayName(next);
+      updateUser({ displayName: next });
+      void qc.invalidateQueries({ queryKey: ['profile'] });
+      void qc.invalidateQueries({ queryKey: ['team'] });
+    },
+    onError: (e) => toastError(getErrorMessage(e)),
   });
 
   const saveDesc = useMutation({
@@ -514,7 +537,7 @@ export function SettingsPage() {
   const recoveryQ = useQuery({
     queryKey: ['recovery-status'],
     queryFn: fetchRecoveryStatus,
-    enabled: Boolean(shop) && !shop?.isDemo,
+    enabled: Boolean(shop) && !shop?.isDemo && isAdmin,
   });
 
   const [freshCodes, setFreshCodes] = useState<string[] | null>(null);
@@ -563,11 +586,23 @@ export function SettingsPage() {
       toastError(usernameAvailability.message || 'Username is not available.');
       return;
     }
-    if (validation.normalized === (shop?.username || '').toLowerCase()) {
+    if (
+      validation.normalized ===
+      (user?.username || shop?.username || '').toLowerCase()
+    ) {
       toastSuccess('Username unchanged.');
       return;
     }
     saveUsername.mutate();
+  }
+
+  function onDisplayName(e: FormEvent) {
+    e.preventDefault();
+    if (!displayName.trim()) {
+      toastError('Display name is required.');
+      return;
+    }
+    saveDisplayName.mutate();
   }
 
   function onDesc(e: FormEvent) {
@@ -603,7 +638,9 @@ export function SettingsPage() {
   }
 
   const shopName = profile?.businessName || shop?.businessName || 'Your shop';
-  const displayUsername = shop?.username || 'no username';
+  const displayUsername =
+    user?.username || shop?.username || 'no username';
+  const roleLabel = user?.role === 'admin' ? 'Admin' : user?.role ? 'Member' : null;
 
   let usernameTone: 'ok' | 'bad' | 'muted' = 'muted';
   let usernameStatusText = '';
@@ -613,7 +650,8 @@ export function SettingsPage() {
     if (usernameAvailability.available) {
       usernameTone = 'ok';
       usernameStatusText =
-        username.trim().toLowerCase() === (shop?.username || '').toLowerCase()
+        username.trim().toLowerCase() ===
+        (user?.username || shop?.username || '').toLowerCase()
           ? 'This is your current username'
           : 'Username is available';
     } else {
@@ -633,7 +671,8 @@ export function SettingsPage() {
       <Header>
         <PageTitle>Settings</PageTitle>
         <PageLead>
-          Keep the shop profile and PIN in sync on web and Telegram (WhatsApp coming soon).
+          Your login, shop profile, and team — same access on web, Telegram, and
+          WhatsApp.
         </PageLead>
       </Header>
 
@@ -643,7 +682,10 @@ export function SettingsPage() {
             <BrandMark size={48} />
             <ShopMeta>
               <strong>{shopName}</strong>
-              <span>@{displayUsername}</span>
+              <span>
+                @{displayUsername}
+                {roleLabel ? ` · ${roleLabel}` : ''}
+              </span>
             </ShopMeta>
           </ShopBlock>
           {profile?.isLoggedIn || shop ? (
@@ -656,9 +698,9 @@ export function SettingsPage() {
           <HeroStat>
             <span>Last login</span>
             <strong>
-              {profile?.lastLogin || shop?.lastLogin
+              {profile?.lastLogin || shop?.lastLogin || user?.lastLogin
                 ? formatShopDateTime(
-                    profile?.lastLogin || shop?.lastLogin,
+                    profile?.lastLogin || shop?.lastLogin || user?.lastLogin,
                     timeZone,
                   )
                 : 'Never'}
@@ -684,6 +726,7 @@ export function SettingsPage() {
       </Hero>
 
       <Stack>
+        {isAdmin ? (
         <Card>
           <SectionHead>
             <IconBadge>
@@ -749,6 +792,7 @@ export function SettingsPage() {
             </FormActions>
           </form>
         </Card>
+        ) : null}
 
         <Card>
           <SectionHead>
@@ -756,9 +800,13 @@ export function SettingsPage() {
               <Building2 size={18} />
             </IconBadge>
             <SectionCopy>
-              <h2>Shop profile</h2>
-              <p>Username, name, and description used across web and chat.</p>
-              <Command>profile edit username · profile edit name · profile edit description</Command>
+              <h2>{isAdmin ? 'Shop & login' : 'Your login'}</h2>
+              <p>
+                {isAdmin
+                  ? 'Your username is personal. Business name and description are shared for the whole shop.'
+                  : 'Change your username and PIN. Shop name and settings are managed by an admin.'}
+              </p>
+              <Command>profile edit username · profile edit pin</Command>
             </SectionCopy>
           </SectionHead>
 
@@ -766,9 +814,28 @@ export function SettingsPage() {
             <SettingsProfileSkeleton />
           ) : (
             <>
-          <form onSubmit={onUsername}>
+          <form onSubmit={onDisplayName}>
             <Field>
-              Username
+              Display name
+              <FieldHint>Shown on activity and team lists</FieldHint>
+              <Input
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="e.g. Thabo"
+                maxLength={50}
+                required
+              />
+            </Field>
+            <FormActions>
+              <Button type="submit" loading={saveDisplayName.isPending}>
+                {saveDisplayName.isPending ? 'Saving…' : 'Save display name'}
+              </Button>
+            </FormActions>
+          </form>
+
+          <form onSubmit={onUsername} style={{ marginTop: 28 }}>
+            <Field>
+              Your username
               <FieldHint>
                 3–15 lowercase letters · optional digits at the end · same login
                 on all platforms
@@ -820,6 +887,8 @@ export function SettingsPage() {
             </FormActions>
           </form>
 
+          {isAdmin ? (
+            <>
           <form onSubmit={onName} style={{ marginTop: 28 }}>
             <Field>
               Business name
@@ -854,6 +923,8 @@ export function SettingsPage() {
             </FormActions>
           </form>
             </>
+          ) : null}
+            </>
           )}
         </Card>
 
@@ -863,10 +934,10 @@ export function SettingsPage() {
               <KeyRound size={18} />
             </IconBadge>
             <SectionCopy>
-              <h2>Security PIN</h2>
+              <h2>Your PIN</h2>
               <p>
-                Same 4-digit PIN for web and chat. Keep it private — it unlocks the
-                till everywhere.
+                Your 4-digit PIN for web and chat. Other team members have their
+                own.
               </p>
               <Command>profile edit pin</Command>
             </SectionCopy>
@@ -928,7 +999,9 @@ export function SettingsPage() {
           </form>
         </Card>
 
-        {!shop?.isDemo ? (
+        <TeamSettingsCard />
+
+        {!shop?.isDemo && isAdmin ? (
           <Card>
             <SectionHead>
               <IconBadge>
@@ -946,7 +1019,7 @@ export function SettingsPage() {
             {freshCodes ? (
               <RecoveryCodesPanel
                 codes={freshCodes}
-                username={shop?.username}
+                username={user?.username || shop?.username}
                 continueLabel="Done — hide codes"
                 onContinue={() => setFreshCodes(null)}
               />

@@ -83,14 +83,17 @@ async function main() {
   await mongoose.connect(uri);
   console.log("Connected to MongoDB");
 
-  const existing = await Shop.findOne({ username: USER_ID });
-  if (existing) {
-    const shopId = existing._id;
+  const existingUser = await (await import("../models/User.js")).default.findOne({
+    username: USER_ID,
+  });
+  if (existingUser) {
+    const shopId = existingUser.shopId;
     await Promise.all([
       Sale.deleteMany({ shopId }),
       Expense.deleteMany({ shopId }),
       Product.deleteMany({ shopId }),
       Customer.deleteMany({ shopId }),
+      (await import("../models/User.js")).default.deleteMany({ shopId }),
       Shop.deleteOne({ _id: shopId }),
     ]);
     console.log("Removed previous boutique_demo shop data");
@@ -100,12 +103,9 @@ async function main() {
   const registeredAt = addDays(new Date(), -(YEARS * 365 + 14));
 
   const shop = await Shop.create({
-    username: USER_ID,
     businessName: BUSINESS_NAME,
     businessDescription:
       "Women's clothing boutique — dresses, separates, and accessories.",
-    pin: hashedPin,
-    channels: {},
     isActive: true,
     isDemo: true,
     demoSector: "clothing",
@@ -116,6 +116,19 @@ async function main() {
       timezone: "Africa/Harare",
       lowStockAlert: 8,
     },
+  });
+
+  const User = (await import("../models/User.js")).default;
+  await User.create({
+    shopId: shop._id,
+    username: USER_ID,
+    displayName: BUSINESS_NAME,
+    pin: hashedPin,
+    role: "admin",
+    channels: {},
+    isActive: true,
+    removedAt: null,
+    createdAt: registeredAt,
   });
 
   const products = await Product.insertMany(

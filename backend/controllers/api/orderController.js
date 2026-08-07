@@ -1,6 +1,7 @@
 import OrderService from "../../services/OrderService.js";
 import { itemsToCommandText } from "../../utils/apiSaleItems.js";
 import { stripMarkdown } from "../../utils/apiResponse.js";
+import { logApiActivity } from "../../utils/logApiActivity.js";
 
 function serializeOrder(o) {
   if (!o) return null;
@@ -89,6 +90,14 @@ export async function createOrder(req, res) {
       });
     }
 
+    await logApiActivity(req, {
+      action: "order.create",
+      summary: `Order for ${result.order.customerName} $${Number(result.order.total).toFixed(2)}`,
+      entityType: "order",
+      entityId: result.order._id,
+      metadata: { total: result.order.total, orderType },
+    });
+
     return res.status(201).json({
       success: true,
       order: serializeOrder(result.order),
@@ -153,6 +162,14 @@ export async function updateOrderStatus(req, res) {
         error: stripMarkdown(result.message),
       });
     }
+
+    await logApiActivity(req, {
+      action: "order.status",
+      summary: `Order status → ${status}`,
+      entityType: "order",
+      entityId: result.order._id,
+      metadata: { status },
+    });
 
     return res.json({
       success: true,

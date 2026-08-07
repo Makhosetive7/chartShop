@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import Shop from "../models/Shop.js";
+import User from "../models/User.js";
 import RecoveryCode from "../models/RecoveryCode.js";
 import SessionStore, {
   SESSION_TTL_MS,
@@ -9,7 +10,7 @@ import SessionStore, {
 } from "./sessionStore.js";
 import {
   normalizeUsername,
-  shopChannelQuery,
+  userChannelQuery,
 } from "../utils/channelIdentity.js";
 import {
   validateUsername as validateUsernamePolicy,
@@ -34,34 +35,76 @@ class AuthService {
   }
 
   // ==========================================
-  // SHOP / CHANNEL LOOKUP
+  // USER / CHANNEL LOOKUP
   // ==========================================
 
-  async findShopByUsername(username) {
+  /**
+   * Find by username (includes inactive — use for uniqueness checks).
+   * Login paths must also require isActive !== false and removedAt null.
+   */
+  async findUserByUsername(username) {
     const normalized = normalizeUsername(username);
     if (!normalized) return null;
-    return Shop.findOne({ username: normalized });
+    return User.findOne({ username: normalized });
   }
 
-  async findShopByChannel(channel, channelKey) {
-    const query = shopChannelQuery(channel, channelKey);
+  async findUserByChannel(channel, channelKey) {
+    const query = userChannelQuery(channel, channelKey);
     if (!query) return null;
-    return Shop.findOne(query);
+    return User.findOne(query);
+  }
+
+  /** @deprecated Prefer findUserByUsername — credentials live on User. */
+  async findShopByUsername(username) {
+    const user = await this.findUserByUsername(username);
+    if (!user) return null;
+    return Shop.findById(user.shopId);
+  }
+
+  /** @deprecated Prefer findUserByChannel — channels live on User. */
+  async findShopByChannel(channel, channelKey) {
+    const user = await this.findUserByChannel(channel, channelKey);
+    if (!user) return null;
+    return Shop.findById(user.shopId);
+  }
+
+  isUserLoginEligible(user) {
+    return Boolean(user && user.isActive !== false && !user.removedAt);
+  }
+
+  toPublicUser(user) {
+    if (!user) return null;
+    const doc = typeof user.toObject === "function" ? user.toObject() : user;
+    return {
+      id: doc._id,
+      _id: doc._id,
+      shopId: doc.shopId,
+      username: doc.username,
+      displayName: doc.displayName,
+      role: doc.role,
+      isActive: doc.isActive !== false,
+      lastLogin: doc.lastLogin || null,
+      createdAt: doc.createdAt || null,
+      channels: {
+        telegramLinked: Boolean(doc.channels?.telegramChatId),
+        whatsappLinked: Boolean(doc.channels?.whatsappPhone),
+      },
+    };
   }
 
   /**
-   * Bind a messaging channel to a shop on first successful credential login.
-   * Refuses if this shop already has a different chat, or another shop owns this chat.
+   * Bind a messaging channel to a user on first successful credential login.
+   * Refuses if this user already has a different chat, or another user owns this chat.
    */
-  async bindChannel(shop, channel, channelKey) {
+  async bindChannel(user, channel, channelKey) {
     if (channel !== "telegram" && channel !== "whatsapp") {
-      return { ok: true, shop };
+      return { ok: true, user };
     }
 
     const key = String(channelKey);
     const field =
       channel === "telegram" ? "telegramChatId" : "whatsappPhone";
-    const current = shop.channels?.[field];
+    const current = user.channels?.[field];
 
     if (current && current !== key) {
       return {
@@ -73,10 +116,10 @@ class AuthService {
       };
     }
 
-    const takenQuery = shopChannelQuery(channel, key);
-    const taken = await Shop.findOne({
+    const takenQuery = userChannelQuery(channel, key);
+    const taken = await User.findOne({
       ...takenQuery,
-      _id: { $ne: shop._id },
+      _id: { $ne: user._id },
     });
     if (taken) {
       return {
@@ -88,15 +131,15 @@ class AuthService {
     }
 
     if (!current) {
-      shop.channels = shop.channels || {};
-      shop.channels[field] = key;
-      await shop.save();
+      user.channels = user.channels || {};
+      user.channels[field] = key;
+      await user.save();
     }
 
-    return { ok: true, shop };
+    return { ok: true, user };
   }
 
-  async openChannelSession(shop, channel, channelKey) {
+  async openChannelSession(shop, user, channel, channelKey) {
     const sessionToken = this.generateSessionToken();
     const key = channel === "web" ? sessionToken : String(channelKey);
 
@@ -105,6 +148,7 @@ class AuthService {
       channelKey: key,
       sessionToken,
       shopId: shop._id,
+      userId: user._id,
       loginTime: new Date(),
     });
 
@@ -117,13 +161,15 @@ class AuthService {
 
   async startRegistration(channel, channelKey) {
     try {
-      const linked = await this.findShopByChannel(channel, channelKey);
+      const linked = await this.findUserByChannel(channel, channelKey);
       if (linked) {
+        const shop = await Shop.findById(linked.shopId);
+        const businessName = shop?.businessName || "your business";
         return {
           success: false,
           message:
             "*This chat is already linked*\n\n" +
-            `Shop: *${linked.businessName}* (@${linked.username})\n\n` +
+            `Shop: *${businessName}* (@${linked.username})\n\n` +
             "Use `login <username> <pin>` or `login <pin>` to sign in.",
         };
       }
@@ -239,7 +285,7 @@ class AuthService {
     }
 
     const username = validation.normalized;
-    const existing = await this.findShopByUsername(username);
+    const existing = await this.findUserByUsername(username);
     if (existing) {
       const suggestions = await this.suggestAvailableUsernames(username);
       const suggestionLines =
@@ -409,6 +455,7 @@ class AuthService {
       completed: true,
       sessionToken: result.sessionToken,
       shop: result.shop,
+      user: result.user,
       recoveryCodes: result.recoveryCodes,
       message:
         "*Registration Complete!*\n\n" +
@@ -423,7 +470,8 @@ class AuthService {
   }
 
   /**
-   * One-shot or API registration. Optionally binds the current messaging channel.
+   * One-shot or API registration. Creates Shop (tenant) + admin User.
+   * Optionally binds the current messaging channel on the user.
    */
   async registerAccount({
     username,
@@ -432,6 +480,7 @@ class AuthService {
     pin,
     channel = null,
     channelKey = null,
+    displayName = null,
   }) {
     const usernameValidation = this.validateUsername(username);
     if (!usernameValidation.valid) {
@@ -459,7 +508,7 @@ class AuthService {
     }
 
     const normalized = usernameValidation.normalized;
-    const existingUser = await this.findShopByUsername(normalized);
+    const existingUser = await this.findUserByUsername(normalized);
     if (existingUser) {
       const suggestions = await this.suggestAvailableUsernames(normalized);
       return {
@@ -470,7 +519,7 @@ class AuthService {
     }
 
     if (channel && channelKey && channel !== "web") {
-      const linked = await this.findShopByChannel(channel, channelKey);
+      const linked = await this.findUserByChannel(channel, channelKey);
       if (linked) {
         return {
           success: false,
@@ -488,14 +537,12 @@ class AuthService {
       channels.whatsappPhone = String(channelKey);
     }
 
+    const trimmedBusinessName = businessName.trim();
     let shop;
     try {
       shop = await Shop.create({
-        username: normalized,
-        businessName: businessName.trim(),
+        businessName: trimmedBusinessName,
         businessDescription: businessDescription.trim(),
-        pin: hashedPin,
-        channels,
         isActive: true,
         registeredAt: new Date(),
         settings: {
@@ -505,6 +552,29 @@ class AuthService {
         },
       });
     } catch (error) {
+      if (error?.code === 11000) {
+        return {
+          success: false,
+          message: "Business name is already registered.",
+        };
+      }
+      throw error;
+    }
+
+    let user;
+    try {
+      user = await User.create({
+        shopId: shop._id,
+        username: normalized,
+        displayName: (displayName || normalized).trim(),
+        pin: hashedPin,
+        role: "admin",
+        channels,
+        isActive: true,
+        removedAt: null,
+      });
+    } catch (error) {
+      await Shop.deleteOne({ _id: shop._id }).catch(() => {});
       if (error?.code === 11000) {
         const suggestions = await this.suggestAvailableUsernames(normalized);
         return {
@@ -519,6 +589,7 @@ class AuthService {
     const sessionChannel = channel || "web";
     const { sessionToken } = await this.openChannelSession(
       shop,
+      user,
       sessionChannel,
       channelKey
     );
@@ -537,6 +608,7 @@ class AuthService {
       success: true,
       sessionToken,
       shop: shop.toObject(),
+      user: user.toObject(),
       recoveryCodes,
       message: "Registration complete.",
     };
@@ -583,14 +655,14 @@ class AuthService {
    */
   async loginWithCredentials({ username, pin, channel, channelKey }) {
     try {
-      const shop = await this.findShopByUsername(username);
+      const user = await this.findUserByUsername(username);
 
-      const rateLimitCheck = await this.checkRateLimit(shop);
+      const rateLimitCheck = await this.checkRateLimit(user);
       if (!rateLimitCheck.allowed) {
         return rateLimitCheck;
       }
 
-      if (!shop) {
+      if (!this.isUserLoginEligible(user)) {
         return {
           success: false,
           message:
@@ -600,10 +672,31 @@ class AuthService {
         };
       }
 
-      const validPin = await bcrypt.compare(pin, shop.pin);
+      if (user.mustSetPin) {
+        return {
+          success: false,
+          code: "MUST_SET_PIN",
+          message:
+            "*Set your PIN first*\n\n" +
+            "This account was invited. Use your username, setup code, and a new PIN at /setup (or Setup PIN on the login page).",
+        };
+      }
+
+      const shop = await Shop.findById(user.shopId);
+      if (!shop || shop.isActive === false) {
+        return {
+          success: false,
+          message:
+            "*Account not found*\n\n" +
+            "No shop with that username.\n\n" +
+            "New user? Use `register` to create your business.",
+        };
+      }
+
+      const validPin = await bcrypt.compare(pin, user.pin);
       if (!validPin) {
-        await this.recordFailedAttempt(shop);
-        const attemptsLeft = this.maxAttempts - (shop.loginAttempts || 0);
+        await this.recordFailedAttempt(user);
+        const attemptsLeft = this.maxAttempts - (user.loginAttempts || 0);
         return {
           success: false,
           message:
@@ -620,7 +713,7 @@ class AuthService {
       }
 
       if (channel === "telegram" || channel === "whatsapp") {
-        const bind = await this.bindChannel(shop, channel, channelKey);
+        const bind = await this.bindChannel(user, channel, channelKey);
         if (!bind.ok) {
           return { success: false, message: bind.message };
         }
@@ -628,14 +721,15 @@ class AuthService {
 
       const { sessionToken } = await this.openChannelSession(
         shop,
+        user,
         channel,
         channelKey
       );
 
-      shop.lastLogin = new Date();
-      shop.loginAttempts = 0;
-      shop.lockedUntil = null;
-      await shop.save();
+      user.lastLogin = new Date();
+      user.loginAttempts = 0;
+      user.lockedUntil = null;
+      await user.save();
 
       const greeting = this.getTimeBasedGreeting();
 
@@ -643,9 +737,10 @@ class AuthService {
         success: true,
         sessionToken,
         shop: shop.toObject(),
+        user: user.toObject(),
         message:
           `${greeting}\n\n` +
-          `Welcome back to *${shop.businessName}* (@${shop.username})\n\n` +
+          `Welcome back to *${shop.businessName}* (@${user.username})\n\n` +
           "*Quick Actions:*\n" +
           "• sell - Record a sale\n" +
           "• daily - View today's report\n" +
@@ -662,11 +757,11 @@ class AuthService {
   }
 
   /**
-   * PIN-only login — only when this channel is already linked to a shop.
+   * PIN-only login — only when this channel is already linked to a user.
    */
   async loginWithPinOnly({ pin, channel, channelKey }) {
-    const shop = await this.findShopByChannel(channel, channelKey);
-    if (!shop) {
+    const user = await this.findUserByChannel(channel, channelKey);
+    if (!user || !this.isUserLoginEligible(user)) {
       return {
         success: false,
         message:
@@ -677,7 +772,7 @@ class AuthService {
     }
 
     return this.loginWithCredentials({
-      username: shop.username,
+      username: user.username,
       pin,
       channel,
       channelKey,
@@ -725,11 +820,18 @@ class AuthService {
 
       const shop = session.shopId
         ? await Shop.findById(session.shopId)
-        : await this.findShopByChannel(channel, channelKey);
+        : null;
 
-      if (shop) {
-        shop.lastLogout = new Date();
-        await shop.save();
+      let user = null;
+      if (session.userId) {
+        user = await User.findById(session.userId);
+      } else {
+        user = await this.findUserByChannel(channel, channelKey);
+      }
+
+      if (user) {
+        user.lastLogout = new Date();
+        await user.save();
       }
 
       await SessionStore.deleteLoginSession(channel, channelKey);
@@ -767,10 +869,18 @@ class AuthService {
 
   async getProfile(channel, channelKey) {
     try {
-      const shop =
-        (await this.getAuthenticatedShop(channel, channelKey)) ||
-        (await this.findShopByChannel(channel, channelKey));
+      const user =
+        (await this.getAuthenticatedUser(channel, channelKey)) ||
+        (await this.findUserByChannel(channel, channelKey));
 
+      if (!user) {
+        return {
+          success: false,
+          message: "*Profile not found*\n\nNo account found for this chat.",
+        };
+      }
+
+      const shop = await Shop.findById(user.shopId);
       if (!shop) {
         return {
           success: false,
@@ -782,21 +892,21 @@ class AuthService {
       const isLoggedIn = Boolean(session);
 
       let profileMessage = "*Your Profile*\n\n";
-      profileMessage += `*Username:* ${shop.username}\n`;
+      profileMessage += `*Username:* ${user.username}\n`;
       profileMessage += `*Business Name:* ${shop.businessName}\n`;
       profileMessage += `*Description:* ${
         shop.businessDescription || "Not set"
       }\n`;
-      profileMessage += `*PIN:* ${shop.pin ? "••••" : "Not set"}\n\n`;
+      profileMessage += `*PIN:* ${user.pin ? "••••" : "Not set"}\n\n`;
       profileMessage += `*Telegram:* ${
-        shop.channels?.telegramChatId ? "Linked" : "Not linked"
+        user.channels?.telegramChatId ? "Linked" : "Not linked"
       }\n`;
       profileMessage += `*WhatsApp:* ${
-        shop.channels?.whatsappPhone ? "Linked" : "Not linked"
+        user.channels?.whatsappPhone ? "Linked" : "Not linked"
       }\n\n`;
       profileMessage += `*Registered:* ${shop.registeredAt.toLocaleDateString()}\n`;
       profileMessage += `*Last Login:* ${
-        shop.lastLogin ? this.formatLastLogin(shop.lastLogin) : "Never"
+        user.lastLogin ? this.formatLastLogin(user.lastLogin) : "Never"
       }\n`;
       profileMessage += `*Status:* ${
         isLoggedIn ? "Logged In" : "Logged Out"
@@ -810,15 +920,17 @@ class AuthService {
         success: true,
         message: profileMessage,
         profile: {
-          username: shop.username,
+          username: user.username,
+          displayName: user.displayName,
+          role: user.role,
           businessName: shop.businessName,
           businessDescription: shop.businessDescription,
           registeredAt: shop.registeredAt,
-          lastLogin: shop.lastLogin,
+          lastLogin: user.lastLogin,
           isLoggedIn,
           channels: {
-            telegramLinked: Boolean(shop.channels?.telegramChatId),
-            whatsappLinked: Boolean(shop.channels?.whatsappPhone),
+            telegramLinked: Boolean(user.channels?.telegramChatId),
+            whatsappLinked: Boolean(user.channels?.whatsappPhone),
           },
         },
       };
@@ -831,19 +943,21 @@ class AuthService {
     }
   }
 
-  async getProfileByShop(shop, { isLoggedIn = true } = {}) {
+  async getProfileByShop(shop, { isLoggedIn = true, user = null } = {}) {
     return {
       success: true,
       profile: {
-        username: shop.username,
+        username: user?.username ?? null,
+        displayName: user?.displayName ?? null,
+        role: user?.role ?? null,
         businessName: shop.businessName,
         businessDescription: shop.businessDescription,
         registeredAt: shop.registeredAt,
-        lastLogin: shop.lastLogin,
+        lastLogin: user?.lastLogin ?? null,
         isLoggedIn,
         channels: {
-          telegramLinked: Boolean(shop.channels?.telegramChatId),
-          whatsappLinked: Boolean(shop.channels?.whatsappPhone),
+          telegramLinked: Boolean(user?.channels?.telegramChatId),
+          whatsappLinked: Boolean(user?.channels?.whatsappPhone),
         },
       },
     };
@@ -859,8 +973,8 @@ class AuthService {
         };
       }
 
-      const shop = await this.getAuthenticatedShop(channel, channelKey);
-      if (!shop) {
+      const user = await this.getAuthenticatedUser(channel, channelKey);
+      if (!user) {
         return { success: false, message: "*Profile not found*" };
       }
 
@@ -914,8 +1028,8 @@ class AuthService {
         };
       }
 
-      const shop = await this.getAuthenticatedShop(channel, channelKey);
-      if (!shop) {
+      const user = await this.getAuthenticatedUser(channel, channelKey);
+      if (!user) {
         await SessionStore.deletePinChange(channel, channelKey);
         return { success: false, message: "*Profile not found*" };
       }
@@ -934,7 +1048,7 @@ class AuthService {
           };
         }
 
-        const isValid = await bcrypt.compare(oldPin, shop.pin);
+        const isValid = await bcrypt.compare(oldPin, user.pin);
         if (!isValid) {
           return {
             success: false,
@@ -976,7 +1090,7 @@ class AuthService {
           };
         }
 
-        const isSameAsOld = await bcrypt.compare(newPin, shop.pin);
+        const isSameAsOld = await bcrypt.compare(newPin, user.pin);
         if (isSameAsOld) {
           return {
             success: false,
@@ -988,13 +1102,17 @@ class AuthService {
           };
         }
 
-        shop.pin = await bcrypt.hash(newPin, 12);
-        await shop.save();
+        user.pin = await bcrypt.hash(newPin, 12);
+        await user.save();
         await SessionStore.deletePinChange(channel, channelKey);
 
         return {
           success: true,
           completed: true,
+          shop: await Shop.findById(user.shopId).then((s) =>
+            s ? s.toObject() : null
+          ),
+          user: user.toObject(),
           message:
             "*PIN Changed Successfully!*\n\n" +
             "Your new PIN has been saved.\n\n" +
@@ -1150,10 +1268,14 @@ class AuthService {
   }
 
   /**
-   * Change login username (web + chat). Enforces the new registration policy.
-   * Sessions stay valid (keyed by shopId).
+   * Change login username for a user. Sessions stay valid (keyed by shopId + userId).
    */
-  async updateUsernameForShop(shop, newUsername) {
+  async updateUsernameForUser(user, newUsername) {
+    if (!user) {
+      return { success: false, message: "User required." };
+    }
+
+    const shop = await Shop.findById(user.shopId);
     if (shop?.isDemo) {
       return {
         success: false,
@@ -1172,16 +1294,17 @@ class AuthService {
     }
 
     const normalized = validation.normalized;
-    if (normalized === normalizeUsername(shop.username)) {
+    if (normalized === normalizeUsername(user.username)) {
       return {
         success: true,
         message: "Username unchanged.",
+        user,
         shop,
       };
     }
 
-    const existing = await Shop.findOne({
-      _id: { $ne: shop._id },
+    const existing = await User.findOne({
+      _id: { $ne: user._id },
       username: normalized,
     });
     if (existing) {
@@ -1193,10 +1316,10 @@ class AuthService {
       };
     }
 
-    const previous = shop.username;
-    shop.username = normalized;
+    const previous = user.username;
+    user.username = normalized;
     try {
-      await shop.save();
+      await user.save();
     } catch (error) {
       if (error?.code === 11000) {
         const suggestions = await this.suggestAvailableUsernames(normalized);
@@ -1212,9 +1335,34 @@ class AuthService {
     return {
       success: true,
       message: `Username updated from @${previous} to @${normalized}.`,
+      user,
       shop,
       previousUsername: previous,
     };
+  }
+
+  /** @deprecated Prefer updateUsernameForUser */
+  async updateUsernameForShop(shop, newUsername) {
+    if (!shop?._id) {
+      return { success: false, message: "Shop required." };
+    }
+    const user = await User.findOne({
+      shopId: shop._id,
+      role: "admin",
+      isActive: { $ne: false },
+      removedAt: null,
+    }).sort({ createdAt: 1 });
+    if (!user) {
+      return { success: false, message: "No active admin user found." };
+    }
+    const result = await this.updateUsernameForUser(user, newUsername);
+    if (result.success) {
+      return {
+        ...result,
+        shop: result.shop || shop,
+      };
+    }
+    return result;
   }
 
   async updateUsername(channel, channelKey, newUsername) {
@@ -1227,19 +1375,20 @@ class AuthService {
         };
       }
 
-      const shop = await this.getAuthenticatedShop(channel, channelKey);
-      if (!shop) {
+      const user = await this.getAuthenticatedUser(channel, channelKey);
+      if (!user) {
         return { success: false, message: "*Profile not found*" };
       }
 
-      if (shop.isDemo) {
+      const shop = await Shop.findById(user.shopId);
+      if (shop?.isDemo) {
         return {
           success: false,
           message: "*Demo shops cannot change username.*",
         };
       }
 
-      const result = await this.updateUsernameForShop(shop, newUsername);
+      const result = await this.updateUsernameForUser(user, newUsername);
       if (!result.success) {
         const suggestionLines =
           result.suggestions?.length > 0
@@ -1257,6 +1406,7 @@ class AuthService {
         return {
           success: true,
           shop: result.shop,
+          user: result.user,
           message: "*Username unchanged.*",
         };
       }
@@ -1264,10 +1414,11 @@ class AuthService {
       return {
         success: true,
         shop: result.shop,
+        user: result.user,
         message:
           "*Username Updated!*\n\n" +
           `Old: \`@${result.previousUsername}\`\n` +
-          `New: \`@${result.shop.username}\`\n\n` +
+          `New: \`@${result.user.username}\`\n\n` +
           "Use the new username with your PIN on web, Telegram, and WhatsApp.",
       };
     } catch (error) {
@@ -1293,6 +1444,355 @@ class AuthService {
   }
 
   // ==========================================
+  // TEAM
+  // ==========================================
+
+  async listTeamMembers(shopId) {
+    if (!shopId) return [];
+    const users = await User.find({
+      shopId,
+      isActive: { $ne: false },
+      removedAt: null,
+    })
+      .sort({ role: 1, createdAt: 1 })
+      .lean();
+
+    return users.map((u) => this.toPublicUser(u));
+  }
+
+  /**
+   * Add a team member. Admin-only is enforced by the controller.
+   * Default role is member. Demo shops cannot add members.
+   * If `pin` is omitted, issues a one-time setup code (mustSetPin).
+   */
+  async addTeamMember({
+    shopId,
+    username,
+    pin = null,
+    displayName,
+    role = "member",
+  }) {
+    if (!shopId) {
+      return { success: false, message: "Shop required." };
+    }
+
+    const shop = await Shop.findById(shopId);
+    if (!shop || shop.isActive === false) {
+      return { success: false, message: "Shop not found." };
+    }
+    if (shop.isDemo) {
+      return {
+        success: false,
+        message: "Demo shops cannot add team members.",
+      };
+    }
+
+    const memberRole = role === "admin" ? "admin" : "member";
+
+    const usernameValidation = this.validateUsername(username);
+    if (!usernameValidation.valid) {
+      const suggestions = await this.suggestAvailableUsernames(username);
+      return {
+        success: false,
+        message: usernameValidation.message,
+        suggestions,
+      };
+    }
+
+    const trimmedPin =
+      pin != null && String(pin).trim() !== "" ? String(pin).trim() : null;
+    if (trimmedPin) {
+      const pinValidation = this.validatePin(trimmedPin);
+      if (!pinValidation.valid) {
+        return { success: false, message: pinValidation.message };
+      }
+    }
+
+    const trimmedDisplay =
+      typeof displayName === "string" ? displayName.trim() : "";
+    if (!trimmedDisplay || trimmedDisplay.length < 1) {
+      return { success: false, message: "Display name is required." };
+    }
+    if (trimmedDisplay.length > 50) {
+      return {
+        success: false,
+        message: "Display name must be 50 characters or less.",
+      };
+    }
+
+    const normalized = usernameValidation.normalized;
+    const existing = await this.findUserByUsername(normalized);
+    if (existing) {
+      const suggestions = await this.suggestAvailableUsernames(normalized);
+      return {
+        success: false,
+        message: "Username already taken.",
+        suggestions,
+      };
+    }
+
+    let setupCode = null;
+    let hashedPin;
+    let mustSetPin = false;
+    let setupCodeHash = null;
+
+    if (trimmedPin) {
+      hashedPin = await bcrypt.hash(trimmedPin, 12);
+    } else {
+      mustSetPin = true;
+      setupCode = this.generateSetupCode();
+      setupCodeHash = hashRecoveryCode(normalizeRecoveryCode(setupCode));
+      // Unusable placeholder until they complete setup-pin.
+      hashedPin = await bcrypt.hash(crypto.randomBytes(24).toString("hex"), 12);
+    }
+
+    let user;
+    try {
+      user = await User.create({
+        shopId: shop._id,
+        username: normalized,
+        displayName: trimmedDisplay,
+        pin: hashedPin,
+        role: memberRole,
+        channels: {},
+        isActive: true,
+        removedAt: null,
+        mustSetPin,
+        setupCodeHash,
+      });
+    } catch (error) {
+      if (error?.code === 11000) {
+        const suggestions = await this.suggestAvailableUsernames(normalized);
+        return {
+          success: false,
+          message: "Username already taken.",
+          suggestions,
+        };
+      }
+      throw error;
+    }
+
+    return {
+      success: true,
+      user: this.toPublicUser(user),
+      setupCode: setupCode || undefined,
+      message: setupCode
+        ? `Added @${normalized} as ${memberRole}. Share the setup code once so they can set their PIN.`
+        : `Added @${normalized} as ${memberRole}.`,
+    };
+  }
+
+  generateSetupCode() {
+    // Same shape family as recovery codes for familiarity: cs-xxxx-xxxx
+    const raw = crypto.randomBytes(4).toString("hex");
+    return `cs-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
+  }
+
+  /**
+   * Complete invite: username + one-time setup code → set PIN and enable login.
+   */
+  async completePinSetup({ username, setupCode, newPin }) {
+    const normalizedUser = normalizeUsername(username);
+    const normalizedCode = normalizeRecoveryCode(setupCode);
+
+    if (!normalizedUser || !normalizedCode) {
+      return {
+        success: false,
+        message: "username and setup code are required.",
+      };
+    }
+
+    const pinValidation = this.validatePin(newPin);
+    if (!pinValidation.valid) {
+      return { success: false, message: pinValidation.message };
+    }
+
+    const user = await this.findUserByUsername(normalizedUser);
+    if (!user || !this.isUserLoginEligible(user)) {
+      return {
+        success: false,
+        message: "Invalid username or setup code.",
+      };
+    }
+
+    if (!user.mustSetPin || !user.setupCodeHash) {
+      return {
+        success: false,
+        message: "This account does not need a setup code. Sign in with your PIN.",
+      };
+    }
+
+    const rateLimitCheck = await this.checkRateLimit(user);
+    if (!rateLimitCheck.allowed) {
+      return {
+        success: false,
+        message:
+          rateLimitCheck.message?.replace(/\*/g, "") ||
+          "Too many attempts. Try again later.",
+      };
+    }
+
+    const codeHash = hashRecoveryCode(normalizedCode);
+    if (!recoveryCodesMatch(user.setupCodeHash, codeHash)) {
+      await this.recordFailedAttempt(user);
+      return {
+        success: false,
+        message: "Invalid username or setup code.",
+      };
+    }
+
+    const shop = await Shop.findById(user.shopId);
+    if (!shop || shop.isActive === false) {
+      return { success: false, message: "Shop not found." };
+    }
+
+    user.pin = await bcrypt.hash(String(newPin).trim(), 12);
+    user.mustSetPin = false;
+    user.setupCodeHash = null;
+    user.loginAttempts = 0;
+    user.lockedUntil = null;
+    await user.save();
+
+    return {
+      success: true,
+      message: "PIN set. You can sign in with your username and new PIN.",
+      user: this.toPublicUser(user),
+      shop: shop.toObject(),
+    };
+  }
+
+  /**
+   * Soft-deactivate a team member. Clears channels and ends their sessions.
+   * Refuses if they are the last active admin.
+   */
+  async deactivateTeamMember({ shopId, userId, actingUserId }) {
+    if (!shopId || !userId) {
+      return { success: false, message: "shopId and userId are required." };
+    }
+
+    const user = await User.findOne({ _id: userId, shopId });
+    if (!user || user.isActive === false || user.removedAt) {
+      return { success: false, message: "Team member not found." };
+    }
+
+    if (actingUserId && String(user._id) === String(actingUserId)) {
+      return {
+        success: false,
+        message: "You cannot deactivate your own account.",
+      };
+    }
+
+    if (user.role === "admin") {
+      const otherAdmins = await User.countDocuments({
+        shopId,
+        role: "admin",
+        isActive: { $ne: false },
+        removedAt: null,
+        _id: { $ne: user._id },
+      });
+      if (otherAdmins === 0) {
+        return {
+          success: false,
+          message: "Cannot deactivate the last active admin.",
+        };
+      }
+    }
+
+    user.isActive = false;
+    user.removedAt = new Date();
+    user.channels = {
+      telegramChatId: null,
+      whatsappPhone: null,
+    };
+    await user.save();
+    await SessionStore.deleteLoginSessionsByUserId(user._id);
+
+    return {
+      success: true,
+      user: this.toPublicUser(user),
+      message: `Deactivated @${user.username}.`,
+    };
+  }
+
+  /**
+   * Change a team member's role (admin ↔ member).
+   * Refuses demoting the last active admin.
+   */
+  async setTeamMemberRole({ shopId, userId, role, actingUserId }) {
+    if (!shopId || !userId) {
+      return { success: false, message: "shopId and userId are required." };
+    }
+    const nextRole = role === "admin" ? "admin" : "member";
+    const user = await User.findOne({ _id: userId, shopId });
+    if (!user || user.isActive === false || user.removedAt) {
+      return { success: false, message: "Team member not found." };
+    }
+
+    if (user.role === nextRole) {
+      return {
+        success: true,
+        user: this.toPublicUser(user),
+        message: `@${user.username} is already ${nextRole}.`,
+      };
+    }
+
+    if (user.role === "admin" && nextRole === "member") {
+      const otherAdmins = await User.countDocuments({
+        shopId,
+        role: "admin",
+        isActive: { $ne: false },
+        removedAt: null,
+        _id: { $ne: user._id },
+      });
+      if (otherAdmins === 0) {
+        return {
+          success: false,
+          message: "Cannot demote the last active admin.",
+        };
+      }
+      if (actingUserId && String(user._id) === String(actingUserId)) {
+        return {
+          success: false,
+          message: "Promote another admin before demoting yourself.",
+        };
+      }
+    }
+
+    user.role = nextRole;
+    await user.save();
+    return {
+      success: true,
+      user: this.toPublicUser(user),
+      message: `Updated @${user.username} to ${nextRole}.`,
+    };
+  }
+
+  /** Update own (or admin-managed) display name. */
+  async updateDisplayNameForUser(user, displayName) {
+    if (!user) {
+      return { success: false, message: "User required." };
+    }
+    const trimmed =
+      typeof displayName === "string" ? displayName.trim() : "";
+    if (!trimmed || trimmed.length < 1) {
+      return { success: false, message: "Display name is required." };
+    }
+    if (trimmed.length > 50) {
+      return {
+        success: false,
+        message: "Display name must be 50 characters or less.",
+      };
+    }
+    user.displayName = trimmed;
+    await user.save();
+    return {
+      success: true,
+      user: this.toPublicUser(user),
+      message: "Display name updated.",
+    };
+  }
+
+  // ==========================================
   // SESSION
   // ==========================================
 
@@ -1313,11 +1813,19 @@ class AuthService {
     return true;
   }
 
-  async createLoginSession(shopId, channel, channelKey) {
-    const shop = await Shop.findById(shopId);
-    if (!shop) throw new Error("Shop not found");
+  /**
+   * Create a login session for shop + user on a channel.
+   * @param {object} shop
+   * @param {object} user
+   * @param {string} channel
+   * @param {string|null} channelKey
+   */
+  async createLoginSession(shop, user, channel, channelKey) {
+    if (!shop?._id) throw new Error("Shop not found");
+    if (!user?._id) throw new Error("User not found");
     const { sessionToken } = await this.openChannelSession(
       shop,
+      user,
       channel,
       channelKey
     );
@@ -1337,6 +1845,17 @@ class AuthService {
     return Shop.findById(session.shopId);
   }
 
+  async getAuthenticatedUser(channel, channelKey) {
+    if (!(await this.isAuthenticated(channel, channelKey))) {
+      return null;
+    }
+    const session = await SessionStore.getLoginSession(channel, channelKey);
+    if (!session?.userId) return null;
+    const user = await User.findById(session.userId);
+    if (!this.isUserLoginEligible(user)) return null;
+    return user;
+  }
+
   // ==========================================
   // VALIDATION
   // ==========================================
@@ -1348,7 +1867,7 @@ class AuthService {
   async suggestAvailableUsernames(desired, count = 3) {
     return suggestUsernames(
       desired,
-      async (candidate) => Boolean(await this.findShopByUsername(candidate)),
+      async (candidate) => Boolean(await this.findUserByUsername(candidate)),
       count
     );
   }
@@ -1357,7 +1876,7 @@ class AuthService {
    * Real-time availability check for registration UIs.
    * @returns {{ available: boolean, username: string, valid: boolean, message?: string, suggestions?: string[] }}
    */
-  async checkUsernameAvailability(usernameInput, { excludeShopId } = {}) {
+  async checkUsernameAvailability(usernameInput, { excludeUserId } = {}) {
     const normalized = normalizeUsername(usernameInput);
     const validation = this.validateUsername(usernameInput);
 
@@ -1375,11 +1894,11 @@ class AuthService {
     }
 
     const username = validation.normalized;
-    const existing = await this.findShopByUsername(username);
+    const existing = await this.findUserByUsername(username);
     const isSelf =
       existing &&
-      excludeShopId &&
-      String(existing._id) === String(excludeShopId);
+      excludeUserId &&
+      String(existing._id) === String(excludeUserId);
 
     if (existing && !isSelf) {
       const suggestions = await this.suggestAvailableUsernames(username);
@@ -1476,13 +1995,13 @@ class AuthService {
   // RATE LIMITING
   // ==========================================
 
-  async checkRateLimit(shop) {
-    if (!shop) return { allowed: true };
+  async checkRateLimit(user) {
+    if (!user) return { allowed: true };
 
     const now = new Date();
 
-    if (shop.lockedUntil && shop.lockedUntil > now) {
-      const remainingMs = shop.lockedUntil.getTime() - now.getTime();
+    if (user.lockedUntil && user.lockedUntil > now) {
+      const remainingMs = user.lockedUntil.getTime() - now.getTime();
       const remainingMin = Math.ceil(remainingMs / 60000);
 
       return {
@@ -1497,23 +2016,23 @@ class AuthService {
       };
     }
 
-    if (shop.lockedUntil && shop.lockedUntil <= now) {
-      shop.loginAttempts = 0;
-      shop.lockedUntil = null;
-      await shop.save();
+    if (user.lockedUntil && user.lockedUntil <= now) {
+      user.loginAttempts = 0;
+      user.lockedUntil = null;
+      await user.save();
     }
 
     return { allowed: true };
   }
 
-  async recordFailedAttempt(shop) {
-    if (!shop) return;
+  async recordFailedAttempt(user) {
+    if (!user) return;
 
-    shop.loginAttempts = (shop.loginAttempts || 0) + 1;
-    if (shop.loginAttempts >= this.maxAttempts) {
-      shop.lockedUntil = new Date(Date.now() + this.lockoutDuration);
+    user.loginAttempts = (user.loginAttempts || 0) + 1;
+    if (user.loginAttempts >= this.maxAttempts) {
+      user.lockedUntil = new Date(Date.now() + this.lockoutDuration);
     }
-    await shop.save();
+    await user.save();
   }
 
   // ==========================================
@@ -1629,7 +2148,8 @@ class AuthService {
   }
 
   /**
-   * Redeem one recovery code to set a new PIN. Invalidates all sessions.
+   * Redeem one recovery code to set a new PIN for that username's user.
+   * Invalidates that user's sessions.
    */
   async redeemRecoveryCode({ username, code, newPin }) {
     const normalizedUser = normalizeUsername(username);
@@ -1647,7 +2167,15 @@ class AuthService {
       return { success: false, message: pinValidation.message };
     }
 
-    const shop = await this.findShopByUsername(normalizedUser);
+    const user = await this.findUserByUsername(normalizedUser);
+    if (!this.isUserLoginEligible(user)) {
+      return {
+        success: false,
+        message: "Invalid username or recovery code.",
+      };
+    }
+
+    const shop = await Shop.findById(user.shopId);
     if (!shop || shop.isActive === false) {
       return {
         success: false,
@@ -1662,7 +2190,7 @@ class AuthService {
       };
     }
 
-    const rateLimitCheck = await this.checkRateLimit(shop);
+    const rateLimitCheck = await this.checkRateLimit(user);
     if (!rateLimitCheck.allowed) {
       return {
         success: false,
@@ -1686,7 +2214,7 @@ class AuthService {
     }
 
     if (!matched) {
-      await this.recordFailedAttempt(shop);
+      await this.recordFailedAttempt(user);
       return {
         success: false,
         message: "Invalid username or recovery code.",
@@ -1696,10 +2224,10 @@ class AuthService {
     matched.usedAt = new Date();
     await matched.save();
 
-    shop.pin = await bcrypt.hash(String(newPin).trim(), 12);
-    await shop.resetLoginAttempts();
+    user.pin = await bcrypt.hash(String(newPin).trim(), 12);
+    await user.resetLoginAttempts();
 
-    await SessionStore.deleteLoginSessionsByShopId(shop._id);
+    await SessionStore.deleteLoginSessionsByUserId(user._id);
 
     const remaining = await RecoveryCode.countDocuments({
       shopId: shop._id,

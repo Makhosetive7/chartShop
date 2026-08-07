@@ -47,7 +47,11 @@ const orderSchema = new mongoose.Schema({
     type: String,
     enum: ['pending', 'partial', 'paid', 'refunded'],
     default: 'pending'
-  }
+  },
+  createdByUserId: {
+    type: String,
+    default: null,
+  },
 });
 
 export default mongoose.model('Order', orderSchema);

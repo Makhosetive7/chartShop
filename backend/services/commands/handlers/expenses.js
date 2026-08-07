@@ -1,7 +1,7 @@
 import ExpenseService from "../../ExpenseService.js";
 import FinancialService from "../../FinancialService.js";
 
-export async function handleExpenseRecording(shopId, text) {
+export async function handleExpenseRecording(shopId, text, actorUserId = null) {
   try {
     // Format: expense 50.00 "supplier payment" supplies bank INV001
     // or: expense 50.00 supplier payment
@@ -91,7 +91,8 @@ export async function handleExpenseRecording(shopId, text) {
       description,
       category,
       paymentMethod,
-      receiptNumber
+      receiptNumber,
+      { createdByUserId: actorUserId }
     );
 
     return result.message;

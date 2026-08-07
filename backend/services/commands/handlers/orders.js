@@ -1,6 +1,6 @@
 import OrderService from "../../OrderService.js";
 
-export async function handleOrderCommands(shopId, text) {
+export async function handleOrderCommands(shopId, text, actorUserId = null) {
   try {
     const parts = text
       .replace("order", "")
@@ -21,7 +21,7 @@ export async function handleOrderCommands(shopId, text) {
         .replace("place", "")
         .replace("new", "")
         .trim();
-      return await processNewOrder(shopId, remainingText);
+      return await processNewOrder(shopId, remainingText, actorUserId);
     }
 
     if (
@@ -50,7 +50,8 @@ export async function handleOrderCommands(shopId, text) {
     // If no specific command, treat as new order
     return await processNewOrder(
       shopId,
-      text.replace("order", "").trim()
+      text.replace("order", "").trim(),
+      actorUserId
     );
   } catch (error) {
     console.error("Order command error:", error);
@@ -58,7 +59,7 @@ export async function handleOrderCommands(shopId, text) {
   }
 }
 
-export async function processNewOrder(shopId, orderText) {
+export async function processNewOrder(shopId, orderText, actorUserId = null) {
   try {
     console.log("[processNewOrder] Input:", orderText);
 
@@ -93,7 +94,8 @@ export async function processNewOrder(shopId, orderText) {
       customerIdentifier,
       itemsText,
       orderType,
-      notes
+      notes,
+      { createdByUserId: actorUserId }
     );
     return result.message;
   } catch (error) {
@@ -102,7 +104,7 @@ export async function processNewOrder(shopId, orderText) {
   }
 }
 
-export async function handleOrderStatusUpdate(shopId, text) {
+export async function handleOrderStatusUpdate(shopId, text, actorUserId = null) {
   try {
     const parts = text.trim().split(" ");
     const action = parts[0].toLowerCase();

@@ -18,6 +18,7 @@ import Customer from "../models/Customer.js";
 
 describe("credit sale + cancel restores balance", () => {
   let shop;
+  let username;
   let product;
   let customer;
 
@@ -32,6 +33,7 @@ describe("credit sale + cancel restores balance", () => {
   beforeEach(async () => {
     const created = await createTestShop();
     shop = created.shop;
+    username = created.username;
     product = await createTestProduct(shop._id, {
       name: "p4credit",
       price: 2.5,
@@ -44,7 +46,7 @@ describe("credit sale + cancel restores balance", () => {
   });
 
   afterEach(async () => {
-    await wipeShopData({ shopId: shop._id, username: shop.username });
+    await wipeShopData({ shopId: shop._id, username });
   });
 
   it("restores stock and customer balance when credit sale is cancelled", async () => {

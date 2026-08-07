@@ -34,7 +34,8 @@ export function resolveChannelIdentity(actorId, channelHint) {
   return { channel: "telegram", channelKey: raw };
 }
 
-export function shopChannelQuery(channel, channelKey) {
+/** Query fragment for User (or legacy Shop) channel binding. */
+export function userChannelQuery(channel, channelKey) {
   if (!channelKey) return null;
   if (channel === "telegram") {
     return { "channels.telegramChatId": String(channelKey) };
@@ -43,6 +44,11 @@ export function shopChannelQuery(channel, channelKey) {
     return { "channels.whatsappPhone": String(channelKey) };
   }
   return null;
+}
+
+/** @deprecated Prefer userChannelQuery — channels now live on User. */
+export function shopChannelQuery(channel, channelKey) {
+  return userChannelQuery(channel, channelKey);
 }
 
 export function normalizeUsername(username) {

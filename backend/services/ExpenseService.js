@@ -19,7 +19,8 @@ class ExpenseService {
     description,
     category = "other",
     paymentMethod = "cash",
-    receiptNumber = ""
+    receiptNumber = "",
+    { createdByUserId } = {}
   ) {
     try {
       // Validate amount
@@ -85,6 +86,7 @@ class ExpenseService {
         paymentMethod,
         receiptNumber: receiptNumber.trim(),
         date: new Date(),
+        ...(createdByUserId != null ? { createdByUserId } : {}),
       });
 
       return {

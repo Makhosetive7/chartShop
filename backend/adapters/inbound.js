@@ -59,9 +59,10 @@ export async function handleInboundMessage({
 
   // Prefer session shopId so TG/WA turns land in the same shop transcript as web.
   const shop = await AuthService.getAuthenticatedShop(ch, channelKey);
+  const user = await AuthService.getAuthenticatedUser(ch, channelKey);
   await ActivityService.logChatTurn({
     shopId: shop?._id,
-    userId: shop?.username || userId,
+    userId: user?._id ? String(user._id) : userId,
     channel: ch,
     input: text,
     reply: replyText,

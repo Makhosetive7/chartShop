@@ -10,6 +10,15 @@ import {
   serializeSale,
 } from "../../utils/apiSaleItems.js";
 import { stripMarkdown } from "../../utils/apiResponse.js";
+import { logApiActivity } from "../../utils/logApiActivity.js";
+
+function money(amount) {
+  return `$${Number(amount).toFixed(2)}`;
+}
+
+function itemCountLabel(count) {
+  return `${count} item${count === 1 ? "" : "s"}`;
+}
 
 export async function createCashSale(req, res) {
   try {
@@ -45,11 +54,20 @@ export async function createCashSale(req, res) {
         status: "completed",
         amountPaid: total,
         balanceDue: 0,
+        createdByUserId: req.userId,
       });
     } catch (createError) {
       await InventoryService.restoreSaleItems(parsed.items);
       throw createError;
     }
+
+    await logApiActivity(req, {
+      action: "sale.cash",
+      summary: `Cash sale ${money(total)} (${itemCountLabel(lineItems.length)})`,
+      entityType: "sale",
+      entityId: sale._id,
+      metadata: { total, itemCount: lineItems.length },
+    });
 
     return res.status(201).json({ success: true, sale: serializeSale(sale) });
   } catch (error) {
@@ -116,6 +134,7 @@ export async function createCreditSale(req, res) {
         amountPaid: 0,
         balanceDue: total,
         status: "completed",
+        createdByUserId: req.userId,
       });
 
       customer.currentBalance += total;
@@ -140,6 +159,14 @@ export async function createCreditSale(req, res) {
       await InventoryService.restoreSaleItems(parsed.items);
       throw createError;
     }
+
+    await logApiActivity(req, {
+      action: "sale.credit",
+      summary: `Credit sale ${money(total)} (${itemCountLabel(lineItems.length)})`,
+      entityType: "sale",
+      entityId: sale._id,
+      metadata: { total, itemCount: lineItems.length, customerId: String(customer._id) },
+    });
 
     return res.status(201).json({
       success: true,
@@ -210,6 +237,7 @@ export async function sellToCustomer(req, res) {
         status: "completed",
         amountPaid: total,
         balanceDue: 0,
+        createdByUserId: req.userId,
       });
     } catch (createError) {
       await InventoryService.restoreSaleItems(parsed.items);
@@ -217,6 +245,14 @@ export async function sellToCustomer(req, res) {
     }
 
     await CustomerService.linkSaleToCustomer(sale, customer, total);
+
+    await logApiActivity(req, {
+      action: "sale.to_customer",
+      summary: `Sale to ${customer.name} ${money(total)} (${itemCountLabel(lineItems.length)})`,
+      entityType: "sale",
+      entityId: sale._id,
+      metadata: { total, itemCount: lineItems.length, customerId: String(customer._id) },
+    });
 
     return res.status(201).json({ success: true, sale: serializeSale(sale) });
   } catch (error) {
@@ -252,7 +288,19 @@ export async function listRecentSales(req, res) {
 export async function cancelLastSale(req, res) {
   try {
     const reason = String(req.body?.reason || "No reason provided");
-    const result = await CancellationService.cancelLastSale(req.shopId, reason);
+    const cancelledBy = req.userId || req.username;
+    const result = await CancellationService.cancelLastSale(req.shopId, reason, {
+      cancelledBy,
+    });
+    if (result.success) {
+      await logApiActivity(req, {
+        action: "sale.cancelled",
+        summary: "Cancelled sale",
+        entityType: "sale",
+        entityId: result.sale?._id,
+        metadata: { reason },
+      });
+    }
     const status = result.success ? 200 : 400;
     return res.status(status).json({
       success: result.success,
@@ -272,11 +320,22 @@ export async function cancelSale(req, res) {
   try {
     const reason = String(req.body?.reason || "No reason provided");
     const id = req.params.id;
+    const cancelledBy = req.userId || req.username;
     const result = await CancellationService.cancelSpecificSale(
       req.shopId,
       id,
-      reason
+      reason,
+      { cancelledBy }
     );
+    if (result.success) {
+      await logApiActivity(req, {
+        action: "sale.cancelled",
+        summary: "Cancelled sale",
+        entityType: "sale",
+        entityId: result.sale?._id,
+        metadata: { reason },
+      });
+    }
     const status = result.success ? 200 : 400;
     return res.status(status).json({
       success: result.success,
@@ -433,6 +492,15 @@ export async function createLaybye(req, res) {
       status: "active",
       reservedStock: false,
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      createdByUserId: req.userId,
+    });
+
+    await logApiActivity(req, {
+      action: "laybye.created",
+      summary: `Laybye ${money(totalAmount)} for ${customer.name}`,
+      entityType: "laybye",
+      entityId: laybye._id,
+      metadata: { totalAmount, depositAmount },
     });
 
     // Full deposit at create → complete immediately (stock + sale).
@@ -513,6 +581,13 @@ export async function payLaybye(req, res) {
         "../../services/commands/handlers/sales.js"
       );
       await completeLayBye(req.shopId, laybye);
+      await logApiActivity(req, {
+        action: "laybye.payment",
+        summary: `Laybye payment ${money(amount)}`,
+        entityType: "laybye",
+        entityId: laybye._id,
+        metadata: { amount, completed: true },
+      });
       return res.json({
         success: true,
         completed: true,
@@ -526,6 +601,13 @@ export async function payLaybye(req, res) {
     }
 
     await laybye.save();
+    await logApiActivity(req, {
+      action: "laybye.payment",
+      summary: `Laybye payment ${money(amount)}`,
+      entityType: "laybye",
+      entityId: laybye._id,
+      metadata: { amount, completed: false, balanceDue: laybye.balanceDue },
+    });
     return res.json({
       success: true,
       completed: false,
@@ -578,6 +660,14 @@ export async function completeLaybye(req, res) {
       "../../services/commands/handlers/sales.js"
     );
     const sale = await completeLayBye(req.shopId, laybye);
+
+    await logApiActivity(req, {
+      action: "laybye.completed",
+      summary: `Completed laybye for ${laybye.customerName}`,
+      entityType: "laybye",
+      entityId: laybye._id,
+      metadata: { saleId: sale?._id ? String(sale._id) : null },
+    });
 
     return res.json({
       success: true,

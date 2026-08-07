@@ -25,6 +25,10 @@ export async function dropLegacyAuthIndexes(db) {
   await drop("shops", "telegramId_1_isActive_1");
   await drop("shops", "telegramChatId_1");
   await drop("shops", "whatsappPhone_1");
+  // Credentials moved to users — drop leftover shop credential indexes.
+  await drop("shops", "username_1");
+  await drop("shops", "channels.telegramChatId_1");
+  await drop("shops", "channels.whatsappPhone_1");
   await drop("authsessions", "telegramId_1");
   await drop("authsessions", "telegramId_1_type_1");
 }

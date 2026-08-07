@@ -194,6 +194,17 @@ export async function updateProfileUsername(username: string) {
   return data;
 }
 
+export async function updateProfileDisplayName(displayName: string) {
+  const { data } = await api.patch<{
+    success: boolean;
+    user?: { id: string; displayName: string; username: string };
+    shop: Shop;
+    message?: string;
+    error?: string;
+  }>('/auth/profile/display-name', { displayName });
+  return data;
+}
+
 export async function updateShopSettings(body: {
   timezone?: string;
   lowStockAlert?: number;

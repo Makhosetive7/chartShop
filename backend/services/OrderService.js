@@ -12,7 +12,8 @@ class OrderService {
     customerIdentifier,
     itemsText,
     orderType = "pickup",
-    notes = ""
+    notes = "",
+    { createdByUserId } = {}
   ) {
     try {
       // Find or create customer
@@ -47,6 +48,7 @@ class OrderService {
         orderType,
         notes: notes.trim(),
         orderDate: new Date(),
+        ...(createdByUserId != null ? { createdByUserId } : {}),
       });
 
       return {

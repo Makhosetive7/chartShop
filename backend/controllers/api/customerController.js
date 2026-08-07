@@ -1,6 +1,7 @@
 import CustomerService from "../../services/CustomerService.js";
 import { parseApiSaleItems } from "../../utils/apiSaleItems.js";
 import { stripMarkdown } from "../../utils/apiResponse.js";
+import { logApiActivity } from "../../utils/logApiActivity.js";
 
 function serializeCustomer(c) {
   if (!c) return null;
@@ -56,7 +57,8 @@ export async function createCustomer(req, res) {
       req.shopId,
       name,
       phone,
-      email
+      email,
+      { createdByUserId: req.userId }
     );
     if (!result.success) {
       return res.status(409).json({
@@ -64,6 +66,14 @@ export async function createCustomer(req, res) {
         error: stripMarkdown(result.message),
       });
     }
+
+    await logApiActivity(req, {
+      action: "customer.create",
+      summary: `Added customer ${result.customer.name}`,
+      entityType: "customer",
+      entityId: result.customer._id,
+      metadata: { name: result.customer.name, phone: result.customer.phone },
+    });
 
     return res.status(201).json({
       success: true,
@@ -214,6 +224,14 @@ export async function addCredit(req, res) {
       `Credit sale: ${itemsDescription}`
     );
 
+    await logApiActivity(req, {
+      action: "customer.credit",
+      summary: `Credit ${customer.name} $${totalAmount.toFixed(2)}`,
+      entityType: "customer",
+      entityId: customer._id,
+      metadata: { amount: totalAmount, items: ledgerItems },
+    });
+
     return res.status(201).json({
       success: true,
       amount: totalAmount,
@@ -276,6 +294,14 @@ export async function recordPayment(req, res) {
       amount,
       `Payment received: $${amount.toFixed(2)}`
     );
+
+    await logApiActivity(req, {
+      action: "customer.payment",
+      summary: `Payment ${customer.name} $${amount.toFixed(2)}`,
+      entityType: "customer",
+      entityId: customer._id,
+      metadata: { amount, previousBalance },
+    });
 
     return res.json({
       success: true,
