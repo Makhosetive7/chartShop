@@ -21,7 +21,7 @@ const tickIn = keyframes`
 
 const Hero = styled.section`
   position: relative;
-  padding: clamp(2.75rem, 7vw, 4.5rem) clamp(1.25rem, 4vw, 2.5rem) 0;
+  padding: clamp(1.75rem, 5vw, 4.5rem) clamp(1.25rem, 4vw, 2.5rem) 0;
   overflow: hidden;
 `;
 
@@ -40,11 +40,15 @@ const Intro = styled(motion.div)`
   z-index: 1;
   text-align: center;
   max-width: 48rem;
-  margin: 0 auto clamp(2.5rem, 6vw, 3.75rem);
+  margin: 0 auto clamp(1.25rem, 4vw, 3.75rem);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: ${({ theme }) => theme.space[4]};
+
+  @media (max-width: 640px) {
+    gap: ${({ theme }) => theme.space[3]};
+  }
 `;
 
 const Brand = styled.h1`
@@ -174,6 +178,10 @@ const ChatPhone = styled.div`
   display: flex;
   flex-direction: column;
   min-height: 340px;
+
+  @media (max-width: 640px) {
+    min-height: 280px;
+  }
 `;
 
 const ChatHeader = styled.div`
@@ -292,6 +300,10 @@ const TillCard = styled.div`
   display: flex;
   flex-direction: column;
   min-height: 340px;
+
+  @media (max-width: 640px) {
+    min-height: 280px;
+  }
 `;
 
 const TillHead = styled.div`
@@ -489,10 +501,9 @@ export function HeroSection() {
       </Intro>
 
       <Showcase
-        initial={{ opacity: 0, y: 32 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.3 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+        initial={{ opacity: 0, y: 28 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.55, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
       >
         <GridTexture aria-hidden />
         <Orb $size={170} $x="4%" $y="8%" />
@@ -514,9 +525,8 @@ export function HeroSection() {
                   key={`${msg.from}-${index}`}
                   $from={msg.from}
                   initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                  whileInView={{ opacity: 1, y: 0, scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.25 + index * 0.18, duration: 0.35 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ delay: 0.55 + index * 0.18, duration: 0.35 }}
                 >
                   {msg.from === 'bot' && msg.title ? <strong>{msg.title}</strong> : null}
                   {msg.body}
@@ -537,9 +547,8 @@ export function HeroSection() {
             </TillHead>
             <BigStat
               initial={{ opacity: 0, y: 8 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.35 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.7 }}
             >
               <p className="label">Cash in</p>
               <p className="value">ZiG 2,450</p>
@@ -547,39 +556,37 @@ export function HeroSection() {
             <StatRow>
               <MiniStat
                 initial={{ opacity: 0, y: 8 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.45 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.8 }}
               >
                 <p className="k">Sales</p>
                 <p className="v">37</p>
               </MiniStat>
               <MiniStat
                 initial={{ opacity: 0, y: 8 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.52 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.88 }}
               >
                 <p className="k">On credit</p>
                 <p className="v">ZiG 480</p>
               </MiniStat>
             </StatRow>
             <Feed>
-              <FeedItem $delay="0.7s">
+              <FeedItem $delay="0.95s">
                 <div className="left">
                   <span className="dot" />
                   Brown bread ×2
                 </div>
                 <strong>+ZiG 36</strong>
               </FeedItem>
-              <FeedItem $delay="0.9s">
+              <FeedItem $delay="1.1s">
                 <div className="left">
                   <span className="dot" />
                   Thabo · airtime
                 </div>
                 <strong>credit</strong>
               </FeedItem>
-              <FeedItem $delay="1.1s">
+              <FeedItem $delay="1.25s">
                 <div className="left">
                   <span className="dot warn" />
                   Milk 1L low

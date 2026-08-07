@@ -3,7 +3,9 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -13,6 +15,10 @@ import styled from 'styled-components';
 import { useAuth } from '@/auth';
 
 const STORAGE_KEY = 'chartshop_demo_tour_v1';
+const POPOVER_FALLBACK_H = 200;
+const POPOVER_FALLBACK_W = 320;
+const VIEW_MARGIN = 12;
+const TARGET_GAP = 12;
 
 type TourStep = {
   id: string;
@@ -54,7 +60,7 @@ const STEPS: TourStep[] = [
   {
     id: 'reports',
     path: '/app/reports',
-    target: '[data-tour="page-reports"]',
+    target: '[data-tour="reports-heading"]',
     title: 'End-of-day reports',
     body: 'Daily, weekly, and profit views you’d check when you sit down.',
   },
@@ -196,12 +202,51 @@ function measureTarget(selector: string) {
   const el = document.querySelector(selector);
   if (!el) return null;
   const rect = el.getBoundingClientRect();
+  const vh = window.innerHeight;
+  const vw = window.innerWidth;
+  // Keep spotlight within the visible viewport so tall page targets
+  // don't push the popover off-screen.
+  const top = Math.min(Math.max(rect.top, 0), vh);
+  const left = Math.min(Math.max(rect.left, 0), vw);
+  const bottom = Math.min(Math.max(rect.bottom, 0), vh);
+  const right = Math.min(Math.max(rect.right, 0), vw);
   return {
-    top: rect.top,
-    left: rect.left,
-    width: rect.width,
-    height: rect.height,
+    top,
+    left,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
   };
+}
+
+function placePopover(
+  box: { top: number; left: number; width: number; height: number },
+  popW: number,
+  popH: number,
+) {
+  const vh = window.innerHeight;
+  const vw = window.innerWidth;
+  const spaceBelow = vh - (box.top + box.height);
+  const spaceAbove = box.top;
+
+  let top: number;
+  if (spaceBelow >= popH + TARGET_GAP) {
+    top = box.top + box.height + TARGET_GAP;
+  } else if (spaceAbove >= popH + TARGET_GAP) {
+    top = box.top - popH - TARGET_GAP;
+  } else {
+    // Neither side fits — center when possible, else pin above the bottom edge.
+    top =
+      popH + VIEW_MARGIN * 2 < vh
+        ? Math.max(VIEW_MARGIN, (vh - popH) / 2)
+        : Math.max(VIEW_MARGIN, vh - popH - VIEW_MARGIN);
+  }
+
+  top = Math.max(VIEW_MARGIN, Math.min(top, vh - popH - VIEW_MARGIN));
+  const left = Math.max(
+    VIEW_MARGIN,
+    Math.min(box.left, vw - popW - VIEW_MARGIN),
+  );
+  return { top, left };
 }
 
 export function DemoTourProvider({ children }: { children: ReactNode }) {
@@ -216,6 +261,11 @@ export function DemoTourProvider({ children }: { children: ReactNode }) {
     width: number;
     height: number;
   } | null>(null);
+  const [popSize, setPopSize] = useState({
+    w: POPOVER_FALLBACK_W,
+    h: POPOVER_FALLBACK_H,
+  });
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   const step = STEPS[stepIndex];
 
@@ -258,8 +308,12 @@ export function DemoTourProvider({ children }: { children: ReactNode }) {
 
     let tries = 0;
     const tick = () => {
+      const el = document.querySelector(step.target);
+      if (el) {
+        el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
       const next = measureTarget(step.target);
-      if (next && next.width > 0) {
+      if (next && next.width > 0 && next.height > 0) {
         setBox(next);
         return;
       }
@@ -272,10 +326,22 @@ export function DemoTourProvider({ children }: { children: ReactNode }) {
     };
     tick();
 
-    const onResize = () => setBox(measureTarget(step.target));
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    const refresh = () => setBox(measureTarget(step.target));
+    window.addEventListener('resize', refresh);
+    window.addEventListener('scroll', refresh, true);
+    return () => {
+      window.removeEventListener('resize', refresh);
+      window.removeEventListener('scroll', refresh, true);
+    };
   }, [active, step, location.pathname, navigate]);
+
+  useLayoutEffect(() => {
+    if (!active || !popoverRef.current) return;
+    const rect = popoverRef.current.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setPopSize({ w: rect.width, h: rect.height });
+    }
+  }, [active, stepIndex, box, step?.body, step?.title]);
 
   function next() {
     if (stepIndex >= STEPS.length - 1) {
@@ -296,19 +362,8 @@ export function DemoTourProvider({ children }: { children: ReactNode }) {
     if (!box) {
       return { top: 80, left: 16 };
     }
-    const gap = 12;
-    const popH = 180;
-    const spaceBelow = window.innerHeight - (box.top + box.height);
-    const placeAbove = spaceBelow < popH + gap && box.top > popH + gap;
-    const top = placeAbove
-      ? Math.max(12, box.top - popH - gap)
-      : Math.min(window.innerHeight - 12, box.top + box.height + gap);
-    const left = Math.min(
-      Math.max(12, box.left),
-      window.innerWidth - 332,
-    );
-    return { top, left: Math.max(12, left) };
-  }, [box]);
+    return placePopover(box, popSize.w, popSize.h);
+  }, [box, popSize]);
 
   return (
     <DemoTourContext.Provider value={value}>
@@ -326,6 +381,7 @@ export function DemoTourProvider({ children }: { children: ReactNode }) {
                 />
               ) : null}
               <Popover
+                ref={popoverRef}
                 $top={popoverPos.top}
                 $left={popoverPos.left}
                 role="dialog"
