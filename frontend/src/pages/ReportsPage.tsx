@@ -747,7 +747,7 @@ export function ReportsPage() {
 
   return (
     <Page data-tour="page-reports">
-      <Header>
+      <Header data-tour="reports-heading">
         <PageTitle style={{ marginBottom: 8 }}>Reports</PageTitle>
         <PageLead style={{ marginBottom: 0 }}>
           Cash flow, bestsellers, and profit — same figures as chat.
