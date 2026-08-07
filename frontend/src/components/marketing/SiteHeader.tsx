@@ -92,7 +92,7 @@ export function SiteHeader() {
       </Links>
       <Actions>
         {isAuthenticated ? (
-          <ArrowButton to="/app">Open dashboard</ArrowButton>
+          <ArrowButton to="/app/dashboard">Open dashboard</ArrowButton>
         ) : (
           <>
             <Ghost to="/login">Sign in</Ghost>

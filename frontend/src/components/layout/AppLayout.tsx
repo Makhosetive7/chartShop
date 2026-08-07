@@ -40,7 +40,7 @@ type LinkItem = {
 };
 
 const PRIMARY: LinkItem[] = [
-  { to: '/app', end: true, icon: MessageCircle, label: 'Chat', tour: 'nav-chat' },
+  { to: '/app/chat', icon: MessageCircle, label: 'Chat', tour: 'nav-chat' },
   {
     to: '/app/dashboard',
     icon: LayoutDashboard,
@@ -418,7 +418,8 @@ export function AppLayout() {
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const flush = location.pathname === '/app' || location.pathname === '/app/';
+  const flush =
+    location.pathname === '/app/chat' || location.pathname === '/app/chat/';
   const moreActive = MORE.some((link) =>
     pathMatches(location.pathname, link.to, link.end),
   );

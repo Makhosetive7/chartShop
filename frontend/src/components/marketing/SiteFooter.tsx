@@ -236,7 +236,7 @@ export function SiteFooter() {
             {isAuthenticated ? (
               <>
                 <Item>
-                  <Link to="/app">Open dashboard</Link>
+                  <Link to="/app/dashboard">Open dashboard</Link>
                 </Item>
                 <Item>
                   <Link to="/app/settings">Settings</Link>

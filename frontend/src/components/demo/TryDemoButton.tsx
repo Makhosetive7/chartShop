@@ -188,7 +188,7 @@ export function TryDemoButton({
     try {
       await enterDemo(selected);
       setOpen(false);
-      navigate('/app');
+      navigate('/app/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Demo is unavailable');
       setPending(false);

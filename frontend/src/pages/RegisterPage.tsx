@@ -186,7 +186,7 @@ export function RegisterPage() {
   }, [username]);
 
   if (isAuthenticated && !issuedCodes) {
-    return <Navigate to="/app" replace />;
+    return <Navigate to="/app/dashboard" replace />;
   }
 
   function finishRegistration() {
@@ -199,7 +199,7 @@ export function RegisterPage() {
     }
     setIssuedCodes(null);
     setPendingSession(null);
-    navigate('/app', { replace: true });
+    navigate('/app/dashboard', { replace: true });
   }
 
   async function onSubmit(event: FormEvent) {
@@ -252,7 +252,7 @@ export function RegisterPage() {
         setIssuedCodes(result.recoveryCodes);
       } else {
         establishSession(result.token, result.shop, result.user);
-        navigate('/app', { replace: true });
+        navigate('/app/dashboard', { replace: true });
       }
     } catch (err) {
       const message =

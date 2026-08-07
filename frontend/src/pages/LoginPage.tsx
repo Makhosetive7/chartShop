@@ -30,7 +30,7 @@ export function LoginPage() {
   const [pending, setPending] = useState(false);
 
   if (isAuthenticated) {
-    return <Navigate to="/app" replace />;
+    return <Navigate to="/app/dashboard" replace />;
   }
 
   async function onSubmit(event: FormEvent) {
@@ -39,7 +39,7 @@ export function LoginPage() {
     setPending(true);
     try {
       await login(username.trim().toLowerCase(), pin.trim());
-      navigate('/app', { replace: true });
+      navigate('/app/dashboard', { replace: true });
     } catch (err) {
       const code =
         err && typeof err === 'object' && 'code' in err

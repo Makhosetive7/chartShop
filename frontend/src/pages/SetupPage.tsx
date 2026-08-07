@@ -43,7 +43,7 @@ export function SetupPage() {
   const [pending, setPending] = useState(false);
 
   if (isAuthenticated) {
-    return <Navigate to="/app" replace />;
+    return <Navigate to="/app/dashboard" replace />;
   }
 
   async function onSubmit(event: FormEvent) {
