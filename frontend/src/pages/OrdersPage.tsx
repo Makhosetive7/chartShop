@@ -26,7 +26,7 @@ import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate } from '@/utils/dates';
 
-const STATUSES = ['all', 'pending', 'confirmed', 'ready', 'completed', 'cancelled'] as const;
+const STATUSES = ['all', 'pending', 'completed', 'cancelled'] as const;
 
 export function OrdersPage() {
   const qc = useQueryClient();
@@ -82,8 +82,9 @@ export function OrdersPage() {
   const nextActions = useMemo(
     () =>
       ({
-        pending: ['confirmed', 'cancelled'],
-        confirmed: ['ready', 'cancelled'],
+        pending: ['completed', 'cancelled'],
+        // Legacy mid-states from the old confirm/ready workflow
+        confirmed: ['completed', 'cancelled'],
         ready: ['completed', 'cancelled'],
         completed: [],
         cancelled: [],
@@ -99,7 +100,6 @@ export function OrdersPage() {
   function tone(s: string) {
     if (s === 'completed') return 'success' as const;
     if (s === 'cancelled') return 'danger' as const;
-    if (s === 'ready') return 'info' as const;
     return 'warning' as const;
   }
 
@@ -124,7 +124,7 @@ export function OrdersPage() {
   return (
     <Page>
       <PageTitle>Orders</PageTitle>
-      <PageLead>Pickup / delivery orders and status workflow.</PageLead>
+      <PageLead>Pickup / delivery orders — pending until completed or cancelled.</PageLead>
 
 
       <Card>
@@ -252,7 +252,13 @@ export function OrdersPage() {
                             void applyStatus(o.id, ns);
                           }}
                         >
-                          {statusBusy === `${o.id}:${ns}` ? '…' : ns}
+                          {statusBusy === `${o.id}:${ns}`
+                            ? '…'
+                            : ns === 'completed'
+                              ? 'complete'
+                              : ns === 'cancelled'
+                                ? 'cancel'
+                                : ns}
                         </Button>
                       ))}
                     </Row>

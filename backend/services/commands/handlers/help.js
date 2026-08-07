@@ -108,10 +108,7 @@ Place Orders:
 Manage Orders:
 • order - All orders
 • order pending - Pending
-• order ready - Ready
 • order details A1B2 - Details
-• confirm order A1B2 - Confirm
-• ready order A1B2 - Mark ready
 • complete order A1B2 - Complete
 • cancel order A1B2 "reason" - Cancel
 
