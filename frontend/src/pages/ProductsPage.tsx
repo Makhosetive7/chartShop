@@ -32,42 +32,12 @@ import {
   Tab,
 } from '@/components/ui/primitives';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Modal } from '@/components/ui/Modal';
 import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { ProductsSummarySkeleton } from '@/components/skeletons/PageSkeletons';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { activeVariants, productHasOptions } from '@/utils/productCatalog';
-
-const VariantsPanel = styled.div`
-  margin-top: ${({ theme }) => theme.space[4]};
-  padding-top: ${({ theme }) => theme.space[4]};
-  border-top: 1px solid ${({ theme }) => theme.colors.border};
-`;
-
-const PanelHeader = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: ${({ theme }) => theme.space[3]};
-  margin-bottom: ${({ theme }) => theme.space[4]};
-`;
-
-const PanelTitle = styled.h3`
-  margin: 0;
-  font-family: ${({ theme }) => theme.fonts.heading};
-  font-size: 1.1rem;
-  font-weight: ${({ theme }) => theme.fontWeights.semibold};
-  color: ${({ theme }) => theme.colors.maroon};
-`;
-
-const PanelLead = styled.p`
-  margin: 4px 0 0;
-  max-width: 36rem;
-  font-size: 0.9rem;
-  line-height: 1.45;
-  color: ${({ theme }) => theme.colors.textSecondary};
-`;
 
 const SizeList = styled.div`
   display: flex;
@@ -889,7 +859,6 @@ export function ProductsPage() {
                 const status = stockStatus(p);
                 const variants = variantsOf(p);
                 const multi = productHasOptions(p);
-                const expanded = expandedId === p.id;
                 return (
                   <tr key={p.id}>
                     <td>
@@ -932,12 +901,9 @@ export function ProductsPage() {
                           type="button"
                           $variant="ghost"
                           $size="sm"
-                          onClick={() => {
-                            if (expanded) closeEditPanel();
-                            else openEditPanel(p);
-                          }}
+                          onClick={() => openEditPanel(p)}
                         >
-                          {expanded ? 'Close' : 'Edit'}
+                          Edit
                         </Button>
                         <Button
                           type="button"
@@ -961,22 +927,20 @@ export function ProductsPage() {
             {products.length === 0 ? 'No products yet.' : 'No matching products.'}
           </p>
         ) : null}
+      </Card>
 
+      <Modal
+        open={Boolean(expandedProduct)}
+        onOpenChange={(open) => {
+          if (!open) closeEditPanel();
+        }}
+        title={expandedProduct ? `Edit ${expandedProduct.name}` : 'Edit product'}
+        description="Change the name, update stock here, or add another option (size, colour, flavour…). Packs are optional."
+        size="lg"
+        showDone
+      >
         {expandedProduct ? (
-          <VariantsPanel>
-            <PanelHeader>
-              <div>
-                <PanelTitle>Edit {expandedProduct.name}</PanelTitle>
-                <PanelLead>
-                  Change the name, update stock here, or add another option (size, colour,
-                  flavour…). Packs are optional.
-                </PanelLead>
-              </div>
-              <Button type="button" $variant="ghost" $size="sm" onClick={closeEditPanel}>
-                Done
-              </Button>
-            </PanelHeader>
-
+          <>
             <Row style={{ alignItems: 'flex-end', marginBottom: 16 }}>
               <Field>
                 Product name
@@ -1320,9 +1284,9 @@ export function ProductsPage() {
                 </Row>
               </AddSection>
             ) : null}
-          </VariantsPanel>
+          </>
         ) : null}
-      </Card>
+      </Modal>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
