@@ -321,8 +321,8 @@ export function SalesPage() {
     <Page>
       <PageTitle>Sales</PageTitle>
       <PageLead>
-        Cash, credit, and customer sales. Size and pack pickers appear when a product has
-        options.
+        Cash, credit, and customer sales. Option and pack pickers appear when a product
+        has them.
       </PageLead>
 
       <Tabs>

@@ -42,7 +42,8 @@ export const Card = styled.section`
   box-shadow: ${({ theme }) => theme.shadows.card};
   padding: ${({ theme }) => theme.space[4]};
   margin-bottom: ${({ theme }) => theme.space[4]};
-  overflow: hidden;
+  /* visible so <select> menus / expanded panels are not clipped */
+  overflow: visible;
   min-width: 0;
   max-width: 100%;
 
@@ -88,14 +89,16 @@ const controlBase = `
     background 0.15s ease;
 `;
 
-export const Input = styled.input`
+export const Input = styled.input<{ $invalid?: boolean }>`
   ${controlBase}
   width: 100%;
   max-width: 100%;
-  border-color: ${({ theme }) => theme.colors.border};
+  border-color: ${({ theme, $invalid }) =>
+    $invalid ? theme.colors.danger : theme.colors.border};
   border-radius: 0;
   padding: 11px 13px;
-  background: ${({ theme }) => theme.colors.cream};
+  background: ${({ theme, $invalid }) =>
+    $invalid ? theme.colors.dangerTint : theme.colors.cream};
 
   &::placeholder {
     color: ${({ theme }) => theme.colors.textMuted};
@@ -103,8 +106,11 @@ export const Input = styled.input`
 
   &:focus {
     outline: none;
-    border-color: ${({ theme }) => theme.colors.borderStrong};
-    box-shadow: 0 0 0 3px ${({ theme }) => theme.colors.primaryTint};
+    border-color: ${({ theme, $invalid }) =>
+      $invalid ? theme.colors.danger : theme.colors.borderStrong};
+    box-shadow: 0 0 0 3px
+      ${({ theme, $invalid }) =>
+        $invalid ? theme.colors.dangerTint : theme.colors.primaryTint};
     background: ${({ theme }) => theme.colors.surface};
   }
 `;
@@ -149,7 +155,8 @@ export const TableWrap = styled.div<{ $compact?: boolean }>`
   width: 100%;
   max-width: 100%;
   overflow-x: ${({ $compact }) => ($compact ? 'hidden' : 'auto')};
-  overflow-y: hidden;
+  /* auto (not hidden) so expanded variant panels inside tables stay reachable */
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
@@ -352,8 +359,7 @@ export const Tabs = styled.div`
 export const Tab = styled.button<{ $active?: boolean }>`
   border: none;
   flex: 0 0 auto;
-  background: ${({ theme, $active }) =>
-    $active ? theme.colors.surface : 'transparent'};
+  background: ${({ theme, $active }) => ($active ? theme.colors.surface : 'transparent')};
   color: ${({ theme }) => theme.colors.maroon};
   border-radius: 0;
   padding: 9px 14px;
@@ -362,7 +368,9 @@ export const Tab = styled.button<{ $active?: boolean }>`
   font-family: inherit;
   cursor: pointer;
   box-shadow: ${({ theme, $active }) => ($active ? theme.shadows.card : 'none')};
-  transition: background 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 
   &:hover {
     background: ${({ theme, $active }) =>

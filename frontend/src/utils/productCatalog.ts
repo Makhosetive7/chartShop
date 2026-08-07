@@ -18,8 +18,27 @@ export function emptyCatalogLine(): CatalogLine {
   };
 }
 
+function variantIdOf(v: ProductVariant & { _id?: string }): string {
+  return String(v.id || v._id || '').trim();
+}
+
+function packIdOf(pk: ProductPack & { _id?: string }): string {
+  return String(pk.id || pk._id || '').trim();
+}
+
+/** Active variants with stable string ids (defensive if API ever returns `_id`). */
 export function activeVariants(product: Product | undefined): ProductVariant[] {
-  return (product?.variants || []).filter((v) => v.isActive !== false);
+  return (product?.variants || [])
+    .filter((v) => v && v.isActive !== false)
+    .map((v) => {
+      const id = variantIdOf(v);
+      const packs = (v.packs || [])
+        .filter((pk) => pk && pk.isActive !== false)
+        .map((pk) => ({ ...pk, id: packIdOf(pk) || pk.id }))
+        .filter((pk) => Boolean(pk.id));
+      return { ...v, id, packs };
+    })
+    .filter((v) => Boolean(v.id));
 }
 
 export function activePacks(
@@ -27,7 +46,7 @@ export function activePacks(
   variantId: string,
 ): ProductPack[] {
   const variant = activeVariants(product).find((v) => v.id === variantId);
-  return (variant?.packs || []).filter((pk) => pk.isActive !== false);
+  return variant?.packs || [];
 }
 
 export function pickDefaultIds(product: Product | undefined): {

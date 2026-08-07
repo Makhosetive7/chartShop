@@ -66,9 +66,10 @@ export function ProductLineFields({
       </Field>
 
       {needVariant ? (
-        <Field>
-          Variant (size, packs)
+        <Field style={{ flex: '1.4 1 180px' }}>
+          Option
           <Select
+            key={`variant-${line.productId}`}
             value={line.variantId}
             onChange={(e) => {
               const packsFor = activePacks(product, e.target.value);
@@ -82,13 +83,17 @@ export function ProductLineFields({
             }}
             required
           >
-            {variants.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.label?.trim() || 'Default'}
-                {v.trackStock ? ` · stock ${v.stock}` : ''}
-                {` · ${money(v.price)}`}
-              </option>
-            ))}
+            {variants.length === 0 ? (
+              <option value="">No options</option>
+            ) : (
+              variants.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label?.trim() || 'Standard'}
+                  {v.trackStock ? ` · stock ${v.stock}` : ''}
+                  {` · ${money(v.price)}`}
+                </option>
+              ))
+            )}
           </Select>
         </Field>
       ) : null}
@@ -97,6 +102,7 @@ export function ProductLineFields({
         <Field>
           Pack
           <Select
+            key={`pack-${line.productId}-${line.variantId}`}
             value={line.packId}
             onChange={(e) =>
               onChange({
