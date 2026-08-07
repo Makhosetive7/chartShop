@@ -13,6 +13,7 @@ import {
   ErrorBanner,
   Badge,
 } from '@/components/ui/primitives';
+import { Modal } from '@/components/ui/Modal';
 import {
   ActivityListSkeleton,
   ActivityStatsSkeleton,
@@ -191,9 +192,6 @@ const Summary = styled.p`
 `;
 
 const Detail = styled.div`
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid ${({ theme }) => theme.colors.border};
   display: grid;
   gap: 8px;
 `;
@@ -215,6 +213,21 @@ const Bubble = styled.div<{ $tone: 'in' | 'out' }>`
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: ${({ theme }) => theme.colors.textSecondary};
+  }
+`;
+
+const DetailTrigger = styled.button`
+  margin-top: 10px;
+  border: none;
+  background: transparent;
+  color: ${({ theme }) => theme.colors.maroon};
+  font-weight: ${({ theme }) => theme.fontWeights.semibold};
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0;
+
+  &:hover {
+    text-decoration: underline;
   }
 `;
 
@@ -301,7 +314,7 @@ export function ActivityPage() {
   const [action, setAction] = useState<ActionFilter>('all');
   const [mineOnly, setMineOnly] = useState(false);
   const [query, setQuery] = useState('');
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [detailItem, setDetailItem] = useState<ActivityItem | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['activity', channel, action, mineOnly],
@@ -356,6 +369,7 @@ export function ActivityPage() {
   }, [items, query]);
 
   let lastDay = '';
+  const detailParts = detailItem ? getChatParts(detailItem) : null;
 
   return (
     <Page>
@@ -451,8 +465,7 @@ export function ActivityPage() {
             if (showDay) lastDay = day;
             const Icon = channelIcon(row.channel);
             const { input, reply } = getChatParts(row);
-            const open = Boolean(expanded[row.id]);
-            const canExpand = Boolean(input || reply);
+            const canShowDetails = Boolean(input || reply);
             const who = actorLabel(row);
 
             return (
@@ -485,42 +498,10 @@ export function ActivityPage() {
 
                   <Summary>{row.summary}</Summary>
 
-                  {canExpand ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExpanded((prev) => ({ ...prev, [row.id]: !prev[row.id] }))
-                      }
-                      style={{
-                        marginTop: 10,
-                        border: 'none',
-                        background: 'transparent',
-                        color: '#8B1E3A',
-                        fontWeight: 600,
-                        fontSize: '0.82rem',
-                        cursor: 'pointer',
-                        padding: 0,
-                      }}
-                    >
-                      {open ? 'Hide details' : 'Show command & reply'}
-                    </button>
-                  ) : null}
-
-                  {open && canExpand ? (
-                    <Detail>
-                      {input ? (
-                        <Bubble $tone="in">
-                          <strong>Command</strong>
-                          {input}
-                        </Bubble>
-                      ) : null}
-                      {reply ? (
-                        <Bubble $tone="out">
-                          <strong>Reply</strong>
-                          {reply}
-                        </Bubble>
-                      ) : null}
-                    </Detail>
+                  {canShowDetails ? (
+                    <DetailTrigger type="button" onClick={() => setDetailItem(row)}>
+                      Show command & reply
+                    </DetailTrigger>
                   ) : null}
                 </Item>
               </div>
@@ -528,6 +509,34 @@ export function ActivityPage() {
           })}
         </List>
       )}
+
+      <Modal
+        open={Boolean(detailItem)}
+        onOpenChange={(open) => {
+          if (!open) setDetailItem(null);
+        }}
+        title="Command & reply"
+        description={detailItem?.summary}
+        size="md"
+        showDone
+      >
+        {detailParts ? (
+          <Detail>
+            {detailParts.input ? (
+              <Bubble $tone="in">
+                <strong>Command</strong>
+                {detailParts.input}
+              </Bubble>
+            ) : null}
+            {detailParts.reply ? (
+              <Bubble $tone="out">
+                <strong>Reply</strong>
+                {detailParts.reply}
+              </Bubble>
+            ) : null}
+          </Detail>
+        ) : null}
+      </Modal>
 
       {!isLoading && filtered.length === 0 ? (
         <Card>
