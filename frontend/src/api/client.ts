@@ -79,6 +79,7 @@ export type User = {
   displayName: string;
   role: 'admin' | 'member';
   isActive?: boolean;
+  mustSetPin?: boolean;
   lastLogin?: string | null;
   createdAt?: string;
   channels?: {

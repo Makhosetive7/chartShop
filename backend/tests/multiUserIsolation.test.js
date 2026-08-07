@@ -183,21 +183,43 @@ describe("multi-user E2E isolation", () => {
     assert.equal(invite.status, 201, JSON.stringify(invite.body));
     assert.ok(invite.body.setupCode, "setup code required when PIN omitted");
     assert.equal(invite.body.member.role, "member");
+    assert.equal(invite.body.member.mustSetPin, true);
     const memberId = invite.body.member.id;
     const setupCode = invite.body.setupCode;
+
+    // Lost code → admin regenerates; old code must fail
+    const regen = await request(server, {
+      method: "POST",
+      path: `/api/v1/team/${memberId}/setup-code`,
+      token: adminToken,
+    });
+    assert.equal(regen.status, 200, JSON.stringify(regen.body));
+    assert.ok(regen.body.setupCode);
+    assert.notEqual(regen.body.setupCode, setupCode);
+
+    const staleSetup = await request(server, {
+      method: "POST",
+      path: "/api/v1/auth/setup-pin",
+      body: {
+        username: memberUser,
+        setupCode,
+        newPin: "8462",
+      },
+    });
+    assert.ok(staleSetup.status >= 400);
 
     // Login before PIN setup must fail with MUST_SET_PIN
     const premature = await login(server, memberUser, "9999");
     assert.ok([401, 403].includes(premature.status));
     assert.equal(premature.body.code, "MUST_SET_PIN");
 
-    // Complete setup
+    // Complete setup with the new code
     const setup = await request(server, {
       method: "POST",
       path: "/api/v1/auth/setup-pin",
       body: {
         username: memberUser,
-        setupCode,
+        setupCode: regen.body.setupCode,
         newPin: "8462",
       },
     });
@@ -209,11 +231,19 @@ describe("multi-user E2E isolation", () => {
       path: "/api/v1/auth/setup-pin",
       body: {
         username: memberUser,
-        setupCode,
+        setupCode: regen.body.setupCode,
         newPin: "9173",
       },
     });
     assert.ok(reuseCode.status >= 400);
+
+    // Regenerating after PIN is set must fail
+    const regenAfter = await request(server, {
+      method: "POST",
+      path: `/api/v1/team/${memberId}/setup-code`,
+      token: adminToken,
+    });
+    assert.ok(regenAfter.status >= 400);
 
     const memberLogin = await login(server, memberUser, "8462");
     assert.equal(memberLogin.status, 200, JSON.stringify(memberLogin.body));
