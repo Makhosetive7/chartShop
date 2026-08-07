@@ -31,7 +31,7 @@ type TourStep = {
 const STEPS: TourStep[] = [
   {
     id: 'chat',
-    path: '/app',
+    path: '/app/chat',
     target: '[data-tour="nav-chat"]',
     title: 'Chat is the till',
     body: 'Sell and run commands here — the same flow as Telegram or WhatsApp.',

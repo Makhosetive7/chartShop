@@ -37,8 +37,9 @@ export function App() {
 
             <Route path="app" element={<ProtectedRoute />}>
               <Route element={<AppLayout />}>
-                <Route index element={<ChatPage />} />
+                <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<DashboardPage />} />
+                <Route path="chat" element={<ChatPage />} />
                 <Route path="products" element={<ProductsPage />} />
                 <Route path="sales" element={<SalesPage />} />
                 <Route path="laybyes" element={<LaybyesPage />} />
