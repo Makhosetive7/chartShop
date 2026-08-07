@@ -115,7 +115,12 @@ export async function parseApiSaleItems(shopId, rawItems) {
 export function itemsToCommandText(items) {
   return (items || [])
     .map((item) => {
-      const name = item.name || item.productName;
+      const name = String(item.name || item.productName || "").trim();
+      if (!name) {
+        throw new Error(
+          "itemsToCommandText requires name or productName on each item (resolve productId first)."
+        );
+      }
       const quoted = /\s/.test(name) ? `"${name}"` : name;
       const price =
         item.price !== undefined && item.price !== null

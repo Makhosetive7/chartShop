@@ -75,7 +75,7 @@ const ENDPOINTS = [
   {
     method: "PATCH",
     path: "/orders/:id/status",
-    command: "confirm/ready/complete/cancel order",
+    command: "complete/cancel order",
   },
   { method: "POST", path: "/expenses", command: "expense" },
   { method: "GET", path: "/expenses", command: "expenses" },

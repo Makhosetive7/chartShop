@@ -1,5 +1,8 @@
 import OrderService from "../../services/OrderService.js";
-import { itemsToCommandText } from "../../utils/apiSaleItems.js";
+import {
+  itemsToCommandText,
+  parseApiSaleItems,
+} from "../../utils/apiSaleItems.js";
 import { stripMarkdown } from "../../utils/apiResponse.js";
 import { logApiActivity } from "../../utils/logApiActivity.js";
 
@@ -63,7 +66,15 @@ export async function createOrder(req, res) {
 
     let itemsText = "";
     if (Array.isArray(req.body?.items) && req.body.items.length > 0) {
-      itemsText = itemsToCommandText(req.body.items);
+      // UI sends { productId, quantity }; resolve names before chat-style parse.
+      const parsed = await parseApiSaleItems(req.shopId, req.body.items);
+      if (!parsed.ok) {
+        return res.status(parsed.status).json({
+          success: false,
+          error: parsed.error,
+        });
+      }
+      itemsText = itemsToCommandText(parsed.items);
     } else if (req.body?.itemsText) {
       itemsText = String(req.body.itemsText);
     }
@@ -140,7 +151,7 @@ export async function updateOrderStatus(req, res) {
   try {
     const status = String(req.body?.status || "").toLowerCase();
     const notes = String(req.body?.notes || "");
-    const valid = ["confirmed", "ready", "completed", "cancelled"];
+    const valid = ["completed", "cancelled"];
 
     if (!valid.includes(status)) {
       return res.status(400).json({

@@ -112,26 +112,20 @@ export async function handleOrderStatusUpdate(shopId, text, actorUserId = null) 
     const orderIdentifier = parts[2];
     const notes = parts.slice(3).join(" ");
 
-    if (!["confirm", "ready", "complete", "cancel"].includes(action)) {
-      return "Invalid order action. Use: confirm, ready, complete, or cancel.";
+    if (!["complete", "cancel"].includes(action)) {
+      return "Invalid order action. Use: complete or cancel.";
     }
 
     if (command !== "order") {
-      return "Invalid format. Use: [action] order [order-id]\nExample: confirm order A1B2";
+      return "Invalid format. Use: [action] order [order-id]\nExample: complete order A1B2";
     }
 
     if (!orderIdentifier) {
-      return "Please specify order ID.\n\nUse: [action] order [order-id]\nExample: confirm order A1B2";
+      return "Please specify order ID.\n\nUse: [action] order [order-id]\nExample: complete order A1B2";
     }
 
     let newStatus;
     switch (action) {
-      case "confirm":
-        newStatus = "confirmed";
-        break;
-      case "ready":
-        newStatus = "ready";
-        break;
       case "complete":
         newStatus = "completed";
         break;

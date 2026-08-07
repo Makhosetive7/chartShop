@@ -348,8 +348,9 @@ class OrderService {
    */
   isValidStatusTransition(currentStatus, newStatus) {
     const validTransitions = {
-      pending: ["confirmed", "cancelled"],
-      confirmed: ["ready", "cancelled"],
+      pending: ["completed", "cancelled"],
+      // Legacy mid-states from the old confirm/ready workflow
+      confirmed: ["completed", "cancelled"],
       ready: ["completed", "cancelled"],
       completed: [],
       cancelled: [],
@@ -386,13 +387,7 @@ class OrderService {
     }
 
     message += `\n*ORDER WORKFLOW:*\n`;
-    message += `1. *Confirm Order*\n`;
-    message += `   confirm order ${orderId}\n\n`;
-
-    message += `2. *Mark as Ready for Pickup*\n`;
-    message += `   ready order ${orderId}\n\n`;
-
-    message += `3. *Complete Order*\n`;
+    message += `1. *Complete Order*\n`;
     message += `   complete order ${orderId}\n\n`;
 
     message += `*Cancel Order (if needed)*\n`;
@@ -462,7 +457,7 @@ class OrderService {
     message += `order [customer] [items] - Place new order\n`;
     message += `orders pending - Pending orders only\n`;
     message += `order details [id] - View order details\n`;
-    message += `confirm order [id] - Confirm order`;
+    message += `complete order [id] - Complete order`;
 
     return message;
   }
@@ -527,13 +522,7 @@ class OrderService {
     message += `\ *ACTIONS:*\n`;
     switch (order.status) {
       case "pending":
-        message += `confirm order ${orderId}\n`;
-        message += `cancel order ${orderId} [reason]\n`;
-        break;
       case "confirmed":
-        message += `ready order ${orderId}\n`;
-        message += `cancel order ${orderId} [reason]\n`;
-        break;
       case "ready":
         message += `complete order ${orderId}\n`;
         message += `cancel order ${orderId} [reason]\n`;

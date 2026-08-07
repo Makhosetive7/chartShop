@@ -507,4 +507,49 @@ describe("API v1", () => {
       username: newUsername,
     });
   });
+
+  it("creates an order from productId items (web UI shape)", async () => {
+    const login = await request(server, {
+      method: "POST",
+      path: "/api/v1/auth/login",
+      body: { username, pin },
+    });
+    assert.equal(login.status, 200);
+    const token = login.body.token;
+
+    const product = await request(server, {
+      method: "POST",
+      path: "/api/v1/products",
+      token,
+      body: { name: "order-milk", price: 1.5, stock: 20 },
+    });
+    assert.equal(product.status, 201);
+
+    const customer = await request(server, {
+      method: "POST",
+      path: "/api/v1/customers",
+      token,
+      body: { name: "Order Cust", phone: "5550100999" },
+    });
+    assert.equal(customer.status, 201);
+
+    const order = await request(server, {
+      method: "POST",
+      path: "/api/v1/orders",
+      token,
+      body: {
+        customer: "Order Cust",
+        orderType: "pickup",
+        items: [{ productId: product.body.product.id, quantity: 2 }],
+      },
+    });
+    assert.equal(order.status, 201);
+    assert.equal(order.body.success, true);
+    assert.equal(order.body.order.customerName, "Order Cust");
+    assert.equal(order.body.order.total, 3);
+    assert.equal(order.body.order.status, "pending");
+    assert.equal(order.body.order.items.length, 1);
+    assert.equal(order.body.order.items[0].productName, "order-milk");
+    assert.equal(order.body.order.items[0].quantity, 2);
+  });
 });
