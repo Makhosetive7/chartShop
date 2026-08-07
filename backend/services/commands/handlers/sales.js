@@ -240,8 +240,15 @@ export async function handleLayBye(shopId, text, actorUserId = null) {
     // Model B: check availability now; deduct stock only on completion.
     // Items stay sellable until the laybye is completed.
     for (const item of items) {
-      if (item.product.trackStock && item.product.stock < item.quantity) {
-        return `*Insufficient Stock*\n${item.product.name}: Need ${item.quantity}, have ${item.product.stock}\n\n_Laybye does not reserve stock — ensure stock is available at completion._`;
+      const need = item.baseUnitsDeducted ?? item.quantity;
+      const variant =
+        item.variantId && item.product.variants?.id?.(item.variantId)
+          ? item.product.variants.id(item.variantId)
+          : null;
+      const tracks = variant ? variant.trackStock : item.product.trackStock;
+      const have = variant ? variant.stock : item.product.stock;
+      if (tracks && have < need) {
+        return `*Insufficient Stock*\n${item.productName || item.product.name}: Need ${need}, have ${have}\n\n_Laybye does not reserve stock — ensure stock is available at completion._`;
       }
     }
 
@@ -253,7 +260,13 @@ export async function handleLayBye(shopId, text, actorUserId = null) {
       customerPhone: customer.phone,
       items: items.map((item) => ({
         productId: item.product._id,
-        productName: item.product.name,
+        productName: item.productName || item.product.name,
+        variantId: item.variantId || null,
+        variantLabel: item.variantLabel || "",
+        packId: item.packId || null,
+        packLabel: item.packLabel || "",
+        unitsPerPack: item.unitsPerPack || 1,
+        baseUnitsDeducted: item.baseUnitsDeducted ?? item.quantity,
         quantity: item.quantity,
         price: item.price,
         total: item.total,
@@ -358,6 +371,8 @@ export async function completeLayBye(shopId, laybye, actorUserId = null) {
     const itemsForStock = laybye.items.map((item) => ({
       productId: item.productId,
       quantity: item.quantity,
+      baseUnitsDeducted: item.baseUnitsDeducted ?? item.quantity,
+      variantId: item.variantId || null,
       product: { _id: item.productId, trackStock: true },
     }));
 

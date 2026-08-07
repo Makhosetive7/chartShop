@@ -12,7 +12,6 @@ import {
   cancelSale,
   cancelLastSale,
   fetchRefunds,
-  type RefundSale,
 } from '@/api/sales';
 import { getErrorMessage, money, type SaleItemInput } from '@/api/types';
 import {
@@ -23,7 +22,6 @@ import {
   Row,
   Field,
   Input,
-  Select,
   Button,
   Table,
   Badge,
@@ -32,12 +30,19 @@ import {
 } from '@/components/ui/primitives';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { ProductLineFields } from '@/components/products/ProductLineFields';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate, formatShopDateTime } from '@/utils/dates';
+import {
+  emptyCatalogLine,
+  formatSaleItemLabel,
+  lineToSaleItem,
+  type CatalogLine,
+} from '@/utils/productCatalog';
 
-type Line = { productId: string; quantity: string; price: string };
-const emptyLine = (): Line => ({ productId: '', quantity: '1', price: '' });
+type Line = CatalogLine;
+const emptyLine = emptyCatalogLine;
 
 const REFUND_PERIODS = [
   { days: 7, label: '7 days' },
@@ -118,8 +123,7 @@ const PeriodTabs = styled.div`
 
 const PeriodTab = styled.button<{ $active?: boolean }>`
   border: none;
-  background: ${({ theme, $active }) =>
-    $active ? theme.colors.surface : 'transparent'};
+  background: ${({ theme, $active }) => ($active ? theme.colors.surface : 'transparent')};
   color: ${({ theme }) => theme.colors.maroon};
   padding: 8px 12px;
   font-weight: ${({ theme }) => theme.fontWeights.semibold};
@@ -178,12 +182,19 @@ function saleTypeLabel(type: string) {
   return type.replace(/_/g, ' ');
 }
 
-function itemsSummary(sale: RefundSale) {
+function itemsSummary(sale: {
+  items?: Array<{
+    productName?: string;
+    variantLabel?: string;
+    packLabel?: string;
+    quantity?: number;
+  }>;
+}) {
   const items = sale.items || [];
   if (!items.length) return '—';
   const preview = items
     .slice(0, 2)
-    .map((item) => `${item.quantity}× ${item.productName}`)
+    .map((item) => formatSaleItemLabel(item))
     .join(', ');
   if (items.length > 2) return `${preview} +${items.length - 2} more`;
   return preview;
@@ -223,14 +234,7 @@ export function SalesPage() {
   const customers = customersQ.data || [];
 
   const items: SaleItemInput[] = useMemo(
-    () =>
-      lines
-        .filter((l) => l.productId && Number(l.quantity) > 0)
-        .map((l) => ({
-          productId: l.productId,
-          quantity: Number(l.quantity),
-          ...(l.price !== '' ? { price: Number(l.price) } : {}),
-        })),
+    () => lines.map(lineToSaleItem).filter((item): item is SaleItemInput => item != null),
     [lines],
   );
 
@@ -251,14 +255,35 @@ export function SalesPage() {
     },
     onSuccess: (result) => {
       let total = '';
+      let saleItems: Array<{
+        productName?: string;
+        variantLabel?: string;
+        packLabel?: string;
+        quantity?: number;
+      }> = [];
       if (result && typeof result === 'object') {
         if ('sale' in result && result.sale && typeof result.sale === 'object') {
-          total = money(Number((result.sale as { total?: number }).total));
+          const sale = result.sale as {
+            total?: number;
+            items?: typeof saleItems;
+          };
+          total = money(Number(sale.total));
+          saleItems = sale.items || [];
         } else if ('total' in result) {
-          total = money(Number((result as { total: number }).total));
+          const sale = result as {
+            total: number;
+            items?: typeof saleItems;
+          };
+          total = money(Number(sale.total));
+          saleItems = sale.items || [];
         }
       }
-      toastSuccess(`Sale recorded${total ? ` · ${total}` : ''}.`);
+      const names = itemsSummary({ items: saleItems });
+      toastSuccess(
+        names !== '—'
+          ? `Sold ${names}${total ? ` · ${total}` : ''}.`
+          : `Sale recorded${total ? ` · ${total}` : ''}.`,
+      );
       setLines([emptyLine()]);
       invalidate();
     },
@@ -295,7 +320,10 @@ export function SalesPage() {
   return (
     <Page>
       <PageTitle>Sales</PageTitle>
-      <PageLead>Cash, credit, customer sales, and cancellations.</PageLead>
+      <PageLead>
+        Cash, credit, and customer sales. Size and pack pickers appear when a product has
+        options.
+      </PageLead>
 
       <Tabs>
         {(
@@ -338,68 +366,26 @@ export function SalesPage() {
           ) : null}
 
           {lines.map((line, idx) => (
-            <Row key={idx}>
-              <Field>
-                Product
-                <Select
-                  value={line.productId}
-                  onChange={(e) => {
-                    const next = [...lines];
-                    next[idx] = { ...line, productId: e.target.value };
-                    setLines(next);
-                  }}
-                  required
-                >
-                  <option value="">Select…</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} · {money(p.price)} · stock {p.stock}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field>
-                Qty
-                <Input
-                  type="number"
-                  min="1"
-                  value={line.quantity}
-                  onChange={(e) => {
-                    const next = [...lines];
-                    next[idx] = { ...line, quantity: e.target.value };
-                    setLines(next);
-                  }}
-                  required
-                />
-              </Field>
-              <Field>
-                Custom price (optional)
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={line.price}
-                  onChange={(e) => {
-                    const next = [...lines];
-                    next[idx] = { ...line, price: e.target.value };
-                    setLines(next);
-                  }}
-                />
-              </Field>
-              {lines.length > 1 ? (
-                <Button
-                  type="button"
-                  $variant="ghost"
-                  onClick={() => setLines(lines.filter((_, i) => i !== idx))}
-                >
-                  Remove
-                </Button>
-              ) : null}
-            </Row>
+            <ProductLineFields
+              key={idx}
+              line={line}
+              products={products}
+              showRemove={lines.length > 1}
+              onRemove={() => setLines(lines.filter((_, i) => i !== idx))}
+              onChange={(next) => {
+                const copy = [...lines];
+                copy[idx] = next;
+                setLines(copy);
+              }}
+            />
           ))}
 
           <Row style={{ marginTop: 20, paddingTop: 4 }}>
-            <Button type="button" $variant="ghost" onClick={() => setLines([...lines, emptyLine()])}>
+            <Button
+              type="button"
+              $variant="ghost"
+              onClick={() => setLines([...lines, emptyLine()])}
+            >
               + Line
             </Button>
             <Button type="submit" loading={sellM.isPending}>
@@ -423,15 +409,16 @@ export function SalesPage() {
         </Row>
         {recentQ.isLoading ? (
           <TableSkeleton
-            columns={5}
+            columns={6}
             rows={6}
-            widths={['8rem', '4rem', '4.5rem', '7rem', '4rem']}
+            widths={['7rem', '9rem', '4rem', '4.5rem', '7rem', '4rem']}
           />
         ) : (
           <Table>
             <thead>
               <tr>
                 <th>Customer</th>
+                <th>Items</th>
                 <th>Type</th>
                 <th>Total</th>
                 <th>When</th>
@@ -443,10 +430,14 @@ export function SalesPage() {
                 const saleId = s.id || String((s as { _id?: string })._id || '');
                 const customerName =
                   s.customerName || (s.type === 'cash' ? 'Walk-in' : '—');
+                const itemsLabel = itemsSummary(s);
                 return (
                   <tr key={saleId || `${s.date}-${s.total}`}>
                     <td>
                       <Truncate title={customerName}>{customerName}</Truncate>
+                    </td>
+                    <td>
+                      <ItemsCell title={itemsLabel}>{itemsLabel}</ItemsCell>
                     </td>
                     <td>{s.type}</td>
                     <td>{money(s.total)}</td>
@@ -463,7 +454,7 @@ export function SalesPage() {
                           setCancelConfirm({
                             kind: 'sale',
                             id: saleId,
-                            label: `${s.type} · ${money(s.total)}${
+                            label: `${itemsLabel} · ${s.type} · ${money(s.total)}${
                               s.customerName ? ` · ${s.customerName}` : ''
                             }`,
                           });
@@ -488,8 +479,8 @@ export function SalesPage() {
           <SectionCopy>
             <h2>Refunds / cancellations</h2>
             <p>
-              Cancelled sales in the selected window. Stock and credit are
-              already reversed when a sale is cancelled above.
+              Cancelled sales in the selected window. Stock and credit are already
+              reversed when a sale is cancelled above.
             </p>
           </SectionCopy>
           <PeriodTabs>
@@ -537,7 +528,9 @@ export function SalesPage() {
           />
         ) : null}
 
-        {!refundsQ.isLoading && !refundsQ.isError && (refundsQ.data?.sales || []).length ? (
+        {!refundsQ.isLoading &&
+        !refundsQ.isError &&
+        (refundsQ.data?.sales || []).length ? (
           <Table>
             <thead>
               <tr>
@@ -553,9 +546,7 @@ export function SalesPage() {
               {(refundsQ.data?.sales || []).map((s) => (
                 <tr key={s.id}>
                   <td>
-                    {s.cancelledAt
-                      ? formatShopDateTime(s.cancelledAt, timeZone)
-                      : '—'}
+                    {s.cancelledAt ? formatShopDateTime(s.cancelledAt, timeZone) : '—'}
                   </td>
                   <td>
                     <Badge $tone="danger">{saleTypeLabel(s.type)}</Badge>
@@ -580,8 +571,8 @@ export function SalesPage() {
           <EmptyState>
             <strong>No cancellations in the last {refundDays} days</strong>
             <p>
-              When you cancel a sale from Recent sales, it will show up here
-              with the amount and reason.
+              When you cancel a sale from Recent sales, it will show up here with the
+              amount and reason.
             </p>
           </EmptyState>
         ) : null}
@@ -592,11 +583,7 @@ export function SalesPage() {
         onOpenChange={(open) => {
           if (!open) setCancelConfirm(null);
         }}
-        title={
-          cancelConfirm?.kind === 'last'
-            ? 'Cancel last sale?'
-            : 'Cancel this sale?'
-        }
+        title={cancelConfirm?.kind === 'last' ? 'Cancel last sale?' : 'Cancel this sale?'}
         description={
           cancelConfirm?.kind === 'last'
             ? 'This reverses the most recent sale and returns items to stock. This cannot be undone from the till.'
@@ -610,7 +597,7 @@ export function SalesPage() {
             ? busyKey === 'cancel-last'
             : Boolean(
                 cancelConfirm?.kind === 'sale' &&
-                  busyKey === `cancel-${cancelConfirm.id}`,
+                busyKey === `cancel-${cancelConfirm.id}`,
               )
         }
         onConfirm={runCancelConfirmed}

@@ -21,17 +21,21 @@ export type RefundSale = {
   type: string;
   total: number;
   customerName?: string | null;
-  items?: Array<{ productName: string; quantity: number }>;
+  items?: Array<{
+    productName: string;
+    variantLabel?: string;
+    packLabel?: string;
+    quantity: number;
+  }>;
   cancelledAt?: string;
   cancellationReason?: string | null;
   date?: string;
 };
 
 export async function createCashSale(items: SaleItemInput[]) {
-  const { data } = await api.post<{ success: boolean; sale: Sale }>(
-    '/sales/cash',
-    { items },
-  );
+  const { data } = await api.post<{ success: boolean; sale: Sale }>('/sales/cash', {
+    items,
+  });
   return data.sale;
 }
 

@@ -3,12 +3,7 @@ import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { listProducts } from '@/api/products';
 import { listCustomers } from '@/api/customers';
-import {
-  createLaybye,
-  payLaybye,
-  completeLaybye,
-  listLaybyes,
-} from '@/api/sales';
+import { createLaybye, payLaybye, completeLaybye, listLaybyes } from '@/api/sales';
 import { getErrorMessage, money, type SaleItemInput } from '@/api/types';
 import {
   Page,
@@ -18,22 +13,24 @@ import {
   Row,
   Field,
   Input,
-  Select,
   Button,
   Table,
 } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { ProductLineFields } from '@/components/products/ProductLineFields';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate } from '@/utils/dates';
-
-type Line = { productId: string; quantity: string; price: string };
-const emptyLine = (): Line => ({ productId: '', quantity: '1', price: '' });
+import {
+  emptyCatalogLine,
+  lineToSaleItem,
+  type CatalogLine,
+} from '@/utils/productCatalog';
 
 export function LaybyesPage() {
   const qc = useQueryClient();
   const timeZone = useShopTimezone();
-  const [lines, setLines] = useState<Line[]>([emptyLine()]);
+  const [lines, setLines] = useState<CatalogLine[]>([emptyCatalogLine()]);
   const [customer, setCustomer] = useState('');
   const [deposit, setDeposit] = useState('0');
   const [laybyePay, setLaybyePay] = useState({ customer: '', amount: '' });
@@ -58,14 +55,7 @@ export function LaybyesPage() {
   const customers = customersQ.data || [];
 
   const items: SaleItemInput[] = useMemo(
-    () =>
-      lines
-        .filter((l) => l.productId && Number(l.quantity) > 0)
-        .map((l) => ({
-          productId: l.productId,
-          quantity: Number(l.quantity),
-          ...(l.price !== '' ? { price: Number(l.price) } : {}),
-        })),
+    () => lines.map(lineToSaleItem).filter((item): item is SaleItemInput => item != null),
     [lines],
   );
 
@@ -97,7 +87,7 @@ export function LaybyesPage() {
           ? `Laybye completed${total ? ` · ${total}` : ''}.`
           : 'Laybye created.',
       );
-      setLines([emptyLine()]);
+      setLines([emptyCatalogLine()]);
       setCustomer('');
       setDeposit('0');
       invalidate();
@@ -114,8 +104,8 @@ export function LaybyesPage() {
     <Page>
       <PageTitle>Laybyes</PageTitle>
       <PageLead>
-        Create agreements, take deposits and installments, and complete when
-        paid in full.
+        Create agreements, take deposits and installments, and complete when paid in full.
+        Pick size/pack when a product has options.
       </PageLead>
 
       <Card>
@@ -149,71 +139,25 @@ export function LaybyesPage() {
           </Row>
 
           {lines.map((line, idx) => (
-            <Row key={idx}>
-              <Field>
-                Product
-                <Select
-                  value={line.productId}
-                  onChange={(e) => {
-                    const next = [...lines];
-                    next[idx] = { ...line, productId: e.target.value };
-                    setLines(next);
-                  }}
-                  required
-                >
-                  <option value="">Select…</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} · {money(p.price)} · stock {p.stock}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field>
-                Qty
-                <Input
-                  type="number"
-                  min="1"
-                  value={line.quantity}
-                  onChange={(e) => {
-                    const next = [...lines];
-                    next[idx] = { ...line, quantity: e.target.value };
-                    setLines(next);
-                  }}
-                  required
-                />
-              </Field>
-              <Field>
-                Custom price (optional)
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={line.price}
-                  onChange={(e) => {
-                    const next = [...lines];
-                    next[idx] = { ...line, price: e.target.value };
-                    setLines(next);
-                  }}
-                />
-              </Field>
-              {lines.length > 1 ? (
-                <Button
-                  type="button"
-                  $variant="ghost"
-                  onClick={() => setLines(lines.filter((_, i) => i !== idx))}
-                >
-                  Remove
-                </Button>
-              ) : null}
-            </Row>
+            <ProductLineFields
+              key={idx}
+              line={line}
+              products={products}
+              showRemove={lines.length > 1}
+              onRemove={() => setLines(lines.filter((_, i) => i !== idx))}
+              onChange={(next) => {
+                const copy = [...lines];
+                copy[idx] = next;
+                setLines(copy);
+              }}
+            />
           ))}
 
           <Row style={{ marginTop: 20, paddingTop: 4 }}>
             <Button
               type="button"
               $variant="ghost"
-              onClick={() => setLines([...lines, emptyLine()])}
+              onClick={() => setLines([...lines, emptyCatalogLine()])}
             >
               + Line
             </Button>
@@ -254,9 +198,7 @@ export function LaybyesPage() {
                       {money(lb.amountPaid)} / {money(lb.totalAmount)}
                     </td>
                     <td>{money(lb.balanceDue)}</td>
-                    <td>
-                      {lb.dueDate ? formatShopDate(lb.dueDate, timeZone) : '—'}
-                    </td>
+                    <td>{lb.dueDate ? formatShopDate(lb.dueDate, timeZone) : '—'}</td>
                     <td>
                       <Row style={{ gap: 8, margin: 0 }}>
                         {!canComplete ? (
@@ -281,9 +223,7 @@ export function LaybyesPage() {
                             try {
                               setBusyKey(`complete-${key}`);
                               await completeLaybye(lb.customerName);
-                              toastSuccess(
-                                `Laybye completed for ${lb.customerName}.`,
-                              );
+                              toastSuccess(`Laybye completed for ${lb.customerName}.`);
                               invalidate();
                             } catch (err) {
                               toastError(getErrorMessage(err));
@@ -315,9 +255,7 @@ export function LaybyesPage() {
             <Input
               list="laybye-pay-customers"
               value={laybyePay.customer}
-              onChange={(e) =>
-                setLaybyePay({ ...laybyePay, customer: e.target.value })
-              }
+              onChange={(e) => setLaybyePay({ ...laybyePay, customer: e.target.value })}
             />
             <datalist id="laybye-pay-customers">
               {(laybyesQ.data || []).map((lb) => (
@@ -332,9 +270,7 @@ export function LaybyesPage() {
               min="0.01"
               step="0.01"
               value={laybyePay.amount}
-              onChange={(e) =>
-                setLaybyePay({ ...laybyePay, amount: e.target.value })
-              }
+              onChange={(e) => setLaybyePay({ ...laybyePay, amount: e.target.value })}
             />
           </Field>
           <Button
@@ -348,9 +284,7 @@ export function LaybyesPage() {
                   Number(laybyePay.amount),
                 );
                 toastSuccess(
-                  res.completed
-                    ? 'Laybye completed.'
-                    : 'Laybye payment recorded.',
+                  res.completed ? 'Laybye completed.' : 'Laybye payment recorded.',
                 );
                 setLaybyePay({ customer: '', amount: '' });
                 invalidate();

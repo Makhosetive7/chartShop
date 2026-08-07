@@ -19,6 +19,18 @@ const laybyeSchema = new mongoose.Schema({
             ref: 'Product'
         },
         productName: String,
+        variantId: {
+            type: mongoose.Schema.Types.ObjectId,
+            default: null,
+        },
+        variantLabel: { type: String, default: '' },
+        packId: {
+            type: mongoose.Schema.Types.ObjectId,
+            default: null,
+        },
+        packLabel: { type: String, default: '' },
+        unitsPerPack: { type: Number, default: 1 },
+        baseUnitsDeducted: { type: Number, default: null },
         quantity: Number,
         price: Number,
         total: Number

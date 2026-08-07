@@ -98,15 +98,25 @@ function normalizeOverrideUsername(value) {
 }
 
 export async function createTestProduct(shopId, overrides = {}) {
+  const price = overrides.price ?? 2.5;
+  const costPrice = overrides.costPrice ?? null;
+  const stock = overrides.stock ?? 10;
+  const lowStockThreshold = overrides.lowStockThreshold ?? 2;
+  const trackStock = overrides.trackStock ?? true;
+  const name = overrides.name || "p4bread";
+
   return Product.create({
     shopId,
-    name: overrides.name || "p4bread",
-    price: overrides.price ?? 2.5,
-    costPrice: overrides.costPrice ?? null,
-    stock: overrides.stock ?? 10,
-    lowStockThreshold: overrides.lowStockThreshold ?? 2,
-    trackStock: overrides.trackStock ?? true,
+    name,
+    price,
+    costPrice,
+    stock,
+    lowStockThreshold,
+    trackStock,
     isActive: true,
+    ...(overrides.variants
+      ? { variants: overrides.variants }
+      : {}),
   });
 }
 

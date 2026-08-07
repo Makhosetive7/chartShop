@@ -65,8 +65,8 @@ export async function createOrder(req, res) {
     const notes = String(req.body?.notes || "");
 
     let itemsText = "";
+    let preParsedItems = null;
     if (Array.isArray(req.body?.items) && req.body.items.length > 0) {
-      // UI sends { productId, quantity }; resolve names before chat-style parse.
       const parsed = await parseApiSaleItems(req.shopId, req.body.items);
       if (!parsed.ok) {
         return res.status(parsed.status).json({
@@ -74,12 +74,13 @@ export async function createOrder(req, res) {
           error: parsed.error,
         });
       }
+      preParsedItems = parsed.items;
       itemsText = itemsToCommandText(parsed.items);
     } else if (req.body?.itemsText) {
       itemsText = String(req.body.itemsText);
     }
 
-    if (!itemsText.trim()) {
+    if (!itemsText.trim() && !preParsedItems) {
       return res.status(400).json({
         success: false,
         error: "items array or itemsText is required.",
@@ -91,7 +92,11 @@ export async function createOrder(req, res) {
       customer,
       itemsText,
       orderType,
-      notes
+      notes,
+      {
+        createdByUserId: req.userId,
+        preParsedItems,
+      }
     );
 
     if (!result.success) {

@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
 import Product from "../models/Product.js";
+import {
+  ensureVariants,
+  resolveSellUnit,
+} from "./productVariants.js";
 
 export async function resolveProduct(shopId, item) {
   if (item.productId) {
@@ -14,6 +18,7 @@ export async function resolveProduct(shopId, item) {
     if (!product) {
       return { error: `Product not found: ${item.productId}` };
     }
+    ensureVariants(product);
     return { product };
   }
 
@@ -41,11 +46,13 @@ export async function resolveProduct(shopId, item) {
     return { error: `Product not found: ${name}` };
   }
 
+  ensureVariants(product);
   return { product };
 }
 
 /**
  * Parse API sale items into InventoryService / salePricing shape.
+ * Accepts optional variantId / packId. Quantity = number of packs.
  * @returns {{ ok: true, items } | { ok: false, status: number, error: string }}
  */
 export async function parseApiSaleItems(shopId, rawItems) {
@@ -74,6 +81,18 @@ export async function parseApiSaleItems(shopId, rawItems) {
     }
 
     const { product } = resolved;
+    const sell = resolveSellUnit(product, {
+      variantId: raw.variantId,
+      packId: raw.packId,
+      quantity,
+    });
+    if (sell.error) {
+      return { ok: false, status: 400, error: sell.error };
+    }
+
+    const { variant, pack, unitsPerPack, baseUnits, packCost, displayName } =
+      sell;
+
     const customPrice =
       raw.price !== undefined && raw.price !== null ? Number(raw.price) : null;
 
@@ -84,26 +103,29 @@ export async function parseApiSaleItems(shopId, rawItems) {
       return {
         ok: false,
         status: 400,
-        error: `Invalid price for ${product.name}.`,
+        error: `Invalid price for ${displayName}.`,
       };
     }
 
-    const price = customPrice != null ? customPrice : product.price;
-    const unitCost =
-      typeof product.costPrice === "number" && product.costPrice >= 0
-        ? product.costPrice
-        : null;
+    const price = customPrice != null ? customPrice : pack.price;
+    const standardPrice = pack.price;
 
     parsed.push({
       productId: product._id,
       product,
-      productName: product.name,
+      productName: displayName,
+      variantId: variant._id,
+      variantLabel: variant.label || "",
+      packId: pack._id,
+      packLabel: pack.label || "",
+      unitsPerPack,
+      baseUnitsDeducted: baseUnits,
       quantity,
       price,
-      standardPrice: product.price,
+      standardPrice,
       isCustomPrice: customPrice != null,
-      costPrice: unitCost,
-      costTotal: unitCost != null ? unitCost * quantity : null,
+      costPrice: packCost,
+      costTotal: packCost != null ? packCost * quantity : null,
       total: quantity * price,
     });
   }

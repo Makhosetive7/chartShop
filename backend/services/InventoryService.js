@@ -1,4 +1,10 @@
 import Product from "../models/Product.js";
+import {
+  ensureVariants,
+  findVariant,
+  getPrimaryVariant,
+  syncProductMirrors,
+} from "../utils/productVariants.js";
 
 class InsufficientStockError extends Error {
   constructor(productName, requested, available) {
@@ -12,86 +18,172 @@ class InsufficientStockError extends Error {
   }
 }
 
+function variantLabel(product, variant) {
+  if (variant?.label) return `${product.name} · ${variant.label}`;
+  return product.name;
+}
+
 class InventoryService {
   /**
-   * Atomically deduct stock if enough is available.
-   * Non-tracked products are a no-op success.
+   * Atomically deduct base units from a variant (default: primary).
+   * Also decrements Product.stock mirror (sum of tracked stocks).
+   * Non-tracked variants are a no-op success.
+   *
+   * @param {import('mongoose').Types.ObjectId|string} productId
+   * @param {number} quantity base units
+   * @param {import('mongoose').ClientSession|null} session
+   * @param {{ variantId?: string|import('mongoose').Types.ObjectId }} [opts]
    */
-  async deductStock(productId, quantity, session = null) {
+  async deductStock(productId, quantity, session = null, opts = {}) {
     const options = { new: true };
     if (session) options.session = session;
+
+    const loadOpts = {};
+    if (session) loadOpts.session = session;
+    const existing = await Product.findById(productId, null, loadOpts);
+    if (!existing) {
+      throw new Error("Product not found");
+    }
+
+    ensureVariants(existing);
+    if (existing.isModified("variants")) {
+      syncProductMirrors(existing);
+      await existing.save(session ? { session } : undefined);
+    }
+
+    const variant = opts.variantId
+      ? findVariant(existing, opts.variantId)
+      : getPrimaryVariant(existing);
+
+    if (!variant) {
+      throw new Error("Variant not found");
+    }
+
+    if (!variant.trackStock) {
+      return existing;
+    }
 
     const updated = await Product.findOneAndUpdate(
       {
         _id: productId,
-        trackStock: true,
-        stock: { $gte: quantity },
+        variants: {
+          $elemMatch: {
+            _id: variant._id,
+            trackStock: true,
+            stock: { $gte: quantity },
+          },
+        },
       },
-      { $inc: { stock: -quantity } },
-      options
+      {
+        $inc: {
+          "variants.$[v].stock": -quantity,
+          stock: -quantity,
+        },
+      },
+      {
+        ...options,
+        arrayFilters: [{ "v._id": variant._id }],
+      }
     );
 
     if (updated) {
       return updated;
     }
 
-    const query = Product.findById(productId);
-    if (session) query.session(session);
-    const existing = await query;
-
-    if (!existing) {
-      throw new Error("Product not found");
-    }
-
-    if (!existing.trackStock) {
-      return existing;
-    }
-
+    const fresh = await Product.findById(productId, null, loadOpts);
+    const freshVariant =
+      findVariant(fresh, variant._id) || getPrimaryVariant(fresh);
     throw new InsufficientStockError(
-      existing.name,
+      variantLabel(fresh || existing, freshVariant || variant),
       quantity,
-      existing.stock
+      freshVariant?.stock ?? variant.stock
     );
   }
 
   /**
-   * Atomically restore stock for a tracked product.
+   * Atomically restore base units to a variant (default: primary).
    */
-  async restoreStock(productId, quantity, session = null) {
+  async restoreStock(productId, quantity, session = null, opts = {}) {
     const options = { new: true };
     if (session) options.session = session;
 
+    const loadOpts = {};
+    if (session) loadOpts.session = session;
+    const existing = await Product.findById(productId, null, loadOpts);
+    if (!existing) {
+      throw new Error("Product not found");
+    }
+
+    ensureVariants(existing);
+    if (existing.isModified("variants")) {
+      syncProductMirrors(existing);
+      await existing.save(session ? { session } : undefined);
+    }
+
+    const variant = opts.variantId
+      ? findVariant(existing, opts.variantId)
+      : getPrimaryVariant(existing);
+
+    if (!variant) {
+      throw new Error("Variant not found");
+    }
+
+    if (!variant.trackStock) {
+      return existing;
+    }
+
     const updated = await Product.findOneAndUpdate(
+      { _id: productId },
       {
-        _id: productId,
-        trackStock: true,
+        $inc: {
+          "variants.$[v].stock": quantity,
+          stock: quantity,
+        },
       },
-      { $inc: { stock: quantity } },
-      options
+      {
+        ...options,
+        arrayFilters: [{ "v._id": variant._id, "v.trackStock": true }],
+      }
     );
 
     if (updated) {
       return updated;
     }
 
-    const query = Product.findById(productId);
-    if (session) query.session(session);
-    const existing = await query;
-
-    if (!existing) {
-      throw new Error("Product not found");
-    }
-
-    // Not tracking stock — nothing to restore
     return existing;
   }
 
   /**
-   * Deduct stock for a list of sale items.
-   * On failure mid-way, restores already-deducted items (compensating).
-   *
-   * @param {Array<{ product: object, quantity: number }>} items
-   * @returns {{ success: true, products: object[] } | { success: false, message: string }}
+   * Apply +/-/= stock on a variant and resync mirrors.
+   */
+  async adjustVariantStock(productId, quantity, op = "+", opts = {}) {
+    const product = await Product.findById(productId);
+    if (!product) throw new Error("Product not found");
+    ensureVariants(product);
+    const variant = opts.variantId
+      ? findVariant(product, opts.variantId)
+      : getPrimaryVariant(product);
+    if (!variant) throw new Error("Variant not found");
+
+    variant.trackStock = true;
+    if (op === "+" || op === "add") {
+      variant.stock += quantity;
+    } else if (op === "-" || op === "sub" || op === "subtract") {
+      variant.stock = Math.max(0, variant.stock - quantity);
+    } else if (op === "=" || op === "set") {
+      variant.stock = quantity;
+    } else {
+      throw new Error('op must be one of "+", "-", "=".');
+    }
+
+    syncProductMirrors(product);
+    await product.save();
+    return product;
+  }
+
+  /**
+   * Deduct stock for sale items.
+   * Uses item.baseUnitsDeducted when set (pack sales), else item.quantity.
    */
   async deductSaleItems(items, session = null) {
     const deducted = [];
@@ -99,12 +191,17 @@ class InventoryService {
     try {
       for (const item of items) {
         const productId = item.product?._id || item.productId;
-        const updated = await this.deductStock(
+        const baseUnits = item.baseUnitsDeducted ?? item.quantity;
+        const variantId = item.variantId || item.variant?._id;
+        const updated = await this.deductStock(productId, baseUnits, session, {
+          variantId,
+        });
+        deducted.push({
           productId,
-          item.quantity,
-          session
-        );
-        deducted.push({ productId, quantity: item.quantity, product: updated });
+          quantity: baseUnits,
+          variantId,
+          product: updated,
+        });
         item.product = updated;
       }
 
@@ -113,11 +210,12 @@ class InventoryService {
         products: deducted.map((d) => d.product),
       };
     } catch (error) {
-      // Compensate prior deductions unless a Mongo session will roll them back
       if (!session) {
         for (const entry of deducted.reverse()) {
           try {
-            await this.restoreStock(entry.productId, entry.quantity);
+            await this.restoreStock(entry.productId, entry.quantity, null, {
+              variantId: entry.variantId,
+            });
           } catch (restoreError) {
             console.error(
               "[InventoryService] Failed to compensate stock restore:",
@@ -146,12 +244,12 @@ class InventoryService {
     for (const item of items) {
       const productId = item.productId || item.product?._id;
       if (!productId) continue;
+      const baseUnits = item.baseUnitsDeducted ?? item.quantity;
+      const variantId = item.variantId;
 
-      const updated = await this.restoreStock(
-        productId,
-        item.quantity,
-        session
-      );
+      const updated = await this.restoreStock(productId, baseUnits, session, {
+        variantId,
+      });
       restored.push(updated);
     }
 
