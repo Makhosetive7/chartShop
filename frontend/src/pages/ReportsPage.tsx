@@ -265,6 +265,32 @@ const PeriodMeta = styled.p`
   font-size: 0.88rem;
 `;
 
+const InsightsBox = styled.div`
+  margin-top: ${({ theme }) => theme.space[4]};
+  padding: 14px 16px;
+  border: 1px solid ${({ theme }) => theme.colors.border};
+  background: ${({ theme }) => theme.colors.surface};
+  color: ${({ theme }) => theme.colors.textSecondary};
+  font-size: 0.9rem;
+  line-height: 1.5;
+
+  strong {
+    display: block;
+    margin-bottom: 8px;
+    color: ${({ theme }) => theme.colors.textPrimary};
+    font-family: ${({ theme }) => theme.fonts.heading};
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 1.1rem;
+  }
+
+  li + li {
+    margin-top: 6px;
+  }
+`;
+
 const SummaryTitle = styled.h2`
   margin: 0;
   font-family: ${({ theme }) => theme.fonts.heading};
@@ -301,8 +327,43 @@ function activityCount(data: CashFlowData) {
     (data.transactions?.expenses || 0) +
     (data.transactions?.refunds || 0) +
     (data.cashFlow?.inflows?.debtPayments?.count || 0) +
-    (data.cashFlow?.inflows?.laybyePayments?.count || 0)
+    (data.cashFlow?.inflows?.laybyePayments?.count || 0) +
+    (data.cashFlow?.inflows?.ownerCashIns?.count || 0)
   );
+}
+
+function buildCashFlowInsights(data: CashFlowData): string[] {
+  const insights: string[] = [];
+  const net = data.cashFlow?.net || 0;
+  const expenses =
+    data.profitability?.expenses ?? data.cashFlow?.outflows?.expenses?.amount ?? 0;
+  const revenue = data.revenue?.total || 0;
+
+  if (net < 0) {
+    insights.push(
+      'Net cash is negative this period (spent more than received). That can be normal if you used money from earlier days.',
+    );
+  }
+
+  if (expenses > revenue) {
+    insights.push(
+      `Expenses (${money(expenses)}) are higher than revenue (${money(revenue)}) this period. Rent or stock buys often use cash from earlier days — it does not always mean the till is empty.`,
+    );
+  }
+
+  if ((data.profitability?.operatingResult ?? 0) < 0) {
+    insights.push(
+      'Operating result is negative this period (revenue minus expenses).',
+    );
+  }
+
+  if (typeof data.cashAvailable === 'number') {
+    insights.push(
+      `Cash available in the till (all-time recorded): ${money(data.cashAvailable)}.`,
+    );
+  }
+
+  return insights;
 }
 
 function CashFlowSummary({
@@ -322,7 +383,8 @@ function CashFlowSummary({
   const inflowTx =
     (cf?.inflows?.cashSales?.count || 0) +
     (cf?.inflows?.debtPayments?.count || 0) +
-    (cf?.inflows?.laybyePayments?.count || 0);
+    (cf?.inflows?.laybyePayments?.count || 0) +
+    (cf?.inflows?.ownerCashIns?.count || 0);
   const outflowItems =
     (cf?.outflows?.expenses?.count || 0) + (cf?.outflows?.refunds?.count || 0);
   const revenueTx =
@@ -333,6 +395,12 @@ function CashFlowSummary({
     (out?.creditDue?.customers || 0) + (out?.laybyeDue?.count || 0);
   const net = cf?.net || 0;
   const tx = activityCount(data);
+  const periodExpenses = data.profitability?.expenses ?? cf?.outflows?.expenses?.amount ?? 0;
+  const periodRevenue = rev?.total || 0;
+  const insights =
+    data.insights && data.insights.length > 0
+      ? data.insights
+      : buildCashFlowInsights(data);
 
   return (
     <>
@@ -372,7 +440,7 @@ function CashFlowSummary({
         </Kpi>
         <Kpi>
           <KpiLabel>Total revenue</KpiLabel>
-          <KpiValue>{money(rev?.total || 0)}</KpiValue>
+          <KpiValue>{money(periodRevenue)}</KpiValue>
           <KpiSub>
             {revenueTx} transaction{revenueTx === 1 ? '' : 's'}
           </KpiSub>
@@ -385,6 +453,17 @@ function CashFlowSummary({
           </KpiSub>
         </Kpi>
       </KpiGrid>
+
+      {insights.length > 0 ? (
+        <InsightsBox>
+          <strong>What this means</strong>
+          <ul>
+            {insights.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </InsightsBox>
+      ) : null}
 
       <Sections>
         <Section>
@@ -405,6 +484,13 @@ function CashFlowSummary({
               <span>{money(cf?.inflows?.laybyePayments?.amount || 0)}</span>
               <span>{cf?.inflows?.laybyePayments?.count || 0}</span>
             </Row>
+            {(cf?.inflows?.ownerCashIns?.amount || 0) > 0 ? (
+              <Row>
+                <span>Owner cash in</span>
+                <span>{money(cf?.inflows?.ownerCashIns?.amount || 0)}</span>
+                <span>{cf?.inflows?.ownerCashIns?.count || 0}</span>
+              </Row>
+            ) : null}
             <Row $accent>
               <span>Expenses</span>
               <span>({money(cf?.outflows?.expenses?.amount || 0)})</span>
@@ -443,12 +529,12 @@ function CashFlowSummary({
             </Row>
             <Row $accent>
               <span>Total expenses</span>
-              <span>({money(cf?.outflows?.expenses?.amount || 0)})</span>
+              <span>({money(periodExpenses)})</span>
               <span>{cf?.outflows?.expenses?.count || 0}</span>
             </Row>
             <Row $total>
               <span>Total revenue</span>
-              <span>{money(rev?.total || 0)}</span>
+              <span>{money(periodRevenue)}</span>
               <span />
             </Row>
           </RowList>
@@ -579,6 +665,19 @@ function ProfitSummary({ data, period }: { data: ProfitData; period: string }) {
           {margin.toFixed(1)}% margin
         </HeroNote>
       </Hero>
+
+      {expenses > revenue ? (
+        <InsightsBox>
+          <strong>What this means</strong>
+          <ul>
+            <li>
+              Expenses are higher than sales this period. That can still be OK
+              if you used cash from earlier days — it does not always mean the
+              till is empty.
+            </li>
+          </ul>
+        </InsightsBox>
+      ) : null}
 
       <KpiGrid>
         <Kpi>

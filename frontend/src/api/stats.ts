@@ -40,10 +40,22 @@ export type StatsOverview = {
   days: number;
   timeZone?: string;
   snapshots: {
-    today: { count: number; revenue: number };
+    today: {
+      count: number;
+      revenue: number;
+      byType?: {
+        cash?: number;
+        credit?: number;
+        completed_laybye?: number;
+        other?: number;
+      };
+    };
     week: { count: number; revenue: number };
     month: { count: number; revenue: number };
     todayExpenses: number;
+    todayLeft?: number;
+    cashAvailable?: number;
+    laybyeDue?: { amount: number; count: number };
     activeLaybyes: number;
     openOrders: number;
   };

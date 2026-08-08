@@ -12,6 +12,37 @@ export function getErrorMessage(error: unknown, fallback = 'Something went wrong
   return fallback;
 }
 
+export type InsufficientCashError = {
+  code: 'INSUFFICIENT_CASH';
+  error: string;
+  cashAvailable: number;
+  amount: number;
+  shortfall: number;
+};
+
+export function getInsufficientCashError(
+  error: unknown,
+): InsufficientCashError | null {
+  if (!axios.isAxiosError(error)) return null;
+  const data = error.response?.data as Partial<InsufficientCashError> | undefined;
+  if (
+    error.response?.status === 409 &&
+    data?.code === 'INSUFFICIENT_CASH' &&
+    typeof data.cashAvailable === 'number' &&
+    typeof data.amount === 'number' &&
+    typeof data.shortfall === 'number'
+  ) {
+    return {
+      code: 'INSUFFICIENT_CASH',
+      error: data.error || 'Not enough recorded cash in the till.',
+      cashAvailable: data.cashAvailable,
+      amount: data.amount,
+      shortfall: data.shortfall,
+    };
+  }
+  return null;
+}
+
 export function isDemoReadOnlyError(error: unknown): boolean {
   if (!axios.isAxiosError(error)) return false;
   const data = error.response?.data as { code?: string } | undefined;

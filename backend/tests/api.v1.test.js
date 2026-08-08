@@ -259,6 +259,7 @@ describe("API v1", () => {
         amount: 5,
         description: "test supplies",
         category: "other",
+        allowOverspend: true,
       },
     });
     assert.equal(expense.status, 201);

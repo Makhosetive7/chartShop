@@ -163,6 +163,7 @@ describe("multi-user E2E isolation", () => {
         amount: 99,
         description: "Shop B secret expense",
         category: "other",
+        allowOverspend: true,
       },
     });
     assert.equal(bExpense.status, 201, JSON.stringify(bExpense.body));

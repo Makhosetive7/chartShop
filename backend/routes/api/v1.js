@@ -196,6 +196,11 @@ router.patch(
 
 // Expenses
 router.post("/expenses", requireApiAuth, expenseController.createExpense);
+router.get(
+  "/expenses/cash-available",
+  requireApiAuth,
+  expenseController.getCashAvailable
+);
 router.get("/expenses", requireApiAuth, expenseController.listExpenses);
 router.get(
   "/expenses/breakdown",

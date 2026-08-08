@@ -1,8 +1,18 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { listExpenses, createExpense, expenseBreakdown } from '@/api/ops';
-import { getErrorMessage, money } from '@/api/types';
+import {
+  listExpenses,
+  createExpense,
+  expenseBreakdown,
+  getCashAvailable,
+} from '@/api/ops';
+import {
+  getErrorMessage,
+  getInsufficientCashError,
+  money,
+  type InsufficientCashError,
+} from '@/api/types';
 import {
   Page,
   PageTitle,
@@ -17,6 +27,7 @@ import {
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
@@ -34,20 +45,37 @@ const CATEGORIES = [
   'other',
 ];
 
+type ExpenseForm = {
+  amount: string;
+  description: string;
+  category: string;
+  paymentMethod: string;
+};
+
+const emptyForm: ExpenseForm = {
+  amount: '',
+  description: '',
+  category: 'other',
+  paymentMethod: 'cash',
+};
+
 export function ExpensesPage() {
   const qc = useQueryClient();
   const timeZone = useShopTimezone();
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>('daily');
-  const [form, setForm] = useState({
-    amount: '',
-    description: '',
-    category: 'other',
-    paymentMethod: 'cash',
-  });
+  const [form, setForm] = useState<ExpenseForm>(emptyForm);
+  const [overspend, setOverspend] = useState<InsufficientCashError | null>(
+    null,
+  );
 
   const listQ = useQuery({
     queryKey: ['expenses', period],
     queryFn: () => listExpenses(period),
+  });
+
+  const cashQ = useQuery({
+    queryKey: ['expenses', 'cash-available'],
+    queryFn: getCashAvailable,
   });
 
   const breakdownQ = useQuery({
@@ -57,40 +85,62 @@ export function ExpensesPage() {
 
   const createM = useMutation({
     mutationFn: createExpense,
-    onSuccess: () => {
-      toastSuccess('Expense recorded.');
-      setForm({
-        amount: '',
-        description: '',
-        category: 'other',
-        paymentMethod: 'cash',
-      });
+    onSuccess: (data) => {
+      const topUp =
+        data.ownerCashIn && data.ownerCashIn > 0
+          ? ` Owner cash-in ${money(data.ownerCashIn)} recorded.`
+          : '';
+      toastSuccess(`Expense recorded.${topUp}`);
+      setForm(emptyForm);
+      setOverspend(null);
       void qc.invalidateQueries({ queryKey: ['expenses'] });
       void qc.invalidateQueries({ queryKey: ['stats'] });
+      void qc.invalidateQueries({ queryKey: ['reports'] });
     },
-    onError: (e) => toastError(getErrorMessage(e)),
+    onError: (e) => {
+      const insufficient = getInsufficientCashError(e);
+      if (insufficient) {
+        setOverspend(insufficient);
+        return;
+      }
+      toastError(getErrorMessage(e));
+    },
   });
 
-  function onCreate(e: FormEvent) {
-    e.preventDefault();
+  function submitExpense(allowOverspend = false) {
     createM.mutate({
       amount: Number(form.amount),
       description: form.description.trim(),
       category: form.category,
       paymentMethod: form.paymentMethod,
+      ...(allowOverspend ? { allowOverspend: true } : {}),
     });
+  }
+
+  function onCreate(e: FormEvent) {
+    e.preventDefault();
+    submitExpense(false);
   }
 
   const expenses = listQ.data?.expenses || [];
   const breakdown = (breakdownQ.data?.breakdown || []) as Array<
     [string, { total: number; count: number }]
   >;
+  const cashAvailable = cashQ.data?.cashAvailable;
 
   return (
     <Page>
       <PageTitle>Expenses</PageTitle>
-      <PageLead>Record spend and review period totals / category mix.</PageLead>
-
+      <PageLead>
+        Record spend and review period totals / category mix.
+        {cashAvailable != null ? (
+          <>
+            {' '}
+            Cash available in the till: <strong>{money(cashAvailable)}</strong>
+            .
+          </>
+        ) : null}
+      </PageLead>
 
       <Card>
         <form onSubmit={onCreate}>
@@ -145,8 +195,8 @@ export function ExpensesPage() {
                 <option value="other">other</option>
               </Select>
             </Field>
-            <Button type="submit" loading={createM.isPending}>
-              {createM.isPending ? 'Recording…' : 'Record'}
+            <Button type="submit" loading={createM.isPending && !overspend}>
+              {createM.isPending && !overspend ? 'Recording…' : 'Record'}
             </Button>
           </Row>
         </form>
@@ -178,8 +228,7 @@ export function ExpensesPage() {
         ) : (
           <>
             <p>
-              Period total:{' '}
-              <strong>{money(listQ.data?.total)}</strong>
+              Period total: <strong>{money(listQ.data?.total)}</strong>
             </p>
             <Table>
               <thead>
@@ -234,6 +283,24 @@ export function ExpensesPage() {
           </Table>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={Boolean(overspend)}
+        onOpenChange={(open) => {
+          if (!open) setOverspend(null);
+        }}
+        title="Not enough recorded cash"
+        description={
+          overspend
+            ? `This expense is ${money(overspend.amount)}, but the till only shows ${money(overspend.cashAvailable)} recorded cash (shortfall ${money(overspend.shortfall)}). If you paid from your pocket or cash not yet recorded, confirm and we’ll add an owner cash-in for the shortfall.`
+            : ''
+        }
+        confirmLabel="Record with owner cash-in"
+        cancelLabel="Cancel"
+        tone="filled"
+        loading={createM.isPending}
+        onConfirm={() => submitExpense(true)}
+      />
     </Page>
   );
 }

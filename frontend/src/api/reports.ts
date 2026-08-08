@@ -12,6 +12,7 @@ export type CashFlowData = {
       cashSales?: FlowBucket;
       debtPayments?: FlowBucket;
       laybyePayments?: FlowBucket;
+      ownerCashIns?: FlowBucket;
       total?: number;
     };
     outflows?: {
@@ -45,6 +46,8 @@ export type CashFlowData = {
   };
   transactions?: { totalSales?: number; expenses?: number; refunds?: number };
   period?: { startDate?: string; endDate?: string };
+  insights?: string[];
+  cashAvailable?: number;
 };
 
 export type ProfitData = {
