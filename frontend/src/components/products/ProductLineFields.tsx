@@ -129,6 +129,7 @@ export function ProductLineFields({
           min="1"
           value={line.quantity}
           onChange={(e) => onChange({ ...line, quantity: e.target.value })}
+          placeholder="Quantity"
           required
         />
       </Field>
@@ -145,7 +146,7 @@ export function ProductLineFields({
                 ? String(selectedPack.price)
                 : selectedVariant
                   ? String(selectedVariant.price)
-                  : undefined
+                  : 'Override price'
             }
             value={line.price}
             onChange={(e) => onChange({ ...line, price: e.target.value })}

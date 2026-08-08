@@ -68,6 +68,7 @@ export function CustomersPage() {
               <Input
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Customer name"
                 required
               />
             </Field>
@@ -76,6 +77,7 @@ export function CustomersPage() {
               <Input
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                placeholder="Phone number"
                 required
               />
             </Field>
@@ -84,6 +86,7 @@ export function CustomersPage() {
               <Input
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="Email address"
               />
             </Field>
             <Button type="submit" loading={createM.isPending}>

@@ -320,6 +320,11 @@ const MoreTrigger = styled.button<{ $active?: boolean }>`
   line-height: 1.1;
   cursor: pointer;
 
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
   @media (min-width: 720px) {
     font-size: 0.72rem;
     padding: 10px 6px;
@@ -374,6 +379,11 @@ const CloseBtn = styled.button`
   display: grid;
   place-items: center;
   cursor: pointer;
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
 `;
 
 const SheetGrid = styled.div`
@@ -417,6 +427,7 @@ export function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const flush =
     location.pathname === '/app/chat' || location.pathname === '/app/chat/';
@@ -435,22 +446,28 @@ export function AppLayout() {
   }, [user?.username, user?.role]);
 
   useEffect(() => {
+    if (loggingOut) return;
     setMoreOpen(false);
-  }, [location.pathname]);
+  }, [location.pathname, loggingOut]);
 
   useEffect(() => {
     if (!moreOpen) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMoreOpen(false);
+      if (event.key === 'Escape' && !loggingOut) setMoreOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [moreOpen]);
+  }, [moreOpen, loggingOut]);
 
   async function handleLogout() {
-    setMoreOpen(false);
-    await logout();
-    navigate('/', { replace: true });
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+      navigate('/', { replace: true });
+    } catch {
+      setLoggingOut(false);
+    }
   }
 
   return (
@@ -471,9 +488,11 @@ export function AppLayout() {
             type="button"
             variant="ghost"
             size="sm"
+            loading={loggingOut}
+            disabled={loggingOut}
             onClick={() => void handleLogout()}
           >
-            Log out
+            {loggingOut ? 'Signing out…' : 'Log out'}
           </Button>
         </LogoutSlot>
       </TopBar>
@@ -505,6 +524,7 @@ export function AppLayout() {
               $active={moreActive || moreOpen}
               aria-expanded={moreOpen}
               aria-haspopup="dialog"
+              disabled={loggingOut}
               onClick={() => setMoreOpen(true)}
             >
               <Ellipsis size={20} strokeWidth={1.85} />
@@ -530,11 +550,21 @@ export function AppLayout() {
 
       {moreOpen ? (
         <>
-          <Scrim aria-label="Close menu" onClick={() => setMoreOpen(false)} />
+          <Scrim
+            aria-label="Close menu"
+            onClick={() => {
+              if (!loggingOut) setMoreOpen(false);
+            }}
+          />
           <Sheet role="dialog" aria-modal="true" aria-label="More destinations">
             <SheetHead>
               <h2>More</h2>
-              <CloseBtn type="button" aria-label="Close" onClick={() => setMoreOpen(false)}>
+              <CloseBtn
+                type="button"
+                aria-label="Close"
+                disabled={loggingOut}
+                onClick={() => setMoreOpen(false)}
+              >
                 <X size={18} />
               </CloseBtn>
             </SheetHead>
@@ -549,9 +579,11 @@ export function AppLayout() {
                 <Button
                   type="button"
                   variant="ghost"
+                  loading={loggingOut}
+                  disabled={loggingOut}
                   onClick={() => void handleLogout()}
                 >
-                  Log out
+                  {loggingOut ? 'Signing out…' : 'Log out'}
                 </Button>
               </SheetLogout>
             </SheetGrid>

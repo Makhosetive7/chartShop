@@ -38,7 +38,6 @@ type ChannelFilter = (typeof CHANNELS)[number];
 type ActionFilter = (typeof ACTIONS)[number];
 
 const Header = styled.div`
-  text-align: center;
   margin-bottom: ${({ theme }) => theme.space[5]};
 `;
 
@@ -441,7 +440,7 @@ export function ActivityPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search commands or replies…"
+            placeholder="Search activity"
             aria-label="Search activity"
           />
         </SearchField>

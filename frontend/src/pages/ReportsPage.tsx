@@ -33,7 +33,6 @@ import { toastError, toastSuccess } from '@/lib/toast';
 type ReportTab = 'daily' | 'weekly' | 'monthly' | 'best' | 'profit';
 
 const Header = styled.div`
-  text-align: center;
   margin-bottom: ${({ theme }) => theme.space[5]};
   min-width: 0;
 `;

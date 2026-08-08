@@ -379,7 +379,7 @@ export function RegisterPage() {
         <Input
           value={businessName}
           onChange={(e) => setBusinessName(e.target.value)}
-          placeholder="e.g. Luna Spaza"
+          placeholder="Your shop name"
           autoComplete="organization"
           required
         />
@@ -396,7 +396,7 @@ export function RegisterPage() {
             setUsername(sanitizeUsernameInput(e.target.value));
             setError(null);
           }}
-          placeholder="e.g. musa"
+          placeholder="Choose a username"
           autoComplete="username"
           maxLength={15}
           spellCheck={false}
@@ -433,7 +433,7 @@ export function RegisterPage() {
         <Input
           value={businessDescription}
           onChange={(e) => setBusinessDescription(e.target.value)}
-          placeholder="e.g. Groceries & airtime"
+          placeholder="e.g. Shoes"
         />
       </Field>
       <Field>
@@ -446,7 +446,7 @@ export function RegisterPage() {
           maxLength={4}
           value={pin}
           onChange={(e) => setPin(e.target.value)}
-          placeholder="••••"
+          placeholder="4-digit PIN"
           autoComplete="new-password"
           required
         />
@@ -460,7 +460,7 @@ export function RegisterPage() {
           maxLength={4}
           value={confirmPin}
           onChange={(e) => setConfirmPin(e.target.value)}
-          placeholder="••••"
+          placeholder="Repeat PIN"
           autoComplete="new-password"
           required
         />

@@ -161,6 +161,7 @@ export function OrdersPage() {
                 list="order-customers"
                 value={customer}
                 onChange={(e) => setCustomer(e.target.value)}
+                placeholder="Customer name"
                 required
               />
               <datalist id="order-customers">
@@ -179,7 +180,11 @@ export function OrdersPage() {
             </Field>
             <Field>
               Notes
-              <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <Input
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Order notes"
+              />
             </Field>
           </Row>
 

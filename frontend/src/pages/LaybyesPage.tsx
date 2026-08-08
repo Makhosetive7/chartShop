@@ -118,6 +118,7 @@ export function LaybyesPage() {
                 list="laybye-customer-list"
                 value={customer}
                 onChange={(e) => setCustomer(e.target.value)}
+                placeholder="Name or phone"
                 required
               />
               <datalist id="laybye-customer-list">
@@ -134,6 +135,7 @@ export function LaybyesPage() {
                 step="0.01"
                 value={deposit}
                 onChange={(e) => setDeposit(e.target.value)}
+                placeholder="Deposit amount"
               />
             </Field>
           </Row>
@@ -256,6 +258,7 @@ export function LaybyesPage() {
               list="laybye-pay-customers"
               value={laybyePay.customer}
               onChange={(e) => setLaybyePay({ ...laybyePay, customer: e.target.value })}
+              placeholder="Customer name"
             />
             <datalist id="laybye-pay-customers">
               {(laybyesQ.data || []).map((lb) => (
@@ -271,6 +274,7 @@ export function LaybyesPage() {
               step="0.01"
               value={laybyePay.amount}
               onChange={(e) => setLaybyePay({ ...laybyePay, amount: e.target.value })}
+              placeholder="Payment amount"
             />
           </Field>
           <Button

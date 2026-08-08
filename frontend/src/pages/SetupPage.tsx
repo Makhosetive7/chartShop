@@ -123,7 +123,7 @@ export function SetupPage() {
         <Input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="e.g. thabo"
+          placeholder="Your username"
           autoComplete="username"
           required
         />
@@ -134,7 +134,7 @@ export function SetupPage() {
         <Input
           value={setupCode}
           onChange={(e) => setSetupCode(e.target.value)}
-          placeholder="cs-xxxx-xxxx"
+          placeholder="Paste setup code"
           autoComplete="off"
           spellCheck={false}
           required
@@ -150,6 +150,7 @@ export function SetupPage() {
           maxLength={4}
           value={newPin}
           onChange={(e) => setNewPin(e.target.value)}
+          placeholder="4-digit PIN"
           autoComplete="new-password"
           required
         />
@@ -163,6 +164,7 @@ export function SetupPage() {
           maxLength={4}
           value={confirmPin}
           onChange={(e) => setConfirmPin(e.target.value)}
+          placeholder="Repeat PIN"
           autoComplete="new-password"
           required
         />
