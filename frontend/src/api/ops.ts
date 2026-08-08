@@ -42,17 +42,36 @@ export async function listExpenses(period = 'daily') {
   return data;
 }
 
+export async function getCashAvailable() {
+  const { data } = await api.get<{
+    success: boolean;
+    cashAvailable: number;
+    breakdown?: {
+      cashSales?: number;
+      debtPayments?: number;
+      laybyePayments?: number;
+      ownerCashIns?: number;
+      expenses?: number;
+      refunds?: number;
+    };
+  }>('/expenses/cash-available');
+  return data;
+}
+
 export async function createExpense(body: {
   amount: number;
   description: string;
   category?: string;
   paymentMethod?: string;
+  allowOverspend?: boolean;
 }) {
-  const { data } = await api.post<{ success: boolean; expense: Expense }>(
-    '/expenses',
-    body,
-  );
-  return data.expense;
+  const { data } = await api.post<{
+    success: boolean;
+    expense: Expense;
+    ownerCashIn?: number;
+    cashAvailable?: number;
+  }>('/expenses', body);
+  return data;
 }
 
 export async function expenseBreakdown(period = 'monthly') {

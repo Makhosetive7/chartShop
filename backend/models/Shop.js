@@ -58,6 +58,32 @@ const shopSchema = new mongoose.Schema({
       default: 10,
     },
   },
+  /**
+   * Owner / pocket top-ups so the till can stay coherent when an expense
+   * is paid with money that never went through recorded sales.
+   */
+  ownerCashIns: [
+    {
+      amount: {
+        type: Number,
+        required: true,
+        min: 0,
+      },
+      date: {
+        type: Date,
+        default: Date.now,
+      },
+      note: {
+        type: String,
+        default: "Owner cash in",
+        trim: true,
+      },
+      createdByUserId: {
+        type: String,
+        default: null,
+      },
+    },
+  ],
 });
 
 shopSchema.index({ businessName: 1 });

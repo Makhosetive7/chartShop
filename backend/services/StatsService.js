@@ -5,6 +5,7 @@ import Expense from "../models/Expense.js";
 import LayBye from "../models/LayBye.js";
 import Order from "../models/Order.js";
 import Shop from "../models/Shop.js";
+import FinancialService from "./FinancialService.js";
 import {
   DEFAULT_TIMEZONE,
   getDayBounds,
@@ -473,9 +474,10 @@ class StatsService {
       monthSales,
       periodSalesStats,
       inventory,
-      activeLaybyes,
+      activeLaybyeDocs,
       openOrders,
       todayExpenses,
+      cashAvailableResult,
     ] = await Promise.all([
       this.productStats(shopId, { days, limit }),
       this.customerStats(shopId, { days, limit }),
@@ -483,20 +485,26 @@ class StatsService {
         shopId,
         date: { $gte: today.startDate, $lte: today.endDate },
         isCancelled: false,
-      }).lean(),
+      })
+        .select("total type")
+        .lean(),
       Sale.find({
         shopId,
         date: { $gte: week.startDate, $lte: week.endDate },
         isCancelled: false,
-      }).lean(),
+      })
+        .select("total")
+        .lean(),
       Sale.find({
         shopId,
         date: { $gte: monthBounds.startDate, $lte: monthBounds.endDate },
         isCancelled: false,
-      }).lean(),
+      })
+        .select("total")
+        .lean(),
       this.salesStats(shopId, { days }),
       this.inventoryStats(shopId),
-      LayBye.countDocuments({ shopId, status: "active" }),
+      LayBye.find({ shopId, status: "active" }).select("balanceDue").lean(),
       Order.countDocuments({
         shopId,
         status: { $in: ["pending", "confirmed", "ready"] },
@@ -504,22 +512,62 @@ class StatsService {
       Expense.find({
         shopId,
         date: { $gte: today.startDate, $lte: today.endDate },
-      }).lean(),
+      })
+        .select("amount")
+        .lean(),
+      FinancialService.getCashAvailable(shopId),
     ]);
+
+    const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
     const sumSales = (list) => ({
       count: list.length,
-      revenue: list.reduce((s, x) => s + (x.total || 0), 0),
+      revenue: round2(list.reduce((s, x) => s + (x.total || 0), 0)),
     });
+
+    const todayByType = { cash: 0, credit: 0, completed_laybye: 0, other: 0 };
+    for (const sale of todaySales) {
+      const key =
+        sale.type === "cash" ||
+        sale.type === "credit" ||
+        sale.type === "completed_laybye"
+          ? sale.type
+          : "other";
+      todayByType[key] += sale.total || 0;
+    }
+    for (const key of Object.keys(todayByType)) {
+      todayByType[key] = round2(todayByType[key]);
+    }
+
+    const todaySummary = sumSales(todaySales);
+    const todayExpensesTotal = round2(
+      todayExpenses.reduce((s, e) => s + (e.amount || 0), 0)
+    );
+    const laybyeDueAmount = round2(
+      activeLaybyeDocs.reduce((s, lb) => s + (lb.balanceDue || 0), 0)
+    );
+    const activeLaybyes = activeLaybyeDocs.length;
+    const cashAvailable = cashAvailableResult.success
+      ? cashAvailableResult.available
+      : 0;
 
     return {
       days,
       timeZone,
       snapshots: {
-        today: sumSales(todaySales),
+        today: {
+          ...todaySummary,
+          byType: todayByType,
+        },
         week: sumSales(weekSales),
         month: sumSales(monthSales),
-        todayExpenses: todayExpenses.reduce((s, e) => s + (e.amount || 0), 0),
+        todayExpenses: todayExpensesTotal,
+        todayLeft: round2(todaySummary.revenue - todayExpensesTotal),
+        cashAvailable,
+        laybyeDue: {
+          amount: laybyeDueAmount,
+          count: activeLaybyes,
+        },
         activeLaybyes,
         openOrders,
       },

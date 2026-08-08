@@ -1,6 +1,7 @@
 import Expense from "../models/Expense.js";
 import Sale from "../models/Sale.js";
 import Shop from "../models/Shop.js";
+import FinancialService from "./FinancialService.js";
 import {
   DEFAULT_TIMEZONE,
   getDayBounds,
@@ -20,7 +21,7 @@ class ExpenseService {
     category = "other",
     paymentMethod = "cash",
     receiptNumber = "",
-    { createdByUserId } = {}
+    { createdByUserId, allowOverspend = false } = {}
   ) {
     try {
       // Validate amount
@@ -77,10 +78,48 @@ class ExpenseService {
         };
       }
 
+      const amountRounded = FinancialService.roundMoney(amount);
+      const cashResult = await FinancialService.getCashAvailable(shopId);
+      if (!cashResult.success) {
+        return {
+          success: false,
+          message: cashResult.message || "Could not check cash available.",
+        };
+      }
+
+      const cashAvailable = cashResult.available;
+      const shortfall = FinancialService.roundMoney(
+        amountRounded - cashAvailable
+      );
+
+      if (shortfall > 0 && !allowOverspend) {
+        return {
+          success: false,
+          code: "INSUFFICIENT_CASH",
+          message:
+            `Not enough recorded cash in the till.\n\n` +
+            `Expense: $${amountRounded.toFixed(2)}\n` +
+            `Cash available: $${cashAvailable.toFixed(2)}\n` +
+            `Shortfall: $${shortfall.toFixed(2)}\n\n` +
+            `If you paid this from your own pocket (or cash not yet recorded), confirm to continue. ` +
+            `We will record an owner cash-in for the shortfall so the till stays honest.`,
+          cashAvailable,
+          amount: amountRounded,
+          shortfall,
+        };
+      }
+
+      if (shortfall > 0 && allowOverspend) {
+        await FinancialService.recordOwnerCashIn(shopId, shortfall, {
+          note: `Owner cash in for expense: ${description.trim()}`,
+          createdByUserId,
+        });
+      }
+
       // Create expense
       const expense = await Expense.create({
         shopId,
-        amount: parseFloat(amount),
+        amount: amountRounded,
         description: description.trim(),
         category,
         paymentMethod,
@@ -89,10 +128,17 @@ class ExpenseService {
         ...(createdByUserId != null ? { createdByUserId } : {}),
       });
 
+      const updatedCash = await FinancialService.getCashAvailable(shopId);
+
       return {
         success: true,
-        message: this.generateExpenseRecordedMessage(expense),
+        message: this.generateExpenseRecordedMessage(expense, {
+          ownerCashIn: shortfall > 0 ? shortfall : 0,
+          cashAvailable: updatedCash.success ? updatedCash.available : null,
+        }),
         expense,
+        ownerCashIn: shortfall > 0 ? shortfall : 0,
+        cashAvailable: updatedCash.success ? updatedCash.available : null,
       };
     } catch (error) {
       console.error("Record expense error:", error);
@@ -265,7 +311,7 @@ class ExpenseService {
   /**
    * Generate expense recorded message
    */
-  generateExpenseRecordedMessage(expense) {
+  generateExpenseRecordedMessage(expense, extras = {}) {
     let message = ` *EXPENSE RECORDED*\n\n`;
     message += `Amount: $${expense.amount.toFixed(2)}\n`;
     message += `Description: ${expense.description}\n`;
@@ -275,6 +321,14 @@ class ExpenseService {
 
     if (expense.receiptNumber) {
       message += `Receipt: ${expense.receiptNumber}\n`;
+    }
+
+    if (extras.ownerCashIn > 0) {
+      message += `\nOwner cash-in recorded: $${Number(extras.ownerCashIn).toFixed(2)} (paid from pocket / unrecorded cash)\n`;
+    }
+
+    if (extras.cashAvailable != null) {
+      message += `Cash available now: $${Number(extras.cashAvailable).toFixed(2)}\n`;
     }
 
     message += `\nUse "expenses daily" to track your spending.`;
@@ -392,7 +446,10 @@ class ExpenseService {
     ).toFixed(2)}\n\n`;
 
     message += `*Recommendations:*\n`;
-    if (profitData.profit < 0) {
+    if (profitData.expenses > profitData.revenue) {
+      message += `• Expenses are higher than sales this period — that can still be OK if you used cash from earlier days\n`;
+      message += `• Check cash available before big spends; use "expense breakdown" to see where money went\n`;
+    } else if (profitData.profit < 0) {
       message += `• Review your expenses with "expense breakdown"\n`;
       message += `• Consider increasing prices or reducing costs\n`;
     } else if (profitMargin < 10) {

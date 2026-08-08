@@ -4,10 +4,10 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import {
   AlertTriangle,
+  Banknote,
   Package,
   ShoppingCart,
   TrendingUp,
-  Users,
   Wallet,
 } from 'lucide-react';
 import {
@@ -143,10 +143,15 @@ const KpiValue = styled.div`
   line-height: 1.15;
 `;
 
-const KpiHint = styled.div`
+const KpiHint = styled.div<{ $tone?: 'muted' | 'warning' | 'ok' }>`
   margin-top: 4px;
   font-size: 0.75rem;
-  color: ${({ theme }) => theme.colors.textMuted};
+  color: ${({ theme, $tone }) =>
+    $tone === 'warning'
+      ? theme.colors.warning
+      : $tone === 'ok'
+        ? theme.colors.success
+        : theme.colors.textMuted};
 `;
 
 const ChartsGrid = styled.div`
@@ -326,7 +331,7 @@ export function DashboardPage() {
         <div>
           <Title>{shop?.businessName || 'Dashboard'}</Title>
           <Lead>
-            Sales pulse, product performance, and your best clients — live from
+            Till cash, today’s pulse, who owes you, and stock to fix — live from
             the same numbers as chat.
           </Lead>
         </div>
@@ -355,60 +360,112 @@ export function DashboardPage() {
       {overview ? (
         <>
           <KpiGrid>
-            {[
-              {
-                label: 'Today',
-                value: money(overview.snapshots.today.revenue),
-                hint: `${overview.snapshots.today.count} sales`,
-                icon: TrendingUp,
-              },
-              {
-                label: 'This week',
-                value: money(overview.snapshots.week.revenue),
-                hint: `${overview.snapshots.week.count} sales`,
-                icon: ShoppingCart,
-              },
-              {
-                label: `${days}-day revenue`,
-                value: money(overview.sales.revenue),
-                hint: `${overview.sales.salesCount} sales`,
-                icon: Wallet,
-              },
-              {
-                label: 'Avg ticket',
-                value: money(overview.highlights.averageTicket || 0),
-                hint: overview.highlights.peakDay
-                  ? `Peak day ${overview.highlights.peakDay.label}`
-                  : 'Across period',
-                icon: TrendingUp,
-              },
-              {
-                label: 'Customers',
-                value: String(overview.customers.totals.customers),
-                hint: `${overview.customers.totals.activeInPeriod} active in period`,
-                icon: Users,
-              },
-              {
-                label: 'Inventory value',
-                value: money(overview.inventory.inventoryRetailValue),
-                hint: `${overview.inventory.lowStock} low · ${overview.inventory.outOfStock} out`,
-                icon: Package,
-              },
-            ].map((item, index) => (
-              <Kpi
-                key={item.label}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.04 }}
-              >
-                <KpiLabel>
-                  <item.icon size={15} />
-                  {item.label}
-                </KpiLabel>
-                <KpiValue>{item.value}</KpiValue>
-                <KpiHint>{item.hint}</KpiHint>
-              </Kpi>
-            ))}
+            {(() => {
+              const snap = overview.snapshots;
+              const todayCash = snap.today.byType?.cash ?? 0;
+              const todayCredit = snap.today.byType?.credit ?? 0;
+              const todayLeft =
+                snap.todayLeft ??
+                snap.today.revenue - (snap.todayExpenses || 0);
+              const owed = overview.customers.totals.totalOutstanding || 0;
+              const debtors = overview.customers.totals.withBalance || 0;
+              const topDebtor = overview.highlights.topDebtor;
+              const laybyeAmount = snap.laybyeDue?.amount ?? 0;
+              const laybyeCount =
+                snap.laybyeDue?.count ?? snap.activeLaybyes ?? 0;
+              const low = overview.inventory.lowStock || 0;
+              const out = overview.inventory.outOfStock || 0;
+              const stockAlerts = low + out;
+
+              const salesHintParts: string[] = [
+                `${snap.today.count} sale${snap.today.count === 1 ? '' : 's'}`,
+              ];
+              if (todayCash > 0 || todayCredit > 0) {
+                salesHintParts.push(
+                  `${money(todayCash)} cash · ${money(todayCredit)} credit`,
+                );
+              }
+
+              const cards: Array<{
+                label: string;
+                value: string;
+                hint: string;
+                hintTone?: 'muted' | 'warning' | 'ok';
+                icon: typeof TrendingUp;
+              }> = [
+                {
+                  label: 'Cash in till',
+                  value: money(snap.cashAvailable ?? 0),
+                  hint: 'Recorded sales + payments − expenses',
+                  icon: Banknote,
+                },
+                {
+                  label: "Today's sales",
+                  value: money(snap.today.revenue),
+                  hint: salesHintParts.join(' · '),
+                  icon: ShoppingCart,
+                },
+                {
+                  label: "Today's expenses",
+                  value: money(snap.todayExpenses || 0),
+                  hint:
+                    todayLeft >= 0
+                      ? `Left today ${money(todayLeft)}`
+                      : `Over by ${money(Math.abs(todayLeft))} today`,
+                  hintTone: todayLeft >= 0 ? 'ok' : 'warning',
+                  icon: Wallet,
+                },
+                {
+                  label: 'Owed to you',
+                  value: money(owed),
+                  hint: topDebtor
+                    ? `${topDebtor.name} owes ${money(topDebtor.currentBalance || 0)}`
+                    : debtors > 0
+                      ? `${debtors} customer${debtors === 1 ? '' : 's'} on credit`
+                      : 'No credit balances',
+                  hintTone: owed > 0 ? 'warning' : 'muted',
+                  icon: TrendingUp,
+                },
+                {
+                  label: 'Laybye due',
+                  value: money(laybyeAmount),
+                  hint:
+                    laybyeCount > 0
+                      ? `${laybyeCount} active agreement${laybyeCount === 1 ? '' : 's'}`
+                      : 'No active laybyes',
+                  hintTone: laybyeAmount > 0 ? 'warning' : 'muted',
+                  icon: Package,
+                },
+                {
+                  label: 'Stock alerts',
+                  value: String(stockAlerts),
+                  hint:
+                    stockAlerts > 0
+                      ? `${low} low · ${out} out`
+                      : 'Stock looks fine',
+                  hintTone: stockAlerts > 0 ? 'warning' : 'ok',
+                  icon: AlertTriangle,
+                },
+              ];
+
+              return cards.map((item, index) => (
+                <Kpi
+                  key={item.label}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.04 }}
+                >
+                  <KpiLabel>
+                    <item.icon size={15} />
+                    {item.label}
+                  </KpiLabel>
+                  <KpiValue>{item.value}</KpiValue>
+                  <KpiHint $tone={item.hintTone || 'muted'}>
+                    {item.hint}
+                  </KpiHint>
+                </Kpi>
+              ));
+            })()}
           </KpiGrid>
 
           <HighlightStrip>

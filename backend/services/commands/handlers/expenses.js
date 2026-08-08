@@ -5,10 +5,16 @@ export async function handleExpenseRecording(shopId, text, actorUserId = null) {
   try {
     // Format: expense 50.00 "supplier payment" supplies bank INV001
     // or: expense 50.00 supplier payment
-    const parts = text.replace("expense", "").trim().split(" ");
+    // Overspend confirm: ... confirm
+    const allowOverspend = /\bconfirm\s*$/i.test(text.trim());
+    const cleanedText = allowOverspend
+      ? text.replace(/\bconfirm\s*$/i, "").trim()
+      : text.trim();
+
+    const parts = cleanedText.replace(/^expense\b/i, "").trim().split(" ");
 
     if (parts.length < 2) {
-      return 'Invalid format.\n\nUse: expense [amount] [description] [category?] [payment?] [receipt?]\n\nExamples:\n• expense 50.00 "supplier payment"\n• expense 25.50 transport cash\n• expense 1000.00 rent bank "July rent"\n• expense 150.00 supplies cash INV123';
+      return 'Invalid format.\n\nUse: expense [amount] [description] [category?] [payment?] [receipt?]\n\nExamples:\n• expense 50.00 "supplier payment"\n• expense 25.50 transport cash\n• expense 1000.00 rent bank "July rent"\n• expense 150.00 supplies cash INV123\n\nIf cash is short: add confirm at the end to record an owner cash-in.';
     }
 
     const amount = parseFloat(parts[0]);
@@ -24,13 +30,14 @@ export async function handleExpenseRecording(shopId, text, actorUserId = null) {
 
     // Check if description is in quotes
     if (parts[1].startsWith('"')) {
-      const quoteMatch = text.match(/expense\s+[\d.]+\s+"([^"]+)"/);
+      const quoteMatch = cleanedText.match(/expense\s+[\d.]+\s+"([^"]+)"/i);
       if (quoteMatch) {
         description = quoteMatch[1];
-        const remaining = text
-          .replace(`expense ${parts[0]} "${description}"`, "")
+        const remaining = cleanedText
+          .replace(new RegExp(`expense\\s+${parts[0]}\\s+"${description.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`, "i"), "")
           .trim()
-          .split(" ");
+          .split(" ")
+          .filter(Boolean);
         if (remaining[0]) category = remaining[0];
         if (remaining[1]) paymentMethod = remaining[1];
         if (remaining[2]) receiptNumber = remaining[2];
@@ -51,6 +58,7 @@ export async function handleExpenseRecording(shopId, text, actorUserId = null) {
         "taxes",
         "insurance",
         "packaging",
+        "purchases",
       ];
 
       const knownPayments = ["cash", "bank", "mobile", "credit"];
@@ -63,7 +71,7 @@ export async function handleExpenseRecording(shopId, text, actorUserId = null) {
           paymentMethod = word;
           words.splice(i, 1);
         } else if (knownCategories.includes(word) && category === "other") {
-          category = word;
+          category = word === "supplies" ? "purchases" : word === "salary" ? "salary_wages" : word;
           words.splice(i, 1);
         } else if (word.match(/^[A-Z0-9]{3,}$/) && !receiptNumber) {
           // Looks like a receipt number
@@ -92,8 +100,16 @@ export async function handleExpenseRecording(shopId, text, actorUserId = null) {
       category,
       paymentMethod,
       receiptNumber,
-      { createdByUserId: actorUserId }
+      { createdByUserId: actorUserId, allowOverspend }
     );
+
+    if (!result.success && result.code === "INSUFFICIENT_CASH") {
+      return (
+        `${result.message}\n\n` +
+        `To continue, send the same command with confirm at the end.\n` +
+        `Example: expense ${amount} "${description}" confirm`
+      );
+    }
 
     return result.message;
   } catch (error) {
@@ -228,4 +244,3 @@ export async function handleExpenseBreakdown(shopId, text) {
     return `Failed to generate expense breakdown: ${error.message}`;
   }
 }
-

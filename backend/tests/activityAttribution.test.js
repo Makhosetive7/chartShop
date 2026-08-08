@@ -166,6 +166,7 @@ describe("API activity attribution", () => {
         amount: 5,
         description: "Transport for stock",
         category: "transport",
+        allowOverspend: true,
       },
     });
     assert.equal(expense.status, 201, JSON.stringify(expense.body));

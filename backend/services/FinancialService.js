@@ -90,6 +90,144 @@ class FinancialService {
     return getMonthBounds(month, year, timeZone);
   }
 
+  roundMoney(value) {
+    return Math.round((Number(value) || 0) * 100) / 100;
+  }
+
+  /**
+   * Lifetime till cash the system knows about:
+   * cash sales + debt payments + laybye installments + owner cash-ins
+   * − expenses − cancelled-sale refunds.
+   * Credit sales and unfinished laybye balances are not cash in the till.
+   */
+  async getCashAvailable(shopId) {
+    try {
+      const shopObjectId = this.toObjectId(shopId);
+
+      const [
+        cashSalesAgg,
+        debtPaymentsAgg,
+        laybyePaymentsAgg,
+        expensesAgg,
+        refundsAgg,
+        shop,
+      ] = await Promise.all([
+        Sale.aggregate([
+          {
+            $match: {
+              shopId: shopObjectId,
+              type: 'cash',
+              isCancelled: false,
+            },
+          },
+          { $group: { _id: null, total: { $sum: '$total' }, count: { $sum: 1 } } },
+        ]),
+        Customer.aggregate([
+          { $match: { shopId: shopObjectId } },
+          { $unwind: '$creditTransactions' },
+          { $match: { 'creditTransactions.type': 'payment' } },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: '$creditTransactions.amount' },
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+        LayBye.aggregate([
+          { $match: { shopId: shopObjectId } },
+          { $unwind: '$installments' },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: '$installments.amount' },
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+        Expense.aggregate([
+          { $match: { shopId: shopObjectId } },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: '$amount' },
+              count: { $sum: 1 },
+            },
+          },
+        ]),
+        Sale.aggregate([
+          {
+            $match: {
+              shopId: shopObjectId,
+              isCancelled: true,
+            },
+          },
+          { $group: { _id: null, total: { $sum: '$total' }, count: { $sum: 1 } } },
+        ]),
+        Shop.findById(shopId).select('ownerCashIns').lean(),
+      ]);
+
+      const cashSales = cashSalesAgg[0]?.total || 0;
+      const debtPayments = debtPaymentsAgg[0]?.total || 0;
+      const laybyePayments = laybyePaymentsAgg[0]?.total || 0;
+      const expenses = expensesAgg[0]?.total || 0;
+      const refunds = refundsAgg[0]?.total || 0;
+      const ownerCashInsList = shop?.ownerCashIns || [];
+      const ownerCashIns = ownerCashInsList.reduce(
+        (sum, entry) => sum + (entry.amount || 0),
+        0
+      );
+
+      const cashIn = cashSales + debtPayments + laybyePayments + ownerCashIns;
+      const cashOut = expenses + refunds;
+      const available = this.roundMoney(cashIn - cashOut);
+
+      return {
+        success: true,
+        available: Math.max(0, available),
+        raw: available,
+        breakdown: {
+          cashSales: this.roundMoney(cashSales),
+          debtPayments: this.roundMoney(debtPayments),
+          laybyePayments: this.roundMoney(laybyePayments),
+          ownerCashIns: this.roundMoney(ownerCashIns),
+          expenses: this.roundMoney(expenses),
+          refunds: this.roundMoney(refunds),
+        },
+      };
+    } catch (error) {
+      console.error('[FinancialService] getCashAvailable error:', error);
+      return {
+        success: false,
+        message: `Failed to calculate cash available: ${error.message}`,
+        available: 0,
+      };
+    }
+  }
+
+  async recordOwnerCashIn(
+    shopId,
+    amount,
+    { note = 'Owner cash in (expense overspend)', createdByUserId = null } = {}
+  ) {
+    const rounded = this.roundMoney(amount);
+    if (rounded <= 0) {
+      return { success: true, amount: 0 };
+    }
+
+    const entry = {
+      amount: rounded,
+      date: new Date(),
+      note,
+      createdByUserId,
+    };
+
+    await Shop.findByIdAndUpdate(shopId, {
+      $push: { ownerCashIns: entry },
+    });
+
+    return { success: true, amount: rounded, entry };
+  }
 
   async calculateCashFlow(shopId, startDate, endDate) {
     try {
@@ -150,7 +288,22 @@ class FinancialService {
       const laybyePaymentsTotal = laybyePayments[0]?.total || 0;
       const laybyePaymentsCount = laybyePayments[0]?.count || 0;
 
-      const totalCashIn = cashSalesTotal + debtPaymentsTotal + laybyePaymentsTotal;
+      const shop = await Shop.findById(shopId).select('ownerCashIns').lean();
+      const periodOwnerCashIns = (shop?.ownerCashIns || []).filter((entry) => {
+        const d = entry.date ? new Date(entry.date) : null;
+        return d && d >= startDate && d <= endDate;
+      });
+      const ownerCashInsTotal = periodOwnerCashIns.reduce(
+        (sum, entry) => sum + (entry.amount || 0),
+        0
+      );
+      const ownerCashInsCount = periodOwnerCashIns.length;
+
+      const totalCashIn =
+        cashSalesTotal +
+        debtPaymentsTotal +
+        laybyePaymentsTotal +
+        ownerCashInsTotal;
 
       const expenses = await Expense.find({
         shopId,
@@ -239,6 +392,10 @@ class FinancialService {
             cashSales: { amount: cashSalesTotal, count: cashSales.length },
             debtPayments: { amount: debtPaymentsTotal, count: debtPaymentsCount },
             laybyePayments: { amount: laybyePaymentsTotal, count: laybyePaymentsCount },
+            ownerCashIns: {
+              amount: ownerCashInsTotal,
+              count: ownerCashInsCount,
+            },
             total: totalCashIn,
           },
           outflows: {
@@ -371,6 +528,9 @@ class FinancialService {
       report += `- Cash Sales: $${cashFlow.cashFlow.inflows.cashSales.amount.toFixed(2)} (${cashFlow.cashFlow.inflows.cashSales.count} sales)\n`;
       report += `- Debt Payments Received: $${cashFlow.cashFlow.inflows.debtPayments.amount.toFixed(2)} (${cashFlow.cashFlow.inflows.debtPayments.count} payments)\n`;
       report += `- Laybye Payments Received: $${cashFlow.cashFlow.inflows.laybyePayments.amount.toFixed(2)} (${cashFlow.cashFlow.inflows.laybyePayments.count} payments)\n`;
+      if ((cashFlow.cashFlow.inflows.ownerCashIns?.amount || 0) > 0) {
+        report += `- Owner Cash In: $${cashFlow.cashFlow.inflows.ownerCashIns.amount.toFixed(2)} (${cashFlow.cashFlow.inflows.ownerCashIns.count} top-up${cashFlow.cashFlow.inflows.ownerCashIns.count === 1 ? '' : 's'})\n`;
+      }
       report += `Total Money In: $${cashFlow.cashFlow.inflows.total.toFixed(2)}\n\n`;
 
       report += `MONEY OUT:\n`;
@@ -441,38 +601,76 @@ class FinancialService {
       report += `INSIGHTS (Simple Notes)\n`;
       report += `----------------------------------------\n\n`;
 
+      const periodExpenses = cashFlow.profitability.expenses;
+      const periodRevenue = cashFlow.revenue.total;
+      const insights = [];
+
       // Cash flow insight
       if (cashFlow.cashFlow.net > 0) {
-        report += `- You have more money coming in than going out.\n`;
+        insights.push(
+          `You have more money coming in than going out this period.`
+        );
       } else if (cashFlow.cashFlow.net < 0) {
-        report += `- You spent more money than you received. Consider reducing expenses or collecting money owed.\n`;
+        insights.push(
+          `Net cash is negative this period (spent more than received). That can be normal if you used money from earlier days — check cash available in Expenses.`
+        );
+      }
+
+      if (periodExpenses > periodRevenue) {
+        insights.push(
+          `Expenses ($${periodExpenses.toFixed(2)}) are higher than revenue ($${periodRevenue.toFixed(2)}) this period. That does not always mean the till is empty — rent or stock buys often use cash from earlier days.`
+        );
+      }
+
+      if (cashFlow.profitability.operatingResult < 0) {
+        insights.push(
+          `Operating result is negative this period (revenue minus expenses). Review big expense categories or collect money owed.`
+        );
       }
 
       // Credit sales insight
       const creditPercent =
-        cashFlow.revenue.total > 0
-          ? (cashFlow.revenue.credit.amount / cashFlow.revenue.total) * 100
+        periodRevenue > 0
+          ? (cashFlow.revenue.credit.amount / periodRevenue) * 100
           : 0;
 
       if (creditPercent > 30) {
-        report += `- Credit sales are high. Too many people buying on credit can be risky.\n`;
+        insights.push(
+          `Credit sales are high. Too many people buying on credit can be risky.`
+        );
       }
 
       // Outstanding debt insight
-      if (cashFlow.outstanding.total > cashFlow.revenue.total * 0.5) {
-        report += `- Money owed to you is more than half of total revenue. This is dangerous.\n`;
+      if (cashFlow.outstanding.total > periodRevenue * 0.5) {
+        insights.push(
+          `Money owed to you is more than half of total revenue. This is dangerous.`
+        );
       }
 
       // Expense ratio insight
       const expenseRatio =
-        cashFlow.revenue.total > 0
-          ? (cashFlow.profitability.expenses / cashFlow.revenue.total) * 100
-          : 0;
+        periodRevenue > 0 ? (periodExpenses / periodRevenue) * 100 : 0;
 
-      if (expenseRatio > 40) {
-        report += `- Your expenses are too high. Try to reduce spending.\n`;
-      } else {
-        report += `- Your expenses are reasonable.\n`;
+      if (periodRevenue > 0 && expenseRatio > 40 && periodExpenses <= periodRevenue) {
+        insights.push(`Your expenses are high relative to revenue this period.`);
+      } else if (periodRevenue > 0 && expenseRatio <= 40) {
+        insights.push(`Your expenses look reasonable relative to revenue this period.`);
+      }
+
+      const cashAvail = await this.getCashAvailable(shopId);
+      if (cashAvail.success) {
+        insights.push(
+          `Cash available in the till (all-time recorded): $${cashAvail.available.toFixed(2)}.`
+        );
+      }
+
+      insights.forEach((line) => {
+        report += `- ${line}\n`;
+      });
+
+      cashFlow.insights = insights;
+      if (cashAvail.success) {
+        cashFlow.cashAvailable = cashAvail.available;
       }
 
       return {
