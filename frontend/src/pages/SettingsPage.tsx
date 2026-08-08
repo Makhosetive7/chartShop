@@ -781,6 +781,7 @@ export function SettingsPage() {
                   onChange={(e) => {
                     setLowStockAlert(e.target.value);
                   }}
+                  placeholder="Low stock level"
                   required
                 />
               </Field>
@@ -821,7 +822,7 @@ export function SettingsPage() {
               <Input
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="e.g. Thabo"
+                placeholder="Your name"
                 maxLength={50}
                 required
               />
@@ -845,7 +846,7 @@ export function SettingsPage() {
                 onChange={(e) => {
                   setUsername(sanitizeUsernameInput(e.target.value));
                 }}
-                placeholder="e.g. musa"
+                placeholder="Choose a username"
                 autoComplete="username"
                 maxLength={15}
                 spellCheck={false}
@@ -895,7 +896,7 @@ export function SettingsPage() {
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Luna Spaza"
+                placeholder="Your shop name"
                 required
               />
             </Field>
@@ -912,7 +913,7 @@ export function SettingsPage() {
               <TextArea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. Groceries, airtime & household"
+                placeholder="e.g. Shoes"
                 required
               />
             </Field>
@@ -955,7 +956,7 @@ export function SettingsPage() {
                   autoComplete="current-password"
                   value={pins.oldPin}
                   onChange={(e) => setPins({ ...pins, oldPin: e.target.value })}
-                  placeholder="••••"
+                  placeholder="Current PIN"
                   required
                 />
               </Field>
@@ -969,7 +970,7 @@ export function SettingsPage() {
                   autoComplete="new-password"
                   value={pins.newPin}
                   onChange={(e) => setPins({ ...pins, newPin: e.target.value })}
-                  placeholder="••••"
+                  placeholder="New 4-digit PIN"
                   required
                 />
               </Field>
@@ -985,7 +986,7 @@ export function SettingsPage() {
                   onChange={(e) =>
                     setPins({ ...pins, confirmPin: e.target.value })
                   }
-                  placeholder="••••"
+                  placeholder="Repeat new PIN"
                   required
                 />
               </Field>

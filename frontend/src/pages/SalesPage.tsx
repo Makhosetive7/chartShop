@@ -354,6 +354,7 @@ export function SalesPage() {
                   list="customer-list"
                   value={customer}
                   onChange={(e) => setCustomer(e.target.value)}
+                  placeholder="Name or phone"
                   required
                 />
                 <datalist id="customer-list">

@@ -559,6 +559,13 @@ class AuthService {
           message: "Business name is already registered.",
         };
       }
+      if (error?.name === "ValidationError") {
+        const first = Object.values(error.errors || {})[0];
+        return {
+          success: false,
+          message: first?.message || "Invalid shop details.",
+        };
+      }
       throw error;
     }
 
@@ -2003,12 +2010,6 @@ class AuthService {
       return { valid: false, message: "Description cannot be empty" };
     }
     const trimmed = description.trim();
-    if (trimmed.length < 10) {
-      return {
-        valid: false,
-        message: "Description must be at least 10 characters",
-      };
-    }
     if (trimmed.length > 500) {
       return {
         valid: false,

@@ -103,6 +103,7 @@ export function ExpensesPage() {
                 step="0.01"
                 value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                placeholder="Amount spent"
                 required
               />
             </Field>
@@ -113,6 +114,7 @@ export function ExpensesPage() {
                 onChange={(e) =>
                   setForm({ ...form, description: e.target.value })
                 }
+                placeholder="What was this for"
                 required
               />
             </Field>

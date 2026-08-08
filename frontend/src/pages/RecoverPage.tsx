@@ -123,7 +123,7 @@ export function RecoverPage() {
         <Input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="e.g. musa"
+          placeholder="Your username"
           autoComplete="username"
           required
         />
@@ -134,7 +134,7 @@ export function RecoverPage() {
         <Input
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="cs-xxxx-xxxx"
+          placeholder="Paste recovery code"
           autoComplete="off"
           spellCheck={false}
           required
@@ -150,7 +150,7 @@ export function RecoverPage() {
           maxLength={4}
           value={newPin}
           onChange={(e) => setNewPin(e.target.value)}
-          placeholder="••••"
+          placeholder="New 4-digit PIN"
           autoComplete="new-password"
           required
         />
@@ -164,7 +164,7 @@ export function RecoverPage() {
           maxLength={4}
           value={confirmPin}
           onChange={(e) => setConfirmPin(e.target.value)}
-          placeholder="••••"
+          placeholder="Repeat new PIN"
           autoComplete="new-password"
           required
         />

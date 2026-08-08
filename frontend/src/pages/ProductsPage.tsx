@@ -179,7 +179,6 @@ const Toolbar = styled.div`
 `;
 
 const HeaderBlock = styled.div`
-  text-align: center;
   margin-bottom: ${({ theme }) => theme.space[5]};
   min-width: 0;
 `;
@@ -710,7 +709,7 @@ export function ProductsPage() {
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 required
-                placeholder="e.g. Bread, Coca-Cola, Cavela shoes"
+                placeholder="Product name"
               />
             </Field>
             <Field>
@@ -720,6 +719,7 @@ export function ProductsPage() {
                 min="0"
                 value={form.lowStockThreshold}
                 onChange={(e) => setForm({ ...form, lowStockThreshold: e.target.value })}
+                placeholder="Low stock alert"
               />
             </Field>
           </Row>
@@ -729,9 +729,9 @@ export function ProductsPage() {
             return (
               <Row key={idx}>
                 <Field>
-                  Option name
+                  Variants
                   <Input
-                    placeholder="Optional — 500ml, Size 2, Red…"
+                    placeholder="Size or colour"
                     value={row.label}
                     $invalid={Boolean(errs.label)}
                     aria-invalid={Boolean(errs.label)}
@@ -749,6 +749,7 @@ export function ProductsPage() {
                     $invalid={Boolean(errs.price)}
                     aria-invalid={Boolean(errs.price)}
                     onChange={(e) => patchCreateRow(idx, { price: e.target.value })}
+                    placeholder="Sell price"
                     required
                   />
                   {errs.price ? <FieldHint $error>{errs.price}</FieldHint> : null}
@@ -761,6 +762,7 @@ export function ProductsPage() {
                     step="0.01"
                     value={row.costPrice}
                     onChange={(e) => patchCreateRow(idx, { costPrice: e.target.value })}
+                    placeholder="What you paid"
                   />
                 </Field>
                 <Field>
@@ -772,6 +774,7 @@ export function ProductsPage() {
                     $invalid={Boolean(errs.stock)}
                     aria-invalid={Boolean(errs.stock)}
                     onChange={(e) => patchCreateRow(idx, { stock: e.target.value })}
+                    placeholder="Units in stock"
                     required
                   />
                   {errs.stock ? <FieldHint $error>{errs.stock}</FieldHint> : null}
@@ -830,7 +833,7 @@ export function ProductsPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search…"
+            placeholder="Search products"
             aria-label="Search products"
           />
         </SearchField>
@@ -881,6 +884,7 @@ export function ProductsPage() {
                         step="0.01"
                         defaultValue={p.price}
                         key={`price-${p.id}-${p.price}`}
+                        placeholder="Price"
                         onBlur={(e) => void savePrice(p, e.target.value)}
                       />
                     </td>
@@ -891,7 +895,7 @@ export function ProductsPage() {
                         step="0.01"
                         defaultValue={p.costPrice ?? ''}
                         key={`cost-${p.id}-${p.costPrice ?? 'x'}`}
-                        placeholder="—"
+                        placeholder="Cost"
                         onBlur={(e) => void saveCost(p, e.target.value)}
                       />
                     </td>
@@ -954,6 +958,7 @@ export function ProductsPage() {
                       void saveProductName(expandedProduct);
                     }
                   }}
+                  placeholder="Product name"
                 />
               </Field>
             </Row>
@@ -989,7 +994,7 @@ export function ProductsPage() {
                             <QtyInput
                               type="number"
                               min="1"
-                              placeholder="1"
+                              placeholder="Qty"
                               aria-label={`How many to change for ${v.label || expandedProduct.name}`}
                               value={stockEdit[v.id] || ''}
                               onChange={(e) =>
@@ -1121,9 +1126,9 @@ export function ProductsPage() {
                 </AddSectionLead>
                 <Row style={{ alignItems: 'flex-end' }}>
                   <Field>
-                    Option name
+                    Variants
                     <Input
-                      placeholder="e.g. 500ml / Size 2 / Red"
+                      placeholder="Size or colour"
                       value={variantForm.label}
                       onChange={(e) =>
                         setVariantForm({
@@ -1146,6 +1151,7 @@ export function ProductsPage() {
                           price: e.target.value,
                         })
                       }
+                      placeholder="Sell price"
                     />
                   </Field>
                   <Field>
@@ -1153,7 +1159,7 @@ export function ProductsPage() {
                     <Input
                       type="number"
                       min="1"
-                      placeholder="Required"
+                      placeholder="Units in stock"
                       value={variantForm.stock}
                       onChange={(e) =>
                         setVariantForm({
@@ -1220,7 +1226,7 @@ export function ProductsPage() {
                   <Field>
                     Pack name
                     <Input
-                      placeholder="e.g. Crate"
+                      placeholder="Pack name"
                       value={packForm.label}
                       onChange={(e) =>
                         setPackForm({
@@ -1242,6 +1248,7 @@ export function ProductsPage() {
                           unitsPerPack: e.target.value,
                         })
                       }
+                      placeholder="Units per pack"
                     />
                   </Field>
                   <Field>
@@ -1257,6 +1264,7 @@ export function ProductsPage() {
                           price: e.target.value,
                         })
                       }
+                      placeholder="Sell price"
                     />
                   </Field>
                   <Button

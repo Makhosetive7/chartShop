@@ -17,7 +17,6 @@ const shopSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
-    minlength: 10,
     maxlength: 500,
   },
   /** Admin/disable flag — disables the whole business for every user. */

@@ -621,7 +621,7 @@ export function TeamSettingsCard() {
                   onChange={(e) =>
                     setForm((f) => ({ ...f, displayName: e.target.value }))
                   }
-                  placeholder="Thabo"
+                  placeholder="Their name"
                   required
                 />
               </Field>
@@ -636,7 +636,7 @@ export function TeamSettingsCard() {
                       username: sanitizeUsernameInput(e.target.value),
                     }))
                   }
-                  placeholder="thabo"
+                  placeholder="Their username"
                   autoComplete="off"
                   required
                 />
@@ -654,7 +654,7 @@ export function TeamSettingsCard() {
                     onChange={(e) =>
                       setForm((f) => ({ ...f, pin: e.target.value }))
                     }
-                    placeholder="••••"
+                    placeholder="4-digit PIN"
                     required
                   />
                 </Field>

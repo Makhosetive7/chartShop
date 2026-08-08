@@ -1170,7 +1170,7 @@ export function ChatPage() {
                   placeholder={
                     showingDemoFeed
                       ? 'Demo is read-only — scroll the activity log above'
-                      : 'Message ChartShop…'
+                      : 'Type a message'
                   }
                   disabled={showingDemoFeed}
                   readOnly={showingDemoFeed}

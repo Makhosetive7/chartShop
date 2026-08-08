@@ -109,7 +109,7 @@ export function LoginPage() {
         <Input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="e.g. tinasales"
+          placeholder="Your username"
           autoComplete="username"
           pattern="[A-Za-z0-9_]{3,32}"
           required
@@ -125,7 +125,7 @@ export function LoginPage() {
           maxLength={4}
           value={pin}
           onChange={(e) => setPin(e.target.value)}
-          placeholder="••••"
+          placeholder="4-digit PIN"
           autoComplete="current-password"
           required
         />
