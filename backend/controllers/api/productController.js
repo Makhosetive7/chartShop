@@ -9,6 +9,7 @@ import {
   findPack,
   findVariant,
   getPrimaryVariant,
+  persistEnsuredVariants,
   serializeProduct,
   syncProductMirrors,
 } from "../../utils/productVariants.js";
@@ -40,12 +41,11 @@ export async function listProducts(req, res) {
       isActive: true,
     }).sort({ name: 1 });
 
+    await Promise.all(products.map((p) => persistEnsuredVariants(p)));
+
     return res.json({
       success: true,
-      products: products.map((p) => {
-        ensureVariants(p);
-        return serializeProduct(p);
-      }),
+      products: products.map(serializeProduct),
     });
   } catch (error) {
     console.error("[api/products/list]", error);
@@ -63,15 +63,16 @@ export async function lowStock(req, res) {
       isActive: true,
     }).sort({ stock: 1 });
 
-    const low = products.filter((p) => {
-      ensureVariants(p);
-      return (p.variants || []).some(
+    await Promise.all(products.map((p) => persistEnsuredVariants(p)));
+
+    const low = products.filter((p) =>
+      (p.variants || []).some(
         (v) =>
           v.isActive !== false &&
           v.trackStock &&
           (v.stock || 0) <= (v.lowStockThreshold ?? p.lowStockThreshold ?? 0)
-      );
-    });
+      )
+    );
 
     return res.json({
       success: true,
@@ -309,7 +310,7 @@ export async function getProduct(req, res) {
     if (!product || !product.isActive) {
       return res.status(404).json({ success: false, error: "Product not found." });
     }
-    ensureVariants(product);
+    await persistEnsuredVariants(product);
     return res.json({ success: true, product: serializeProduct(product) });
   } catch (error) {
     console.error("[api/products/get]", error);

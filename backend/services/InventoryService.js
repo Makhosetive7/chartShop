@@ -1,8 +1,8 @@
 import Product from "../models/Product.js";
 import {
-  ensureVariants,
-  findVariant,
   getPrimaryVariant,
+  persistEnsuredVariants,
+  resolveVariant,
   syncProductMirrors,
 } from "../utils/productVariants.js";
 
@@ -45,15 +45,9 @@ class InventoryService {
       throw new Error("Product not found");
     }
 
-    ensureVariants(existing);
-    if (existing.isModified("variants")) {
-      syncProductMirrors(existing);
-      await existing.save(session ? { session } : undefined);
-    }
+    await persistEnsuredVariants(existing, session);
 
-    const variant = opts.variantId
-      ? findVariant(existing, opts.variantId)
-      : getPrimaryVariant(existing);
+    const variant = resolveVariant(existing, opts.variantId);
 
     if (!variant) {
       throw new Error("Variant not found");
@@ -92,7 +86,7 @@ class InventoryService {
 
     const fresh = await Product.findById(productId, null, loadOpts);
     const freshVariant =
-      findVariant(fresh, variant._id) || getPrimaryVariant(fresh);
+      resolveVariant(fresh, variant._id) || getPrimaryVariant(fresh);
     throw new InsufficientStockError(
       variantLabel(fresh || existing, freshVariant || variant),
       quantity,
@@ -114,15 +108,9 @@ class InventoryService {
       throw new Error("Product not found");
     }
 
-    ensureVariants(existing);
-    if (existing.isModified("variants")) {
-      syncProductMirrors(existing);
-      await existing.save(session ? { session } : undefined);
-    }
+    await persistEnsuredVariants(existing, session);
 
-    const variant = opts.variantId
-      ? findVariant(existing, opts.variantId)
-      : getPrimaryVariant(existing);
+    const variant = resolveVariant(existing, opts.variantId);
 
     if (!variant) {
       throw new Error("Variant not found");
@@ -159,10 +147,8 @@ class InventoryService {
   async adjustVariantStock(productId, quantity, op = "+", opts = {}) {
     const product = await Product.findById(productId);
     if (!product) throw new Error("Product not found");
-    ensureVariants(product);
-    const variant = opts.variantId
-      ? findVariant(product, opts.variantId)
-      : getPrimaryVariant(product);
+    await persistEnsuredVariants(product);
+    const variant = resolveVariant(product, opts.variantId);
     if (!variant) throw new Error("Variant not found");
 
     variant.trackStock = true;

@@ -341,6 +341,108 @@ describe("E2E product variants + packs", () => {
     assert.equal(sales.length, 1);
   });
 
+  it("list + sell works for legacy products with empty variants", async () => {
+    // Pre-variants era docs: no variants array persisted in Mongo.
+    const inserted = await Product.collection.insertOne({
+      shopId: shop._id,
+      name: "Legacy Soap",
+      price: 5,
+      costPrice: 2,
+      stock: 20,
+      trackStock: true,
+      lowStockThreshold: 5,
+      isActive: true,
+      variants: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const productId = String(inserted.insertedId);
+
+    const listed = await request(server, {
+      method: "GET",
+      path: "/api/v1/products",
+      token,
+    });
+    assert.equal(listed.status, 200, listed.raw);
+    const product = listed.body.products.find((p) => p.id === productId);
+    assert.ok(product, "legacy product should appear in list");
+    assert.equal(product.variants.length, 1);
+    assert.ok(product.variants[0].id);
+    assert.ok(product.variants[0].packs[0]?.id);
+
+    // IDs returned by list must be durable in the DB (not ephemeral).
+    const persisted = await Product.findById(productId);
+    assert.equal(persisted.variants.length, 1);
+    assert.equal(String(persisted.variants[0]._id), product.variants[0].id);
+
+    const sale = await request(server, {
+      method: "POST",
+      path: "/api/v1/sales/cash",
+      token,
+      body: {
+        items: [
+          {
+            productId,
+            variantId: product.variants[0].id,
+            packId: product.variants[0].packs[0].id,
+            quantity: 3,
+          },
+        ],
+      },
+    });
+    assert.equal(sale.status, 201, sale.raw);
+    assert.equal(sale.body.sale.total, 15);
+
+    const orderCustomer = await request(server, {
+      method: "POST",
+      path: "/api/v1/customers",
+      token,
+      body: { name: "Legacy Cust", phone: "5550199999" },
+    });
+    assert.equal(orderCustomer.status, 201, orderCustomer.raw);
+
+    const order = await request(server, {
+      method: "POST",
+      path: "/api/v1/orders",
+      token,
+      body: {
+        customer: "Legacy Cust",
+        orderType: "pickup",
+        items: [
+          {
+            productId,
+            variantId: product.variants[0].id,
+            packId: product.variants[0].packs[0].id,
+            quantity: 1,
+          },
+        ],
+      },
+    });
+    assert.equal(order.status, 201, order.raw);
+
+    // Stale client IDs still work for single-variant legacy products.
+    const staleSale = await request(server, {
+      method: "POST",
+      path: "/api/v1/sales/cash",
+      token,
+      body: {
+        items: [
+          {
+            productId,
+            variantId: "000000000000000000000000",
+            packId: "111111111111111111111111",
+            quantity: 1,
+          },
+        ],
+      },
+    });
+    assert.equal(staleSale.status, 201, staleSale.raw);
+
+    const fresh = await Product.findById(productId);
+    assert.equal(fresh.variants[0].stock, 16);
+    assert.equal(fresh.stock, 16);
+  });
+
   it("rejects pack sale when variant stock is insufficient", async () => {
     const create = await request(server, {
       method: "POST",
