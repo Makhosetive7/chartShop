@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import Product from "../models/Product.js";
 import {
-  ensureVariants,
+  persistEnsuredVariants,
   resolveSellUnit,
 } from "./productVariants.js";
 
@@ -18,7 +18,7 @@ export async function resolveProduct(shopId, item) {
     if (!product) {
       return { error: `Product not found: ${item.productId}` };
     }
-    ensureVariants(product);
+    await persistEnsuredVariants(product);
     return { product };
   }
 
@@ -46,7 +46,7 @@ export async function resolveProduct(shopId, item) {
     return { error: `Product not found: ${name}` };
   }
 
-  ensureVariants(product);
+  await persistEnsuredVariants(product);
   return { product };
 }
 

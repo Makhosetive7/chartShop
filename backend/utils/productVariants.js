@@ -121,6 +121,23 @@ export function ensureVariants(product) {
   return product;
 }
 
+/**
+ * Ensure variants exist and persist them when this is a Mongoose doc that was
+ * just materialized. Prevents ephemeral IDs from being returned to clients.
+ */
+export async function persistEnsuredVariants(product, session) {
+  if (!product) return product;
+  ensureVariants(product);
+  if (
+    typeof product.isModified === "function" &&
+    product.isModified("variants")
+  ) {
+    syncProductMirrors(product);
+    await product.save(session ? { session } : undefined);
+  }
+  return product;
+}
+
 /** Recompute Product mirror fields from active variants. */
 export function syncProductMirrors(product) {
   if (!product) return product;
@@ -140,17 +157,45 @@ export function syncProductMirrors(product) {
 }
 
 /**
+ * Resolve a variant by id, falling back to the sole active variant when a
+ * stale client id is sent for a legacy single-variant product.
+ */
+export function resolveVariant(product, variantId) {
+  ensureVariants(product);
+  if (variantId) {
+    const found = findVariant(product, variantId);
+    if (found) return found;
+    const variants = activeVariants(product);
+    if (variants.length === 1) return variants[0];
+    return null;
+  }
+  return getPrimaryVariant(product);
+}
+
+/**
+ * Resolve a pack by id, falling back to the sole active pack when a stale
+ * client id is sent for a single-pack variant.
+ */
+export function resolvePack(variant, packId) {
+  if (!variant) return null;
+  const pack = findPack(variant, packId);
+  if (pack) return pack;
+  if (!packId) return null;
+  const packs = activePacks(variant);
+  if (packs.length === 1) return packs[0];
+  return null;
+}
+
+/**
  * Resolve sell target: variant + pack + base units for a quantity of packs.
  */
 export function resolveSellUnit(product, { variantId, packId, quantity } = {}) {
   ensureVariants(product);
-  const variant = variantId
-    ? findVariant(product, variantId)
-    : getPrimaryVariant(product);
+  const variant = resolveVariant(product, variantId);
   if (!variant) {
     return { error: `No variant found for ${product.name}` };
   }
-  const pack = findPack(variant, packId);
+  const pack = resolvePack(variant, packId);
   if (!pack) {
     return { error: `No pack found for ${product.name}` };
   }

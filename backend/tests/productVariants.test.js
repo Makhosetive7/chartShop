@@ -15,6 +15,9 @@ import { parseApiSaleItems } from "../utils/apiSaleItems.js";
 import {
   buildDefaultPack,
   buildDefaultVariant,
+  persistEnsuredVariants,
+  resolveSellUnit,
+  serializeProduct,
 } from "../utils/productVariants.js";
 
 describe("Product variants and packs", () => {
@@ -108,6 +111,79 @@ describe("Product variants and packs", () => {
     assert.equal(fresh500.stock, 24);
     assert.equal(fresh2L.stock, 12);
     assert.equal(fresh.stock, 36);
+  });
+
+  it("sells legacy products after listing materializes persistent variants", async () => {
+    // Bypass mongoose validate so we get a true pre-variants document.
+    const inserted = await Product.collection.insertOne({
+      shopId: shop._id,
+      name: "legacy soap",
+      price: 5,
+      costPrice: 2,
+      stock: 20,
+      trackStock: true,
+      lowStockThreshold: 5,
+      isActive: true,
+      variants: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const listed = await Product.findById(inserted.insertedId);
+    assert.equal(listed.variants.length, 0);
+
+    await persistEnsuredVariants(listed);
+    const payload = serializeProduct(listed);
+    assert.equal(payload.variants.length, 1);
+
+    const persisted = await Product.findById(inserted.insertedId);
+    assert.equal(persisted.variants.length, 1);
+    assert.equal(String(persisted.variants[0]._id), payload.variants[0].id);
+
+    const parsed = await parseApiSaleItems(shop._id, [
+      {
+        productId: payload.id,
+        variantId: payload.variants[0].id,
+        packId: payload.variants[0].packs[0].id,
+        quantity: 2,
+      },
+    ]);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.items[0].baseUnitsDeducted, 2);
+
+    const result = await InventoryService.deductSaleItems(parsed.items);
+    assert.equal(result.success, true);
+
+    const fresh = await Product.findById(inserted.insertedId);
+    assert.equal(fresh.variants[0].stock, 18);
+    assert.equal(fresh.stock, 18);
+  });
+
+  it("falls back to the sole variant when client sends a stale variant id", async () => {
+    const inserted = await Product.collection.insertOne({
+      shopId: shop._id,
+      name: "legacy flour",
+      price: 10,
+      stock: 8,
+      trackStock: true,
+      lowStockThreshold: 2,
+      isActive: true,
+      variants: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const product = await Product.findById(inserted.insertedId);
+    await persistEnsuredVariants(product);
+
+    const sell = resolveSellUnit(product, {
+      variantId: "000000000000000000000000",
+      packId: "111111111111111111111111",
+      quantity: 1,
+    });
+    assert.equal(sell.error, undefined);
+    assert.equal(String(sell.variant._id), String(product.variants[0]._id));
+    assert.equal(sell.baseUnits, 1);
   });
 
   it("keeps shoe size stocks independent", async () => {
