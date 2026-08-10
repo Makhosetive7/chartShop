@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import {
   NavLink,
@@ -426,6 +426,7 @@ export function AppLayout() {
   const { shop, user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -449,6 +450,13 @@ export function AppLayout() {
     if (loggingOut) return;
     setMoreOpen(false);
   }, [location.pathname, loggingOut]);
+
+  // Task pages start at the top; Chat owns its own bottom-scroll.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    if (flush) return;
+    mainRef.current?.scrollTo(0, 0);
+  }, [location.pathname, flush]);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -499,7 +507,7 @@ export function AppLayout() {
 
       <DemoBanner />
 
-      <Main $flush={flush}>
+      <Main ref={mainRef} $flush={flush}>
         <MainInner $flush={flush}>
           <Outlet />
         </MainInner>
