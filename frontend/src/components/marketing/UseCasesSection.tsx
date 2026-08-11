@@ -86,7 +86,7 @@ const Copy = styled.div`
 `;
 
 const Mock = styled.div`
-  background: white;
+  background: ${({ theme }) => theme.colors.surface};
   border-radius: 0;
   padding: 16px;
   box-shadow: ${({ theme }) => theme.shadows.card};

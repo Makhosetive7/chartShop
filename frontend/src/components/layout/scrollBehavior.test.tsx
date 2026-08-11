@@ -1,10 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ThemeProvider } from 'styled-components';
 import { MemoryRouter, Route, Routes, Link } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { theme } from '@/styles/theme';
+import { ThemeModeProvider } from '@/theme';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { MarketingLayout } from '@/components/marketing/MarketingLayout';
 import { App } from '@/App';
@@ -163,7 +162,7 @@ describe('scroll behaviour', () => {
 
   function renderMarketing(initialPath: string) {
     return render(
-      <ThemeProvider theme={theme}>
+      <ThemeModeProvider>
         <MemoryRouter initialEntries={[initialPath]}>
           <Routes>
             <Route element={<MarketingLayout />}>
@@ -181,13 +180,13 @@ describe('scroll behaviour', () => {
             </Route>
           </Routes>
         </MemoryRouter>
-      </ThemeProvider>,
+      </ThemeModeProvider>,
     );
   }
 
   function renderAppShell(initialPath: string) {
     return render(
-      <ThemeProvider theme={theme}>
+      <ThemeModeProvider>
         <MemoryRouter initialEntries={[initialPath]}>
           <Routes>
             <Route path="/app" element={<AppLayout />}>
@@ -211,7 +210,7 @@ describe('scroll behaviour', () => {
             </Route>
           </Routes>
         </MemoryRouter>
-      </ThemeProvider>,
+      </ThemeModeProvider>,
     );
   }
 
@@ -224,9 +223,9 @@ describe('scroll behaviour', () => {
   describe('App scrollRestoration', () => {
     it('sets history.scrollRestoration to manual on boot', async () => {
       render(
-        <ThemeProvider theme={theme}>
+        <ThemeModeProvider>
           <App />
-        </ThemeProvider>,
+        </ThemeModeProvider>,
       );
 
       await waitFor(() => {
@@ -394,7 +393,7 @@ describe('scroll behaviour', () => {
       const user = userEvent.setup();
 
       render(
-        <ThemeProvider theme={theme}>
+        <ThemeModeProvider>
           <MemoryRouter initialEntries={['/login']}>
             <Routes>
               <Route element={<MarketingLayout />}>
@@ -416,7 +415,7 @@ describe('scroll behaviour', () => {
               </Route>
             </Routes>
           </MemoryRouter>
-        </ThemeProvider>,
+        </ThemeModeProvider>,
       );
       await waitFor(() => expect(windowScrollTo).toHaveBeenCalled());
       windowScrollTo.mockClear();

@@ -78,7 +78,7 @@ const Card = styled(motion.div)`
   grid-template-columns: 0.9fr 1.1fr;
   gap: ${({ theme }) => theme.space[5]};
   padding: ${({ theme }) => theme.space[5]};
-  background: white;
+  background: ${({ theme }) => theme.colors.surface};
   border-radius: 0;
   box-shadow: ${({ theme }) => theme.shadows.float};
 

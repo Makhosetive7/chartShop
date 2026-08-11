@@ -13,7 +13,7 @@ const Bar = styled.header`
   justify-content: space-between;
   gap: ${({ theme }) => theme.space[4]};
   padding: 16px clamp(1.25rem, 4vw, 2.5rem);
-  background: rgba(247, 241, 235, 0.86);
+  background: ${({ theme }) => theme.colors.chromeMuted};
   backdrop-filter: blur(14px);
   border-bottom: 1px solid transparent;
 `;

@@ -1,5 +1,6 @@
 import { ToastContainer } from 'react-toastify';
 import { createGlobalStyle } from 'styled-components';
+import { useThemeMode } from '@/theme';
 import 'react-toastify/dist/ReactToastify.css';
 
 const ToastStyles = createGlobalStyle`
@@ -60,6 +61,8 @@ const ToastStyles = createGlobalStyle`
 `;
 
 export function AppToaster() {
+  const { mode } = useThemeMode();
+
   return (
     <>
       <ToastStyles />
@@ -73,7 +76,7 @@ export function AppToaster() {
         pauseOnHover={false}
         draggable={false}
         closeButton={false}
-        theme="light"
+        theme={mode}
       />
     </>
   );

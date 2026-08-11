@@ -117,7 +117,7 @@ const IconBox = styled.div`
   width: 48px;
   height: 48px;
   border-radius: 0;
-  background: white;
+  background: ${({ theme }) => theme.colors.surface};
   color: ${({ theme }) => theme.colors.maroon};
   display: grid;
   place-items: center;

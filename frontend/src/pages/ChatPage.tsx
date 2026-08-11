@@ -141,8 +141,8 @@ const Header = styled.header`
   padding: 8px 0 8px;
   background: linear-gradient(
     180deg,
-    rgba(247, 241, 235, 0.94) 0%,
-    rgba(247, 241, 235, 0.55) 70%,
+    ${({ theme }) => theme.colors.chrome} 0%,
+    color-mix(in srgb, ${({ theme }) => theme.colors.background} 55%, transparent) 70%,
     transparent 100%
   );
 
@@ -453,12 +453,12 @@ const Bubble = styled.div<{ $mine?: boolean; $activity?: boolean }>`
   border-radius: 0;
   background: ${({ theme, $mine, $activity }) =>
     $mine
-      ? `linear-gradient(145deg, ${theme.colors.coral}, ${theme.colors.maroon})`
+      ? `linear-gradient(145deg, ${theme.colors.coral}, ${theme.colors.action})`
       : $activity
         ? 'rgba(139, 30, 58, 0.06)'
         : theme.colors.surface};
   color: ${({ theme, $mine }) =>
-    $mine ? theme.colors.textOnDark : theme.colors.textPrimary};
+    $mine ? theme.colors.onAction : theme.colors.textPrimary};
   border: 1px solid
     ${({ theme, $mine, $activity }) =>
       $mine
@@ -508,7 +508,7 @@ const Footer = styled.div`
   bottom: calc(64px + env(safe-area-inset-bottom, 0px));
   z-index: 45;
   padding: 8px 0 10px;
-  background: rgba(247, 241, 235, 0.98);
+  background: ${({ theme }) => theme.colors.chromeStrong};
   backdrop-filter: blur(18px);
   border-top: 1px solid ${({ theme }) => theme.colors.border};
   box-shadow: 0 -10px 28px rgba(26, 10, 10, 0.08);
@@ -601,7 +601,7 @@ const InputShell = styled.div`
   padding: 4px 4px 4px 10px;
   border-radius: 0;
   border: 1.5px solid ${({ theme }) => theme.colors.maroon};
-  background: #fff;
+  background: ${({ theme }) => theme.colors.surface};
   box-shadow:
     0 1px 2px rgba(17, 24, 39, 0.04),
     0 10px 28px rgba(74, 14, 28, 0.1);
@@ -667,9 +667,9 @@ const SendBtn = styled.button`
   background: linear-gradient(
     145deg,
     ${({ theme }) => theme.colors.coral},
-    ${({ theme }) => theme.colors.maroon}
+    ${({ theme }) => theme.colors.action}
   );
-  color: #fff;
+  color: ${({ theme }) => theme.colors.onAction};
   display: grid;
   place-items: center;
   cursor: pointer;

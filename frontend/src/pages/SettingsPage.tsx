@@ -18,6 +18,7 @@ import {
   Building2,
   KeyRound,
   LogOut,
+  Palette,
   Settings2,
   Shield,
 } from 'lucide-react';import {
@@ -44,6 +45,7 @@ import {
   Badge,
 } from '@/components/ui/primitives';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { ThemePreferencePicker } from '@/components/ui/ThemePreferencePicker';
 import { SettingsProfileSkeleton } from '@/components/skeletons/PageSkeletons';
 import { toastError, toastSuccess } from '@/lib/toast';
 import {
@@ -726,6 +728,22 @@ export function SettingsPage() {
       </Hero>
 
       <Stack>
+        <Card>
+          <SectionHead>
+            <IconBadge>
+              <Palette size={18} />
+            </IconBadge>
+            <SectionCopy>
+              <h2>Appearance</h2>
+              <p>
+                Choose light, dark, or match your device. Saved on this browser
+                for your signed-in sessions.
+              </p>
+            </SectionCopy>
+          </SectionHead>
+          <ThemePreferencePicker />
+        </Card>
+
         {isAdmin ? (
         <Card>
           <SectionHead>

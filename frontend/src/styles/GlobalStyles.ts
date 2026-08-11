@@ -8,6 +8,7 @@ export const GlobalStyles = createGlobalStyle`
 
   html {
     -webkit-text-size-adjust: 100%;
+    color-scheme: ${({ theme }) => theme.mode};
   }
 
   html, body, #root {

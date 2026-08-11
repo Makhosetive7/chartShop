@@ -33,8 +33,8 @@ const Primary = styled(Link)`
   display: inline-flex;
   align-items: center;
   padding: 8px 14px;
-  background: ${({ theme }) => theme.colors.maroon};
-  color: ${({ theme }) => theme.colors.textOnDark};
+  background: ${({ theme }) => theme.colors.action};
+  color: ${({ theme }) => theme.colors.onAction};
   text-decoration: none;
   font-weight: ${({ theme }) => theme.fontWeights.semibold};
   font-size: 0.84rem;

@@ -84,7 +84,7 @@ const TopBar = styled.header`
   gap: 10px;
   padding: 10px 12px;
   padding-top: max(10px, env(safe-area-inset-top));
-  background: rgba(247, 241, 235, 0.92);
+  background: ${({ theme }) => theme.colors.chrome};
   backdrop-filter: blur(14px);
   border-bottom: 1px solid ${({ theme }) => theme.colors.border};
 
@@ -152,8 +152,8 @@ const Main = styled.main<{ $flush?: boolean }>`
       ? `calc(${NAV_HEIGHT_MOBILE} + env(safe-area-inset-bottom))`
       : `calc(${NAV_HEIGHT_MOBILE} + env(safe-area-inset-bottom) + 16px)`};
   background:
-    radial-gradient(ellipse 55% 40% at 0% 0%, rgba(245, 160, 122, 0.14), transparent 55%),
-    radial-gradient(ellipse 45% 35% at 100% 0%, rgba(196, 59, 90, 0.08), transparent 50%),
+    radial-gradient(ellipse 55% 40% at 0% 0%, ${({ theme }) => theme.colors.glowWarm}, transparent 55%),
+    radial-gradient(ellipse 45% 35% at 100% 0%, ${({ theme }) => theme.colors.glowAccent}, transparent 50%),
     ${({ theme }) => theme.colors.background};
   overflow-x: hidden;
   overflow-y: auto;
@@ -199,7 +199,7 @@ const BottomNav = styled.nav`
   bottom: 0;
   z-index: 50;
   padding: 6px 8px max(6px, env(safe-area-inset-bottom));
-  background: rgba(247, 241, 235, 0.94);
+  background: ${({ theme }) => theme.colors.chrome};
   backdrop-filter: blur(16px);
   border-top: 1px solid ${({ theme }) => theme.colors.border};
 
@@ -337,7 +337,7 @@ const Scrim = styled.button`
   inset: 0;
   z-index: 60;
   border: none;
-  background: rgba(26, 10, 10, 0.45);
+  background: ${({ theme }) => theme.colors.overlay};
   cursor: pointer;
 `;
 

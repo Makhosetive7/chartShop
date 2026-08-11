@@ -83,9 +83,9 @@ const Base = styled.span<{ $tone: Tone; $size: Size }>`
   box-sizing: border-box;
   border: 1px solid
     ${({ theme, $tone }) => {
-      if ($tone === 'filled') return theme.colors.maroonDeep;
+      if ($tone === 'filled') return theme.colors.actionDeep;
       if ($tone === 'danger') return '#9f1239';
-      return theme.colors.maroon;
+      return theme.colors.action;
     }};
   transition: transform 0.2s ease;
 
@@ -113,7 +113,7 @@ const Label = styled.span<{ $tone: Tone; $size: Size }>`
   text-overflow: ellipsis;
   line-height: 1;
   background: ${({ theme, $tone }) => {
-    if ($tone === 'filled') return theme.colors.maroon;
+    if ($tone === 'filled') return theme.colors.action;
     if ($tone === 'light') return theme.colors.surface;
     if ($tone === 'danger') return theme.colors.danger;
     return 'transparent';
@@ -121,7 +121,7 @@ const Label = styled.span<{ $tone: Tone; $size: Size }>`
   color: ${({ theme, $tone }) => {
     if ($tone === 'ghost') return theme.colors.maroon;
     if ($tone === 'light') return theme.colors.maroon;
-    return theme.colors.textOnDark;
+    return theme.colors.onAction;
   }};
 `;
 
@@ -137,19 +137,19 @@ const IconBox = styled.span<{ $tone: Tone; $size: Size }>`
   box-sizing: border-box;
   border: none;
   border-left: 1px solid
-    ${({ theme, $tone }) => {
+    ${({ $tone }) => {
       if ($tone === 'filled') return 'rgba(255, 255, 255, 0.18)';
       if ($tone === 'danger') return 'rgba(255, 255, 255, 0.2)';
-      return theme.colors.maroon;
+      return 'rgba(255, 255, 255, 0.22)';
     }};
   margin: 0;
   line-height: 0;
   background: ${({ theme, $tone }) => {
-    if ($tone === 'filled') return theme.colors.maroonDeep;
+    if ($tone === 'filled') return theme.colors.actionDeep;
     if ($tone === 'danger') return '#9f1239';
-    return theme.colors.maroon;
+    return theme.colors.action;
   }};
-  color: ${({ theme }) => theme.colors.textOnDark};
+  color: ${({ theme }) => theme.colors.onAction};
 
   svg {
     display: block;
