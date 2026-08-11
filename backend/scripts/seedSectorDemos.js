@@ -13,7 +13,44 @@ import Customer from "../models/Customer.js";
 import Sale from "../models/Sale.js";
 import Expense from "../models/Expense.js";
 import LayBye from "../models/LayBye.js";
+import Order from "../models/Order.js";
 import { DEMO_SECTORS } from "../constants/demoSectors.js";
+import {
+  buildDefaultPack,
+  buildDefaultVariant,
+  syncProductMirrors,
+} from "../utils/productVariants.js";
+
+const PAYMENT_METHODS = ["cash", "bank", "mobile", "cash", "mobile"];
+
+function normalizeExpenseTemplate(entry) {
+  if (typeof entry === "string") {
+    return {
+      description: entry,
+      category: "other",
+      amount: [15, 45],
+    };
+  }
+  return {
+    description: entry.description || "Operating expense",
+    category: entry.category || "other",
+    amount: Array.isArray(entry.amount) ? entry.amount : [15, 45],
+  };
+}
+
+function buildExpenseDoc(shopId, template, date) {
+  const [minAmt, maxAmt] = template.amount;
+  const amount =
+    Math.round((minAmt + Math.random() * (maxAmt - minAmt)) * 100) / 100;
+  return {
+    shopId,
+    amount,
+    description: template.description,
+    category: template.category,
+    paymentMethod: pick(PAYMENT_METHODS),
+    date,
+  };
+}
 
 const SHARED_CUSTOMERS = [
   { name: "Thandi Ncube", phone: "0771001001" },
@@ -58,6 +95,91 @@ function saleDateInWeek(weekStart) {
   return d;
 }
 
+/**
+ * Map a catalog entry (flat or variants/packs) into a Product insert doc.
+ * Nested _ids are assigned on insert so sale lines can reference them.
+ */
+function catalogEntryToProductDoc(shopId, entry, { threshold, createdAt }) {
+  const trackStock = entry.trackStock !== false;
+
+  if (Array.isArray(entry.variants) && entry.variants.length > 0) {
+    const variants = entry.variants.map((v, i) => {
+      const unitPrice = Number(v.price);
+      const unitCost =
+        v.costPrice === undefined || v.costPrice === null
+          ? null
+          : Number(v.costPrice);
+      const packs =
+        Array.isArray(v.packs) && v.packs.length > 0
+          ? v.packs.map((pk, pi) =>
+              buildDefaultPack({
+                label: pk.label,
+                unitsPerPack: pk.unitsPerPack,
+                price: pk.price,
+                costPrice: pk.costPrice,
+                sortOrder: pk.sortOrder ?? pi,
+              })
+            )
+          : undefined;
+      return buildDefaultVariant({
+        label: v.label ?? "",
+        baseUnit: v.baseUnit || "piece",
+        price: unitPrice,
+        costPrice: unitCost,
+        stock: trackStock === false || v.trackStock === false ? 0 : v.stock ?? 0,
+        lowStockThreshold: v.lowStockThreshold ?? threshold,
+        trackStock: trackStock && v.trackStock !== false,
+        sortOrder: v.sortOrder ?? i,
+        packs,
+      });
+    });
+
+    const doc = {
+      shopId,
+      name: entry.name,
+      price: variants[0].price,
+      costPrice: variants[0].costPrice,
+      stock: 0,
+      lowStockThreshold: threshold,
+      trackStock,
+      variants,
+      isActive: true,
+      createdAt,
+    };
+    syncProductMirrors(doc);
+    return doc;
+  }
+
+  return {
+    shopId,
+    name: entry.name,
+    price: entry.price,
+    costPrice: entry.costPrice ?? null,
+    stock: trackStock ? entry.stock ?? 0 : 0,
+    lowStockThreshold: threshold,
+    trackStock,
+    isActive: true,
+    createdAt,
+  };
+}
+
+function activeVariantList(product) {
+  return (product.variants || []).filter((v) => v && v.isActive !== false);
+}
+
+function activePackList(variant) {
+  return (variant.packs || []).filter((p) => p && p.isActive !== false);
+}
+
+/** Prefer Single packs most of the time; occasionally sell a crate/tray/box. */
+function pickPack(variant) {
+  const packs = activePackList(variant);
+  if (!packs.length) return null;
+  const multi = packs.filter((p) => (p.unitsPerPack || 1) > 1);
+  if (multi.length && Math.random() < 0.28) return pick(multi);
+  return packs.find((p) => (p.unitsPerPack || 1) === 1) || packs[0];
+}
+
 function buildLineItems(products, itemCount = 1) {
   const chosen = new Set();
   const items = [];
@@ -73,26 +195,67 @@ function buildLineItems(products, itemCount = 1) {
     }
     chosen.add(String(product._id));
 
+    const variants = activeVariantList(product);
+    const variant = variants.length ? pick(variants) : null;
+    const pack = variant ? pickPack(variant) : null;
+
     const quantity = rand(1, 2);
-    const price = product.price;
+    const unitsPerPack = pack?.unitsPerPack || 1;
+    const price = pack?.price ?? variant?.price ?? product.price;
+    const packCost =
+      pack?.costPrice != null
+        ? Number(pack.costPrice)
+        : variant?.costPrice != null
+          ? Number(variant.costPrice) * unitsPerPack
+          : Number(product.costPrice || 0);
     const lineTotal = quantity * price;
-    const lineCost = quantity * (product.costPrice || 0);
+    const lineCost = quantity * packCost;
+    const baseUnitsDeducted = quantity * unitsPerPack;
     total += lineTotal;
     costTotal += lineCost;
     items.push({
       productId: product._id,
       productName: product.name,
+      variantId: variant?._id || null,
+      variantLabel: variant?.label || "",
+      packId: pack?._id || null,
+      packLabel: pack?.label || "",
+      unitsPerPack,
+      baseUnitsDeducted,
       quantity,
       price,
       standardPrice: price,
       isCustomPrice: false,
-      costPrice: product.costPrice,
+      costPrice: packCost,
       costTotal: lineCost,
       total: lineTotal,
     });
   }
 
   return { items, total, costTotal };
+}
+
+function laybyeItemsFromSaleItems(items) {
+  return items.map((it) => ({
+    productId: it.productId,
+    productName: it.productName,
+    variantId: it.variantId || null,
+    variantLabel: it.variantLabel || "",
+    packId: it.packId || null,
+    packLabel: it.packLabel || "",
+    unitsPerPack: it.unitsPerPack || 1,
+    baseUnitsDeducted: it.baseUnitsDeducted ?? it.quantity,
+    quantity: it.quantity,
+    price: it.price,
+    total: it.total,
+  }));
+}
+
+function productTracksStock(product) {
+  if (product.trackStock === false) return false;
+  const variants = activeVariantList(product);
+  if (!variants.length) return product.trackStock !== false;
+  return variants.some((v) => v.trackStock !== false);
 }
 
 async function wipeShopByUsername(username) {
@@ -110,6 +273,7 @@ async function wipeShopByUsername(username) {
     Sale.deleteMany({ shopId }),
     Expense.deleteMany({ shopId }),
     LayBye.deleteMany({ shopId }),
+    Order.deleteMany({ shopId }),
     Product.deleteMany({ shopId }),
     Customer.deleteMany({ shopId }),
     ActivityLog.deleteMany({ shopId }),
@@ -157,14 +321,12 @@ async function seedSector(sector) {
 
   const shopDefaultThreshold = sector.lowStockAlert ?? 10;
   const products = await Product.insertMany(
-    sector.catalog.map((p) => ({
-      shopId: shop._id,
-      ...p,
-      lowStockThreshold: shopDefaultThreshold,
-      trackStock: true,
-      isActive: true,
-      createdAt: registeredAt,
-    }))
+    sector.catalog.map((p) =>
+      catalogEntryToProductDoc(shop._id, p, {
+        threshold: shopDefaultThreshold,
+        createdAt: registeredAt,
+      })
+    )
   );
 
   const phoneOffset = sector.id.length * 100;
@@ -192,6 +354,9 @@ async function seedSector(sector) {
   let weekStart = addDays(start, toMonday);
 
   const now = new Date();
+  const expenseTemplates = (sector.expenses || ["Operating expense"]).map(
+    normalizeExpenseTemplate
+  );
   const salesDocs = [];
   const expenseDocs = [];
   let saleCount = 0;
@@ -235,15 +400,16 @@ async function seedSector(sector) {
       }
     }
 
-    if (Math.random() < 0.7) {
-      expenseDocs.push({
-        shopId: shop._id,
-        amount: rand(15, 45),
-        description: pick(sector.expenses || ["Operating expense"]),
-        category: "other",
-        paymentMethod: "cash",
-        date: addDays(weekStart, rand(0, 4)),
-      });
+    // 1–2 expenses most weeks for a readable category mix on Expenses/Reports
+    const expenseCount = Math.random() < 0.85 ? rand(1, 2) : 0;
+    for (let e = 0; e < expenseCount; e++) {
+      expenseDocs.push(
+        buildExpenseDoc(
+          shop._id,
+          pick(expenseTemplates),
+          addDays(weekStart, rand(0, 4))
+        )
+      );
     }
 
     weekStart = addDays(weekStart, 7);
@@ -257,22 +423,47 @@ async function seedSector(sector) {
   for (const c of customers) await c.save();
 
   for (const p of products) {
-    if (p.stock >= 900) continue; // service SKUs
-    const sold = salesDocs.reduce((sum, s) => {
-      const line = s.items.find(
-        (it) => String(it.productId) === String(p._id)
-      );
-      return sum + (line?.quantity || 0);
-    }, 0);
-    p.stock = Math.max(3, (p.stock || 40) - Math.floor(sold * 0.15));
+    if (!productTracksStock(p)) continue;
+    for (const v of activeVariantList(p)) {
+      if (v.trackStock === false) continue;
+      const soldBase = salesDocs.reduce((sum, s) => {
+        return (
+          sum +
+          s.items
+            .filter(
+              (it) =>
+                String(it.productId) === String(p._id) &&
+                String(it.variantId || "") === String(v._id)
+            )
+            .reduce(
+              (lineSum, it) =>
+                lineSum + (it.baseUnitsDeducted ?? it.quantity ?? 0),
+              0
+            )
+        );
+      }, 0);
+      v.stock = Math.max(3, (v.stock || 40) - Math.floor(soldBase * 0.15));
+    }
+    syncProductMirrors(p);
     await p.save();
   }
 
-  // Leave 1–2 tracked products at/near shop low-stock default for Settings + Products UI.
-  const tracked = products.filter((p) => p.stock < 900);
-  for (const p of tracked.slice(0, 2)) {
-    p.stock = Math.max(0, Math.min(p.stock, shopDefaultThreshold));
-    await p.save();
+  // Leave 1–2 tracked variants at/near shop low-stock default for Settings + Products UI.
+  const lowStockTargets = [];
+  for (const p of products) {
+    if (!productTracksStock(p)) continue;
+    for (const v of activeVariantList(p)) {
+      if (v.trackStock === false) continue;
+      lowStockTargets.push({ product: p, variant: v });
+    }
+  }
+  for (const { product, variant } of lowStockTargets.slice(0, 2)) {
+    variant.stock = Math.max(
+      0,
+      Math.min(variant.stock, shopDefaultThreshold)
+    );
+    syncProductMirrors(product);
+    await product.save();
   }
 
   const featureExtras = await seedLaybyesAndRefunds({
@@ -280,6 +471,10 @@ async function seedSector(sector) {
     products,
     customers,
   });
+
+  const orderExtras = await seedOrders({ shop, products, customers });
+  featureExtras.orderCount = orderExtras.orderCount;
+  featureExtras.orders = orderExtras.orders;
 
   await seedDemoActivityLog({
     shop,
@@ -292,15 +487,114 @@ async function seedSector(sector) {
   });
 
   console.log(
-    `✓ ${sector.id.padEnd(12)} ${sector.businessName} (@${sector.username}) — ${products.length} products, ${saleCount} sales, ${featureExtras.cancelledCount} refunds, ${featureExtras.laybyeCount} laybyes`
+    `✓ ${sector.id.padEnd(12)} ${sector.businessName} (@${sector.username}) — ${products.length} products, ${saleCount} sales, ${expenseDocs.length} expenses, ${orderExtras.orderCount} orders, ${featureExtras.cancelledCount} refunds, ${featureExtras.laybyeCount} laybyes`
   );
+}
+
+/**
+ * Seed pickup/delivery orders across pending → ready → completed → cancelled.
+ * Stock is only deducted on complete in live flow; completed demo orders do not
+ * re-deduct (catalog stock already adjusted from sales history).
+ */
+async function seedOrders({ shop, products, customers }) {
+  const trackedProducts = products.filter((p) => productTracksStock(p));
+  const pool = trackedProducts.length ? trackedProducts : products;
+  const now = new Date();
+  const orderCustomers = [...customers];
+
+  const specs = [
+    { status: "pending", daysAgo: 1, orderType: "pickup", paymentStatus: "pending" },
+    { status: "pending", daysAgo: 2, orderType: "pickup", paymentStatus: "partial", advance: 0.3 },
+    { status: "pending", daysAgo: 0, orderType: "delivery", paymentStatus: "pending", deliveryFee: 3 },
+    { status: "confirmed", daysAgo: 3, orderType: "pickup", paymentStatus: "partial", advance: 0.4 },
+    { status: "ready", daysAgo: 1, orderType: "pickup", paymentStatus: "paid", advance: 1 },
+    { status: "ready", daysAgo: 2, orderType: "delivery", paymentStatus: "paid", advance: 1, deliveryFee: 4 },
+    { status: "completed", daysAgo: 5, orderType: "pickup", paymentStatus: "paid", advance: 1 },
+    { status: "completed", daysAgo: 9, orderType: "pickup", paymentStatus: "paid", advance: 1 },
+    { status: "completed", daysAgo: 14, orderType: "delivery", paymentStatus: "paid", advance: 1, deliveryFee: 3 },
+    { status: "completed", daysAgo: 21, orderType: "pickup", paymentStatus: "paid", advance: 1 },
+    { status: "cancelled", daysAgo: 7, orderType: "pickup", paymentStatus: "refunded", advance: 0.2 },
+    { status: "cancelled", daysAgo: 12, orderType: "delivery", paymentStatus: "pending", deliveryFee: 3 },
+  ];
+
+  const orderDocs = [];
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i];
+    const customer = orderCustomers[i % orderCustomers.length];
+    const { items, total } = buildLineItems(pool, rand(1, 3));
+    const deliveryFee = spec.deliveryFee || 0;
+    const orderTotal = Math.round((total + deliveryFee) * 100) / 100;
+    const advanceRatio = spec.advance ?? 0;
+    const advancePayment =
+      Math.round(orderTotal * advanceRatio * 100) / 100;
+
+    const orderDate = addDays(now, -spec.daysAgo);
+    orderDate.setHours(rand(9, 17), rand(0, 59), 0, 0);
+
+    const doc = {
+      shopId: shop._id,
+      customerId: customer._id,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+      items: laybyeItemsFromSaleItems(items),
+      total: orderTotal,
+      status: spec.status,
+      orderType: spec.orderType,
+      pickupDate:
+        spec.orderType === "pickup"
+          ? addDays(orderDate, rand(0, 2))
+          : null,
+      deliveryAddress:
+        spec.orderType === "delivery"
+          ? pick([
+              "12 Liberation Ave",
+              "Flat 4, Samora Machel",
+              "Site office — Borrowdale",
+              "Behind main market stall",
+            ])
+          : null,
+      deliveryFee,
+      notes: pick([
+        "Demo order — call on arrival",
+        "Customer prefers afternoon pickup",
+        "Leave with security if late",
+        "",
+      ]),
+      orderDate,
+      advancePayment,
+      paymentStatus: spec.paymentStatus,
+    };
+
+    if (spec.status === "confirmed" || ["ready", "completed"].includes(spec.status)) {
+      doc.confirmedAt = addDays(orderDate, 0);
+      doc.confirmedAt.setHours(orderDate.getHours() + 1);
+    }
+    if (spec.status === "ready" || spec.status === "completed") {
+      doc.readyAt = addDays(orderDate, spec.status === "completed" ? 1 : 0);
+      doc.readyAt.setHours(orderDate.getHours() + 3);
+    }
+    if (spec.status === "completed") {
+      doc.completedAt = addDays(orderDate, rand(1, 3));
+      doc.completedAt.setHours(rand(10, 16), rand(0, 59), 0, 0);
+    }
+    if (spec.status === "cancelled") {
+      doc.cancelledAt = addDays(orderDate, rand(0, 1));
+      doc.cancelledAt.setHours(orderDate.getHours() + rand(1, 5));
+      doc.notes = "Demo cancelled — customer no-show";
+    }
+
+    orderDocs.push(doc);
+  }
+
+  const inserted = await Order.insertMany(orderDocs);
+  return { orderCount: inserted.length, orders: inserted };
 }
 
 /**
  * Seed cancelled sales (refunds UI) + active/completed laybyes (Sales page).
  */
 async function seedLaybyesAndRefunds({ shop, products, customers }) {
-  const trackedProducts = products.filter((p) => (p.stock || 0) < 900);
+  const trackedProducts = products.filter((p) => productTracksStock(p));
   const pool = trackedProducts.length ? trackedProducts : products;
   const now = new Date();
 
@@ -358,13 +652,7 @@ async function seedLaybyesAndRefunds({ shop, products, customers }) {
       customerId: customer._id,
       customerName: customer.name,
       customerPhone: customer.phone,
-      items: items.map((it) => ({
-        productId: it.productId,
-        productName: it.productName,
-        quantity: it.quantity,
-        price: it.price,
-        total: it.total,
-      })),
+      items: laybyeItemsFromSaleItems(items),
       totalAmount: total,
       amountPaid: deposit,
       balanceDue: Math.round((total - deposit) * 100) / 100,
@@ -394,13 +682,7 @@ async function seedLaybyesAndRefunds({ shop, products, customers }) {
       customerId: customer._id,
       customerName: customer.name,
       customerPhone: customer.phone,
-      items: items.map((it) => ({
-        productId: it.productId,
-        productName: it.productName,
-        quantity: it.quantity,
-        price: it.price,
-        total: it.total,
-      })),
+      items: laybyeItemsFromSaleItems(items),
       totalAmount: total,
       amountPaid: paid,
       balanceDue: balance,
@@ -438,13 +720,7 @@ async function seedLaybyesAndRefunds({ shop, products, customers }) {
       customerId: customer._id,
       customerName: customer.name,
       customerPhone: customer.phone,
-      items: items.map((it) => ({
-        productId: it.productId,
-        productName: it.productName,
-        quantity: it.quantity,
-        price: it.price,
-        total: it.total,
-      })),
+      items: laybyeItemsFromSaleItems(items),
       totalAmount: total,
       amountPaid: deposit,
       balanceDue: Math.round((total - deposit) * 100) / 100,
@@ -470,13 +746,7 @@ async function seedLaybyesAndRefunds({ shop, products, customers }) {
         customerId: customer._id,
         customerName: customer.name,
         customerPhone: customer.phone,
-        items: items.map((it) => ({
-          productId: it.productId,
-          productName: it.productName,
-          quantity: it.quantity,
-          price: it.price,
-          total: it.total,
-        })),
+        items: laybyeItemsFromSaleItems(items),
         totalAmount: total,
         amountPaid: total,
         balanceDue: 0,
@@ -577,15 +847,38 @@ async function seedDemoActivityLog({
     createdAt: shop.registeredAt || shop.createdAt || new Date(),
   });
 
-  // Catalog setup as chat-style turns (web)
+  // Catalog setup as chat-style turns (web) — mention options/packs when rich
   for (const p of products.slice(0, 6)) {
     const createdAt = addDays(shop.registeredAt || new Date(), rand(0, 3));
-    const input = `add ${/\s/.test(p.name) ? `"${p.name}"` : p.name} ${Number(
-      p.price
-    ).toFixed(2)} cost ${Number(p.costPrice || 0).toFixed(2)} stock ${p.stock}`;
-    const reply = `Product added!\n\nName: ${p.name}\nPrice: $${Number(
-      p.price
-    ).toFixed(2)}\nStock: ${p.stock}`;
+    const variants = activeVariantList(p);
+    const quoted = /\s/.test(p.name) ? `"${p.name}"` : p.name;
+    let input;
+    let reply;
+    if (variants.length > 1) {
+      const labels = variants.map((v) => v.label || "default").join(", ");
+      input = `add ${quoted} with options ${labels}`;
+      reply = `Product added!\n\nName: ${p.name}\nOptions: ${variants
+        .map(
+          (v) =>
+            `${v.label || "—"} $${Number(v.price).toFixed(2)} (stock ${v.stock})`
+        )
+        .join(" · ")}`;
+    } else {
+      const packs = variants[0] ? activePackList(variants[0]) : [];
+      const multi = packs.filter((pk) => (pk.unitsPerPack || 1) > 1);
+      input = `add ${quoted} ${Number(p.price).toFixed(2)} cost ${Number(
+        p.costPrice || 0
+      ).toFixed(2)} stock ${p.stock}`;
+      reply = `Product added!\n\nName: ${p.name}\nPrice: $${Number(
+        p.price
+      ).toFixed(2)}\nStock: ${p.stock}${
+        multi.length
+          ? `\nPacks: ${multi
+              .map((pk) => `${pk.label}(${pk.unitsPerPack})`)
+              .join(", ")}`
+          : ""
+      }`;
+    }
     push({
       channel: "web",
       action: "chat.turn",
@@ -610,7 +903,12 @@ async function seedDemoActivityLog({
         const name = /\s/.test(it.productName)
           ? `"${it.productName}"`
           : it.productName;
-        return `${it.quantity} ${name}`;
+        const bits = [String(it.quantity), name];
+        if (it.variantLabel) bits.push(it.variantLabel);
+        if (it.packLabel && (it.unitsPerPack || 1) > 1) {
+          bits.push(it.packLabel.toLowerCase());
+        }
+        return bits.join(" ");
       })
       .join(" ");
     const input =
@@ -623,7 +921,12 @@ async function seedDemoActivityLog({
       sale.customerName ? `Customer: ${sale.customerName}` : null,
       `Total: $${Number(sale.total).toFixed(2)}`,
       `Items: ${sale.items
-        .map((it) => `${it.quantity}x ${it.productName}`)
+        .map((it) => {
+          const opt = [it.variantLabel, it.packLabel]
+            .filter(Boolean)
+            .join(" / ");
+          return `${it.quantity}x ${it.productName}${opt ? ` (${opt})` : ""}`;
+        })
         .join(", ")}`,
     ]
       .filter(Boolean)
@@ -678,7 +981,11 @@ async function seedDemoActivityLog({
       action: "expense.recorded",
       entityType: "expense",
       summary: `Expense $${Number(exp.amount).toFixed(2)} · ${exp.description}`,
-      metadata: { amount: exp.amount, description: exp.description },
+      metadata: {
+        amount: exp.amount,
+        description: exp.description,
+        category: exp.category,
+      },
       createdAt: exp.date,
     });
   }
@@ -708,7 +1015,12 @@ async function seedDemoActivityLog({
         const name = /\s/.test(it.productName)
           ? `"${it.productName}"`
           : it.productName;
-        return `${it.quantity} ${name}`;
+        const bits = [String(it.quantity), name];
+        if (it.variantLabel) bits.push(it.variantLabel);
+        if (it.packLabel && (it.unitsPerPack || 1) > 1) {
+          bits.push(it.packLabel.toLowerCase());
+        }
+        return bits.join(" ");
       })
       .join(" ");
     const input = `laybye "${lb.customerName}" ${itemsText} deposit ${Number(
@@ -740,6 +1052,71 @@ async function seedDemoActivityLog({
         customerName: lb.customerName,
       },
       createdAt: lb.startDate || new Date(),
+    });
+  }
+
+  // Orders — pending / ready / completed for Orders page + chat history
+  for (const order of featureExtras?.orders || []) {
+    const itemsText = (order.items || [])
+      .map((it) => {
+        const name = /\s/.test(it.productName)
+          ? `"${it.productName}"`
+          : it.productName;
+        const bits = [String(it.quantity), name];
+        if (it.variantLabel) bits.push(it.variantLabel);
+        if (it.packLabel && (it.unitsPerPack || 1) > 1) {
+          bits.push(it.packLabel.toLowerCase());
+        }
+        return bits.join(" ");
+      })
+      .join(" ");
+    const input = `order "${order.customerName}" ${itemsText}${
+      order.orderType === "delivery" ? " delivery" : ""
+    }`;
+    const reply = [
+      "ORDER PLACED",
+      "",
+      `Customer: ${order.customerName}`,
+      `Type: ${order.orderType}`,
+      `Status: ${String(order.status).toUpperCase()}`,
+      `Total: $${Number(order.total).toFixed(2)}`,
+      `Items: ${(order.items || [])
+        .map((it) => {
+          const opt = [it.variantLabel, it.packLabel]
+            .filter(Boolean)
+            .join(" / ");
+          return `${it.quantity}x ${it.productName}${opt ? ` (${opt})` : ""}`;
+        })
+        .join(", ")}`,
+    ].join("\n");
+    push({
+      channel: pick(["web", "telegram", "whatsapp"]),
+      action: "chat.turn",
+      entityType: "chat",
+      summary: `→ ${input} · ← ${reply}`.slice(0, 400),
+      metadata: { input, reply, replyType: "text" },
+      createdAt: order.orderDate || new Date(),
+    });
+    push({
+      channel: "web",
+      action: `order.${order.status}`,
+      entityType: "order",
+      entityId: order._id,
+      summary: `Order ${order.status} $${Number(order.total).toFixed(2)} · ${
+        order.customerName
+      } · ${order.orderType}`,
+      metadata: {
+        total: order.total,
+        status: order.status,
+        orderType: order.orderType,
+        customerName: order.customerName,
+      },
+      createdAt:
+        order.completedAt ||
+        order.cancelledAt ||
+        order.readyAt ||
+        order.orderDate ||
+        new Date(),
     });
   }
 
@@ -796,8 +1173,17 @@ async function main() {
     process.exit(1);
   }
 
+  // Redacted host so operators know which cluster they're seeding
+  let hostHint = "(unknown)";
+  try {
+    hostHint = new URL(uri.replace(/^mongodb(\+srv)?:\/\//, "https://")).host;
+  } catch {
+    /* ignore */
+  }
+
   await mongoose.connect(uri);
-  console.log("Connected to MongoDB\nSeeding sector demos…\n");
+  console.log(`Connected to MongoDB @ ${hostHint}`);
+  console.log("Seeding sector demos (wipes shared *_demo shops only)…\n");
 
   // Drop legacy unique indexes that block multiple shops / web sessions
   const { dropLegacyAuthIndexes } = await import("../utils/dropLegacyIndexes.js");

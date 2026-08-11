@@ -5,15 +5,52 @@ import SessionStore from "../services/sessionStore.js";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/** Demo sessions may read and log out; all other mutations are blocked. */
+/**
+ * Commands that only read data — safe to run on shared demo shops.
+ * Any command not in this set will be blocked at the controller level.
+ */
+const DEMO_SAFE_CHAT_COMMANDS = new Set([
+  "help",
+  "list",
+  "daily",
+  "weekly",
+  "monthly",
+  "best",
+  "low stock",
+  "customers",
+  "orders",
+  "status",
+]);
+
+export function isDemoChatCommandSafe(messageText) {
+  const cmd = String(messageText || "").trim().toLowerCase();
+  if (DEMO_SAFE_CHAT_COMMANDS.has(cmd)) return true;
+  // Allow "best <n>" and "orders <status>" variants
+  if (cmd.startsWith("best ")) return true;
+  if (cmd.startsWith("orders ")) return true;
+  if (cmd.startsWith("expenses")) return true;
+  return false;
+}
+
+/** Demo sessions may read and log out; POST /chat is handled separately. */
 function isDemoSafeRequest(req) {
   if (SAFE_METHODS.has(req.method)) return true;
   const path = String(req.path || "");
   const original = String(req.originalUrl || "");
-  return (
+  if (
     req.method === "POST" &&
     (path === "/auth/logout" || original.includes("/auth/logout"))
-  );
+  ) {
+    return true;
+  }
+  // Allow chat POST — the controller enforces command-level read-only guard
+  if (
+    req.method === "POST" &&
+    (path === "/chat" || original.includes("/chat"))
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**

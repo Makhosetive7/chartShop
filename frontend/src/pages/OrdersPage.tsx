@@ -23,6 +23,7 @@ import {
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ProductLineFields } from '@/components/products/ProductLineFields';
+import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate } from '@/utils/dates';
@@ -38,6 +39,7 @@ const STATUSES = ['all', 'pending', 'completed', 'cancelled'] as const;
 
 export function OrdersPage() {
   const qc = useQueryClient();
+  const guardDemoWrite = useGuardDemoWrite();
   const timeZone = useShopTimezone();
   const [status, setStatus] = useState<(typeof STATUSES)[number]>('all');
   const [customer, setCustomer] = useState('');
@@ -102,6 +104,7 @@ export function OrdersPage() {
 
   function onCreate(e: FormEvent) {
     e.preventDefault();
+    if (guardDemoWrite('create orders')) return;
     createM.mutate();
   }
 
@@ -128,6 +131,7 @@ export function OrdersPage() {
   }
 
   async function applyStatus(orderId: string, nextStatus: string) {
+    if (guardDemoWrite('update order status')) return;
     try {
       setStatusBusy(`${orderId}:${nextStatus}`);
       await updateOrderStatus(orderId, nextStatus);
@@ -145,7 +149,7 @@ export function OrdersPage() {
 
   return (
     <Page>
-      <PageTitle>Orders</PageTitle>
+      <PageTitle data-tour="orders-heading">Orders</PageTitle>
       <PageLead>
         Pickup / delivery orders — pending until completed or cancelled. Choose option/pack
         when the product has options.

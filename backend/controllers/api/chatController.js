@@ -2,6 +2,7 @@ import crypto from "crypto";
 import commandService from "../../services/commandService.js";
 import ActivityService from "../../services/ActivityService.js";
 import { stripMarkdown } from "../../utils/apiResponse.js";
+import { isDemoChatCommandSafe } from "../../middleware/requireApiAuth.js";
 
 function normalizeReply(response) {
   if (response && typeof response === "object") {
@@ -35,6 +36,14 @@ export async function sendChatMessage(req, res) {
       return res.status(400).json({
         success: false,
         error: "message is required.",
+      });
+    }
+
+    if (req.isDemo && !isDemoChatCommandSafe(message)) {
+      return res.status(403).json({
+        success: false,
+        code: "DEMO_READ_ONLY",
+        error: "This is a demo shop — create your own shop to save changes.",
       });
     }
 

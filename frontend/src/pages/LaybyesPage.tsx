@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { ProductLineFields } from '@/components/products/ProductLineFields';
+import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate } from '@/utils/dates';
@@ -30,6 +31,7 @@ import {
 export function LaybyesPage() {
   const qc = useQueryClient();
   const timeZone = useShopTimezone();
+  const guardDemoWrite = useGuardDemoWrite();
   const [lines, setLines] = useState<CatalogLine[]>([emptyCatalogLine()]);
   const [customer, setCustomer] = useState('');
   const [deposit, setDeposit] = useState('0');
@@ -97,12 +99,13 @@ export function LaybyesPage() {
 
   function onCreate(e: FormEvent) {
     e.preventDefault();
+    if (guardDemoWrite('create laybye agreements')) return;
     createM.mutate();
   }
 
   return (
     <Page>
-      <PageTitle>Laybyes</PageTitle>
+      <PageTitle data-tour="laybyes-heading">Laybyes</PageTitle>
       <PageLead>
         Create agreements, take deposits and installments, and complete when paid in full.
         Pick option/pack when a product has them.
@@ -222,6 +225,7 @@ export function LaybyesPage() {
                           disabled={!canComplete}
                           loading={busyKey === `complete-${key}`}
                           onClick={async () => {
+                            if (guardDemoWrite('complete laybyes')) return;
                             try {
                               setBusyKey(`complete-${key}`);
                               await completeLaybye(lb.customerName);
@@ -281,6 +285,7 @@ export function LaybyesPage() {
             type="button"
             loading={busyKey === 'laybye'}
             onClick={async () => {
+              if (guardDemoWrite('record laybye payments')) return;
               try {
                 setBusyKey('laybye');
                 const res = await payLaybye(

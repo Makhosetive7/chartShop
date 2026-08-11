@@ -35,6 +35,30 @@ const SUGGESTIONS = [
   { cmd: 'best', label: 'Best sellers', icon: TrendingUp },
 ] as const;
 
+/** Commands that only read data — allowed in shared demo shops. */
+const DEMO_SAFE_COMMANDS = new Set([
+  'help',
+  'list',
+  'daily',
+  'weekly',
+  'monthly',
+  'best',
+  'low stock',
+  'customers',
+  'orders',
+  'status',
+  'expenses',
+]);
+
+function isDemoSafeCommand(text: string): boolean {
+  const cmd = text.trim().toLowerCase();
+  if (DEMO_SAFE_COMMANDS.has(cmd)) return true;
+  if (cmd.startsWith('best ')) return true;
+  if (cmd.startsWith('orders ')) return true;
+  if (cmd.startsWith('expenses')) return true;
+  return false;
+}
+
 const pulse = keyframes`
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.55; transform: scale(0.85); }
@@ -928,7 +952,8 @@ export function ChatPage() {
   const messages = [...historyMessages, ...local];
   const isEmpty =
     messages.length === 0 && !history.isLoading && !history.isError;
-  const showingDemoFeed = Boolean(isDemo || history.data?.demoFeed);
+  const showingDemoFeed = Boolean(history.data?.demoFeed && !isDemo);
+  const isDemoMode = Boolean(isDemo);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -944,7 +969,11 @@ export function ChatPage() {
   async function submit(text: string) {
     const message = text.trim();
     if (!message || send.isPending) return;
-    if (guardDemoWrite('use chat commands')) return;
+    // Demo: block write commands with upgrade prompt; allow read-only commands through
+    if (isDemo && !isDemoSafeCommand(message)) {
+      guardDemoWrite('use sell/stock commands');
+      return;
+    }
 
     setDraft('');
     setLocal((prev) => [
@@ -1005,11 +1034,11 @@ export function ChatPage() {
                   {shop?.businessName || 'ChartShop'}
                   <Online>Online</Online>
                 </h1>
-                <p>
-                  {showingDemoFeed
-                    ? 'Demo activity log — sales & commands across channels'
-                    : 'Web chat commands for your shop'}
-                </p>
+                  <p>
+                    {isDemoMode
+                      ? 'Try help · list · daily · best — sell commands need your own shop'
+                      : 'Web chat commands for your shop'}
+                  </p>
               </HeaderText>
             </HeaderLeft>
             <NewChatBtn type="button" onClick={startNewConversation} aria-label="New conversation">
@@ -1168,19 +1197,15 @@ export function ChatPage() {
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={onKeyDown}
                   placeholder={
-                    showingDemoFeed
-                      ? 'Demo is read-only — scroll the activity log above'
+                    isDemoMode
+                      ? 'Try: help · list · daily · best · low stock'
                       : 'Type a message'
                   }
-                  disabled={showingDemoFeed}
-                  readOnly={showingDemoFeed}
                   rows={1}
                 />
                 <SendBtn
                   type="submit"
-                  disabled={
-                    showingDemoFeed || !draft.trim() || send.isPending
-                  }
+                  disabled={!draft.trim() || send.isPending}
                   aria-label={send.isPending ? 'Sending' : 'Send'}
                   aria-busy={send.isPending || undefined}
                 >
@@ -1194,8 +1219,8 @@ export function ChatPage() {
             </Composer>
 
             <Disclaimer>
-              {showingDemoFeed
-                ? 'This shared demo is read-only. Scroll the log to see real shop activity — then create your own shop to run commands.'
+              {isDemoMode
+                ? 'Read-only commands work in demo (help, list, daily, best…). Sell, stock, and expense commands need your own shop.'
                 : 'ChartShop chat uses the same command language as Telegram. Messages are logged in Activity. WhatsApp is coming soon.'}
             </Disclaimer>
           </FooterInner>

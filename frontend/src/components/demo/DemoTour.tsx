@@ -14,11 +14,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAuth } from '@/auth';
 
-const STORAGE_KEY = 'chartshop_demo_tour_v1';
+const STORAGE_KEY = 'chartshop_demo_tour_v2';
 const POPOVER_FALLBACK_H = 200;
 const POPOVER_FALLBACK_W = 320;
 const VIEW_MARGIN = 12;
 const TARGET_GAP = 12;
+/** Bottom nav + safe area — keep popovers clear of it on phones. */
+const BOTTOM_CHROME = 88;
 
 type TourStep = {
   id: string;
@@ -34,7 +36,7 @@ const STEPS: TourStep[] = [
     path: '/app/chat',
     target: '[data-tour="nav-chat"]',
     title: 'Chat is the till',
-    body: 'Sell and run commands here — the same flow as Telegram or WhatsApp.',
+    body: 'Try help, list, daily, or best — same commands as Telegram and WhatsApp. Sell commands need your own shop.',
   },
   {
     id: 'dashboard',
@@ -48,21 +50,35 @@ const STEPS: TourStep[] = [
     path: '/app/products',
     target: '[data-tour="nav-products"]',
     title: 'Your catalogue',
-    body: 'Browse the sample boutique products and stock levels.',
+    body: 'Products have options (sizes, weights) and pack types (crate, tray, box). Stock is tracked per option.',
   },
   {
     id: 'sales',
     path: '/app/sales',
     target: '[data-tour="nav-sales"]',
     title: 'Sales history',
-    body: 'See what came in — cash, credit, and recent transactions.',
+    body: 'Cash, credit, and laybye sales — cancelled ones show in Refunds.',
+  },
+  {
+    id: 'laybyes',
+    path: '/app/laybyes',
+    target: '[data-tour="laybyes-heading"]',
+    title: 'Laybyes',
+    body: 'Hold stock, take a deposit, collect instalments. Three active laybyes are seeded in this demo.',
+  },
+  {
+    id: 'orders',
+    path: '/app/orders',
+    target: '[data-tour="orders-heading"]',
+    title: 'Orders',
+    body: 'Pickup and delivery orders — track them from pending through to completed or cancelled.',
   },
   {
     id: 'reports',
     path: '/app/reports',
     target: '[data-tour="reports-heading"]',
     title: 'End-of-day reports',
-    body: 'Daily, weekly, and profit views you’d check when you sit down.',
+    body: 'Daily, weekly, and profit views. Expense categories break down where money went.',
   },
 ];
 
@@ -103,6 +119,9 @@ const Popover = styled.div<{ $top: number; $left: number }>`
   top: ${({ $top }) => $top}px;
   left: ${({ $left }) => $left}px;
   width: min(320px, calc(100vw - 24px));
+  max-height: min(70vh, calc(100dvh - ${VIEW_MARGIN * 2}px - ${BOTTOM_CHROME}px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   z-index: 72;
   pointer-events: auto;
   background: ${({ theme }) => theme.colors.surface};
@@ -200,8 +219,12 @@ function hasTourBeenDone() {
 
 function measureTarget(selector: string) {
   const el = document.querySelector(selector);
-  if (!el) return null;
+  if (!el || !(el instanceof HTMLElement)) return null;
+  // Skip display:none / zero-size nodes (e.g. desktop nav on phones).
+  const style = window.getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden') return null;
   const rect = el.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return null;
   const vh = window.innerHeight;
   const vw = window.innerWidth;
   // Keep spotlight within the visible viewport so tall page targets
@@ -210,12 +233,10 @@ function measureTarget(selector: string) {
   const left = Math.min(Math.max(rect.left, 0), vw);
   const bottom = Math.min(Math.max(rect.bottom, 0), vh);
   const right = Math.min(Math.max(rect.right, 0), vw);
-  return {
-    top,
-    left,
-    width: Math.max(0, right - left),
-    height: Math.max(0, bottom - top),
-  };
+  const width = Math.max(0, right - left);
+  const height = Math.max(0, bottom - top);
+  if (width < 1 || height < 1) return null;
+  return { top, left, width, height };
 }
 
 function placePopover(
@@ -225,23 +246,34 @@ function placePopover(
 ) {
   const vh = window.innerHeight;
   const vw = window.innerWidth;
-  const spaceBelow = vh - (box.top + box.height);
+  const usableBottom = vh - BOTTOM_CHROME;
+  const spaceBelow = usableBottom - (box.top + box.height);
   const spaceAbove = box.top;
+  const targetMidY = box.top + box.height / 2;
+  const preferAbove = targetMidY > usableBottom * 0.55;
 
   let top: number;
-  if (spaceBelow >= popH + TARGET_GAP) {
+  if (preferAbove && spaceAbove >= popH + TARGET_GAP) {
+    top = box.top - popH - TARGET_GAP;
+  } else if (!preferAbove && spaceBelow >= popH + TARGET_GAP) {
     top = box.top + box.height + TARGET_GAP;
   } else if (spaceAbove >= popH + TARGET_GAP) {
     top = box.top - popH - TARGET_GAP;
+  } else if (spaceBelow >= popH + TARGET_GAP) {
+    top = box.top + box.height + TARGET_GAP;
   } else {
-    // Neither side fits — center when possible, else pin above the bottom edge.
+    // Neither side fits — pin in the usable band above the bottom nav.
+    const band = Math.max(VIEW_MARGIN, usableBottom - popH - VIEW_MARGIN);
     top =
-      popH + VIEW_MARGIN * 2 < vh
-        ? Math.max(VIEW_MARGIN, (vh - popH) / 2)
-        : Math.max(VIEW_MARGIN, vh - popH - VIEW_MARGIN);
+      popH + VIEW_MARGIN * 2 < usableBottom
+        ? Math.max(VIEW_MARGIN, (usableBottom - popH) / 2)
+        : band;
   }
 
-  top = Math.max(VIEW_MARGIN, Math.min(top, vh - popH - VIEW_MARGIN));
+  top = Math.max(
+    VIEW_MARGIN,
+    Math.min(top, Math.max(VIEW_MARGIN, usableBottom - popH - VIEW_MARGIN)),
+  );
   const left = Math.max(
     VIEW_MARGIN,
     Math.min(box.left, vw - popW - VIEW_MARGIN),

@@ -53,9 +53,9 @@ const PRIMARY: LinkItem[] = [
 ];
 
 const MORE: LinkItem[] = [
-  { to: '/app/laybyes', icon: CalendarClock, label: 'Laybyes' },
+  { to: '/app/laybyes', icon: CalendarClock, label: 'Laybyes', tour: 'nav-laybyes' },
   { to: '/app/customers', icon: Users, label: 'Customers' },
-  { to: '/app/orders', icon: ClipboardList, label: 'Orders' },
+  { to: '/app/orders', icon: ClipboardList, label: 'Orders', tour: 'nav-orders' },
   { to: '/app/expenses', icon: Wallet, label: 'Expenses' },
   { to: '/app/reports', icon: FileBarChart, label: 'Reports', tour: 'nav-reports' },
   { to: '/app/activity', icon: History, label: 'Activity' },
@@ -577,8 +577,8 @@ export function AppLayout() {
               </CloseBtn>
             </SheetHead>
             <SheetGrid>
-              {MORE.map(({ to, icon: Icon, label, end }) => (
-                <SheetLink key={to} to={to} end={Boolean(end)}>
+              {MORE.map(({ to, icon: Icon, label, end, tour }) => (
+                <SheetLink key={to} to={to} end={Boolean(end)} data-tour={tour}>
                   <Icon size={22} strokeWidth={1.85} />
                   {label}
                 </SheetLink>

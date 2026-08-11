@@ -14,6 +14,7 @@
     "test:phase4": "node --test tests/**/*.test.js",
     "seed:boutique": "node --env-file=.env scripts/seedBoutiqueDemo.js",
     "seed:demos": "node --env-file=.env scripts/seedSectorDemos.js",
+    "seed:demos:prod": "node --env-file=.env.production scripts/seedSectorDemos.js",
     "migrate:users": "node --env-file=.env scripts/migrateUsersFromShops.js"
   },
   "dependencies": {

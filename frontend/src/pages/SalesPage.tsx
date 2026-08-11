@@ -31,6 +31,7 @@ import {
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { ProductLineFields } from '@/components/products/ProductLineFields';
+import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate, formatShopDateTime } from '@/utils/dates';
@@ -203,6 +204,7 @@ function itemsSummary(sale: {
 export function SalesPage() {
   const qc = useQueryClient();
   const timeZone = useShopTimezone();
+  const guardDemoWrite = useGuardDemoWrite();
   const [mode, setMode] = useState<'cash' | 'credit' | 'customer'>('cash');
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [customer, setCustomer] = useState('');
@@ -292,11 +294,13 @@ export function SalesPage() {
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (guardDemoWrite('record sales')) return;
     sellM.mutate();
   }
 
   async function runCancelConfirmed() {
     if (!cancelConfirm) return;
+    if (guardDemoWrite('cancel sales')) return;
     try {
       if (cancelConfirm.kind === 'last') {
         setBusyKey('cancel-last');
