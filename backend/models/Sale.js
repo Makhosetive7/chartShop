@@ -98,6 +98,13 @@ const saleSchema = new mongoose.Schema({
   },
   customerName: String,
   customerPhone: String,
+  /** Set when this sale was created by completing an order. */
+  orderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Order",
+    default: null,
+    index: true,
+  },
   date: {
     type: Date,
     default: Date.now,

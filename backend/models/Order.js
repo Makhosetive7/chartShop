@@ -60,6 +60,12 @@ const orderSchema = new mongoose.Schema({
     enum: ['pending', 'partial', 'paid', 'refunded'],
     default: 'pending'
   },
+  /** Sale created when this order was completed (delivered / fulfilled). */
+  saleId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Sale',
+    default: null,
+  },
   createdByUserId: {
     type: String,
     default: null,

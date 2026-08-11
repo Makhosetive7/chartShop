@@ -305,6 +305,16 @@ describe("E2E product variants + packs", () => {
 
     const dbOrder = await Order.findById(order.body.order.id);
     assert.equal(dbOrder.status, "completed");
+    assert.ok(dbOrder.saleId, "completed order should create a sale");
+    assert.equal(dbOrder.paymentStatus, "paid");
+    assert.equal(String(complete.body.order.saleId), String(dbOrder.saleId));
+
+    const dbSale = await Sale.findById(dbOrder.saleId);
+    assert.ok(dbSale);
+    assert.equal(dbSale.type, "cash");
+    assert.equal(dbSale.total, 255);
+    assert.equal(String(dbSale.orderId), String(dbOrder._id));
+    assert.equal(dbSale.customerName, "Order Cust");
   });
 
   it("simple product create + chat sell still works (backward compatible)", async () => {
