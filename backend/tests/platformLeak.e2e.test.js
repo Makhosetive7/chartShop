@@ -326,6 +326,7 @@ describe("Platform leak sweep — API + chat", () => {
     fresh = await Product.findById(product.id);
     assert.equal(fresh.variants.find((v) => v.label === "Size 1").stock, 5);
     assert.equal(fresh.variants.find((v) => v.label === "Size 2").stock, 6);
+    assert.ok(done.body.order.saleId, "completed order should link a sale");
 
     const sale = await request(server, {
       method: "POST",

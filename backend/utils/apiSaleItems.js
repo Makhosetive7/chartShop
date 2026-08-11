@@ -167,6 +167,7 @@ export function serializeSale(sale) {
     isCancelled: sale.isCancelled,
     customerId: sale.customerId ? String(sale.customerId) : null,
     customerName: sale.customerName,
+    orderId: sale.orderId ? String(sale.orderId) : null,
     items: sale.items,
     date: sale.date,
   };

@@ -1,8 +1,10 @@
 import Order from "../models/Order.js";
+import Sale from "../models/Sale.js";
 import Product from "../models/Product.js";
 import Customer from "../models/Customer.js";
 import CustomerService from "./CustomerService.js";
 import InventoryService from "./InventoryService.js";
+import { buildSaleLineItems } from "./commands/salePricing.js";
 import {
   ensureVariants,
   getPrimaryVariant,
@@ -233,11 +235,30 @@ class OrderService {
         case "ready":
           order.readyAt = new Date();
           break;
-        case "completed":
+        case "completed": {
           order.completedAt = new Date();
-          // Deduct stock when order is completed
+          order.paymentStatus = "paid";
+          // Deduct stock once, then record the matching sale for revenue
           await this.deductOrderStock(order);
+          try {
+            const sale = await this.createSaleFromOrder(order);
+            order.saleId = sale._id;
+            if (order.customerId) {
+              const customer = await Customer.findById(order.customerId);
+              if (customer) {
+                await CustomerService.linkSaleToCustomer(
+                  sale,
+                  customer,
+                  order.total
+                );
+              }
+            }
+          } catch (saleError) {
+            await this.restoreOrderStock(order);
+            throw saleError;
+          }
           break;
+        }
         case "cancelled":
           order.cancelledAt = new Date();
           break;
@@ -264,17 +285,25 @@ class OrderService {
   }
 
   /**
+   * Map order line items into the shape InventoryService expects.
+   */
+  orderStockItems(order) {
+    return (order.items || []).map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      baseUnitsDeducted: item.baseUnitsDeducted ?? item.quantity,
+      variantId: item.variantId || null,
+    }));
+  }
+
+  /**
    * Deduct stock when order is completed
    */
   async deductOrderStock(order) {
     try {
-      const items = (order.items || []).map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        baseUnitsDeducted: item.baseUnitsDeducted ?? item.quantity,
-        variantId: item.variantId || null,
-      }));
-      const result = await InventoryService.deductSaleItems(items);
+      const result = await InventoryService.deductSaleItems(
+        this.orderStockItems(order)
+      );
       if (!result.success) {
         throw new Error(result.message || "Failed to deduct order stock");
       }
@@ -282,6 +311,72 @@ class OrderService {
       console.error("Deduct order stock error:", error);
       throw error;
     }
+  }
+
+  /**
+   * Restore stock if sale recording fails after deduction
+   */
+  async restoreOrderStock(order) {
+    try {
+      await InventoryService.restoreSaleItems(this.orderStockItems(order));
+    } catch (error) {
+      console.error("Restore order stock error:", error);
+    }
+  }
+
+  /**
+   * Create a cash sale from a completed order (stock already deducted).
+   */
+  async createSaleFromOrder(order) {
+    const productIds = [
+      ...new Set(
+        (order.items || [])
+          .map((item) => item.productId)
+          .filter(Boolean)
+          .map(String)
+      ),
+    ];
+    const products = await Product.find({ _id: { $in: productIds } });
+    const productsById = new Map(products.map((p) => [String(p._id), p]));
+
+    const pricingItems = (order.items || []).map((item) => {
+      const product = productsById.get(String(item.productId));
+      return {
+        product: product || { _id: item.productId },
+        productName: item.productName,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.total,
+        variantId: item.variantId || null,
+        variantLabel: item.variantLabel || "",
+        packId: item.packId || null,
+        packLabel: item.packLabel || "",
+        unitsPerPack: item.unitsPerPack || 1,
+        baseUnitsDeducted: item.baseUnitsDeducted ?? item.quantity,
+        costPrice:
+          typeof product?.costPrice === "number" ? product.costPrice : null,
+      };
+    });
+
+    const { lineItems, costTotal, profit } = buildSaleLineItems(pricingItems);
+
+    return Sale.create({
+      shopId: order.shopId,
+      type: "cash",
+      items: lineItems,
+      total: order.total,
+      costTotal,
+      profit,
+      customerId: order.customerId || undefined,
+      customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      status: "completed",
+      amountPaid: order.total,
+      balanceDue: 0,
+      orderId: order._id,
+      createdByUserId: order.createdByUserId || null,
+      date: order.completedAt || new Date(),
+    });
   }
 
   /**
@@ -449,7 +544,7 @@ class OrderService {
     message += `Updated: ${new Date().toLocaleString()}\n`;
 
     if (newStatus === "completed") {
-      message += `\n Stock has been deducted for completed order.`;
+      message += `\n Sale recorded and stock deducted for completed order.`;
     } else if (newStatus === "cancelled") {
       message += `\n Reason: ${order.notes || "No reason provided"}`;
     }

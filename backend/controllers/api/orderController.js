@@ -24,6 +24,8 @@ function serializeOrder(o) {
     readyAt: o.readyAt,
     completedAt: o.completedAt,
     cancelledAt: o.cancelledAt,
+    paymentStatus: o.paymentStatus,
+    saleId: o.saleId ? String(o.saleId) : null,
   };
 }
 
