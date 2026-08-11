@@ -952,7 +952,6 @@ export function ChatPage() {
   const messages = [...historyMessages, ...local];
   const isEmpty =
     messages.length === 0 && !history.isLoading && !history.isError;
-  const showingDemoFeed = Boolean(history.data?.demoFeed && !isDemo);
   const isDemoMode = Boolean(isDemo);
 
   useEffect(() => {
