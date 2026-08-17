@@ -230,7 +230,7 @@ describe("API v1", () => {
     assert.equal(customer.status, 201);
     assert.equal(customer.body.customer.name, "Api Customer");
 
-    const creditSale = await request(server, {
+    const missingDue = await request(server, {
       method: "POST",
       path: "/api/v1/sales/credit",
       token,
@@ -239,8 +239,21 @@ describe("API v1", () => {
         items: [{ name: "api-milk", quantity: 1 }],
       },
     });
+    assert.equal(missingDue.status, 400);
+
+    const creditSale = await request(server, {
+      method: "POST",
+      path: "/api/v1/sales/credit",
+      token,
+      body: {
+        customer: "Api Customer",
+        items: [{ name: "api-milk", quantity: 1 }],
+        dueDate: "2030-01-15",
+      },
+    });
     assert.equal(creditSale.status, 201);
     assert.equal(creditSale.body.sale.type, "credit");
+    assert.ok(creditSale.body.sale.dueDate);
 
     const payment = await request(server, {
       method: "POST",

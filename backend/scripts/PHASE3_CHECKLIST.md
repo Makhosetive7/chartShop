@@ -24,7 +24,7 @@ Run after Phase 3 changes. Goal: same bot behavior with commands routed through 
 | 5 | `help` | Full help text |
 | 6 | `list` | Products list |
 | 7 | `sell 1 <product>` | Cash sale receipt |
-| 8 | `credit sale to <customer> 1 <product>` | Credit sale + stock deduct |
+| 8 | `credit sale to <customer> 1 <product> due YYYY-MM-DD` | Credit sale + stock deduct |
 | 9 | `credit <customer> 1 <product>` | Ledger credit via `parseSaleItems` (quoted names OK) |
 | 10 | `cancel last "phase3"` | Cancel works |
 | 11 | `daily` | Operating report |

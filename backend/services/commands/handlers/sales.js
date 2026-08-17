@@ -14,6 +14,10 @@ import {
   generateLayByePaymentReceipt,
   generateLayByeCompletionReceipt,
 } from "../helpers.js";
+import {
+  extractCreditDueFromText,
+  parseCreditDueDate,
+} from "../../../utils/creditDueDate.js";
 
 export async function handleCancelSale(shopId, text, actorUserId = null) {
   try {
@@ -127,11 +131,25 @@ export async function handleCreditSale(shopId, text, actorUserId = null) {
     );
 
     if (!match) {
-      return `*Invalid Format*\n\nUse: credit sale to [customer] [items]\n\n*Examples:*\n• credit sale to John 2 bread 1 milk\n• credit sale to "Jane Doe" 3 eggs\n• credit sale to 0771234567 2 bread\n• credit sale to "John Smith" 1 "carex condoms" 2.50`;
+      return `*Invalid Format*\n\nUse: credit sale to [customer] [items] due YYYY-MM-DD\n\n*Examples:*\n• credit sale to John 2 bread 1 milk due 2026-08-20\n• credit sale to "Jane Doe" 3 eggs due 2026-08-20\n• credit sale to 0771234567 2 bread due 2026-08-20\n• credit sale to "John Smith" 1 "carex condoms" 2.50 due 2026-08-20`;
     }
 
     const customerIdentifier = match[1] || match[2];
-    const itemsText = match[3];
+    const remainder = match[3];
+    const dueFromText = extractCreditDueFromText(remainder);
+    if (!dueFromText.found) {
+      return `*Payment date required*\n\nUse: credit sale to [customer] [items] due YYYY-MM-DD\n\n*Examples:*\n• credit sale to John 2 bread due 2026-08-20\n• credit sale to "Jane Doe" due 2026-08-20 3 eggs`;
+    }
+
+    const due = parseCreditDueDate(dueFromText.dueRaw);
+    if (!due.ok) {
+      return `*${due.error}*`;
+    }
+
+    const itemsText = dueFromText.itemsText;
+    if (!itemsText) {
+      return `*Missing items*\n\nUse: credit sale to [customer] [items] due YYYY-MM-DD`;
+    }
 
     // Find customer
     const customer = await CustomerService.findCustomer(
@@ -170,6 +188,7 @@ export async function handleCreditSale(shopId, text, actorUserId = null) {
         profit,
         amountPaid: 0,
         balanceDue: totalAmount,
+        dueDate: due.dueDate,
         status: "completed",
         ...(actorUserId ? { createdByUserId: actorUserId } : {}),
       });

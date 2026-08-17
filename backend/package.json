@@ -12,9 +12,11 @@
     "deploy": "node scripts/setWebhook.js",
     "test": "node --test tests/**/*.test.js",
     "test:phase4": "node --test tests/**/*.test.js",
+    "job:credit-due": "node scripts/runCreditDueReminders.js",
     "seed:boutique": "node --env-file=.env scripts/seedBoutiqueDemo.js",
     "seed:demos": "node --env-file=.env scripts/seedSectorDemos.js",
     "seed:demos:prod": "node --env-file=.env.production scripts/seedSectorDemos.js",
+    "seed:test": "node --env-file=.env scripts/seedTestNotifications.js",
     "migrate:users": "node --env-file=.env scripts/migrateUsersFromShops.js"
   },
   "dependencies": {

@@ -29,6 +29,7 @@ const ACTIONS = [
   'sale.cash',
   'sale.credit',
   'sale.cancelled',
+  'credit.reminder',
   'expense.recorded',
   'product.create',
   'product.stock',
@@ -262,6 +263,7 @@ function actionLabel(action: string) {
   if (action === 'auth.login') return 'Login';
   if (action === 'sale.cash') return 'Cash sale';
   if (action === 'sale.credit') return 'Credit sale';
+  if (action === 'credit.reminder') return 'Credit reminder';
   if (action === 'sale.to_customer') return 'Sale';
   if (action === 'sale.cancelled') return 'Cancelled';
   if (action === 'expense.recorded') return 'Expense';

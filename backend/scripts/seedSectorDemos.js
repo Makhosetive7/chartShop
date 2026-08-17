@@ -913,7 +913,7 @@ async function seedDemoActivityLog({
       .join(" ");
     const input =
       sale.type === "credit" && sale.customerName
-        ? `credit sale to "${sale.customerName}" ${itemsText}`
+        ? `credit sale to "${sale.customerName}" ${itemsText} due 2030-01-15`
         : `sell ${itemsText}`;
     const reply = [
       sale.type === "credit" ? "CREDIT SALE RECEIPT" : "CASH SALE RECEIPT",

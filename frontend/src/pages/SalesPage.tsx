@@ -34,7 +34,7 @@ import { ProductLineFields } from '@/components/products/ProductLineFields';
 import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
-import { formatShopDate, formatShopDateTime } from '@/utils/dates';
+import { formatShopDate, formatShopDateTime, addShopCalendarDays } from '@/utils/dates';
 import {
   emptyCatalogLine,
   formatSaleItemLabel,
@@ -208,6 +208,7 @@ export function SalesPage() {
   const [mode, setMode] = useState<'cash' | 'credit' | 'customer'>('cash');
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [customer, setCustomer] = useState('');
+  const [dueDate, setDueDate] = useState(() => addShopCalendarDays(new Date(), 7, timeZone));
   const [refundDays, setRefundDays] = useState(30);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [cancelConfirm, setCancelConfirm] = useState<
@@ -242,6 +243,7 @@ export function SalesPage() {
 
   function invalidate() {
     void qc.invalidateQueries({ queryKey: ['sales'] });
+    void qc.invalidateQueries({ queryKey: ['credit-due'] });
     void qc.invalidateQueries({ queryKey: ['products'] });
     void qc.invalidateQueries({ queryKey: ['customers'] });
     void qc.invalidateQueries({ queryKey: ['stats'] });
@@ -252,7 +254,10 @@ export function SalesPage() {
       if (!items.length) throw new Error('Add at least one item.');
       if (mode === 'cash') return createCashSale(items);
       if (!customer.trim()) throw new Error('Customer is required.');
-      if (mode === 'credit') return createCreditSale(customer.trim(), items);
+      if (mode === 'credit') {
+        if (!dueDate) throw new Error('Payment date is required.');
+        return createCreditSale(customer.trim(), items, dueDate);
+      }
       return sellToCustomer(customer.trim(), items);
     },
     onSuccess: (result) => {
@@ -287,6 +292,7 @@ export function SalesPage() {
           : `Sale recorded${total ? ` · ${total}` : ''}.`,
       );
       setLines([emptyLine()]);
+      setDueDate(addShopCalendarDays(new Date(), 7, timeZone));
       invalidate();
     },
     onError: (e) => toastError(getErrorMessage(e)),
@@ -367,6 +373,18 @@ export function SalesPage() {
                   ))}
                 </datalist>
               </Field>
+              {mode === 'credit' ? (
+                <Field>
+                  Pay by
+                  <Input
+                    type="date"
+                    value={dueDate}
+                    min={addShopCalendarDays(new Date(), 0, timeZone)}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    required
+                  />
+                </Field>
+              ) : null}
             </Row>
           ) : null}
 
@@ -414,9 +432,9 @@ export function SalesPage() {
         </Row>
         {recentQ.isLoading ? (
           <TableSkeleton
-            columns={6}
+            columns={7}
             rows={6}
-            widths={['7rem', '9rem', '4rem', '4.5rem', '7rem', '4rem']}
+            widths={['7rem', '9rem', '4rem', '4.5rem', '6rem', '7rem', '4rem']}
           />
         ) : (
           <Table>
@@ -426,6 +444,7 @@ export function SalesPage() {
                 <th>Items</th>
                 <th>Type</th>
                 <th>Total</th>
+                <th>Pay by</th>
                 <th>When</th>
                 <th />
               </tr>
@@ -446,6 +465,11 @@ export function SalesPage() {
                     </td>
                     <td>{s.type}</td>
                     <td>{money(s.total)}</td>
+                    <td>
+                      {s.type === 'credit' && s.dueDate
+                        ? formatShopDate(s.dueDate, timeZone)
+                        : '—'}
+                    </td>
                     <td>{formatShopDate(s.date, timeZone)}</td>
                     <td>
                       <Button

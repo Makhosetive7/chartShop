@@ -24,7 +24,7 @@ Use a fresh Telegram ID if possible, or `logout` first.
 | 7 | `cancel` | Recent sales listed |
 | 8 | `cancel last "smoke test"` | Sale cancelled; stock restored |
 | 9 | `customer add "Smoke Customer" 5550001111` | Customer created |
-| 10 | `credit sale to Smoke Customer 1 bread` | Credit sale recorded |
+| 10 | `credit sale to Smoke Customer 1 bread due YYYY-MM-DD` | Credit sale recorded |
 | 11 | `payment Smoke Customer 2.50` | Payment applied; balance reduced |
 | 12 | `status` / `account` | Shows **business name**, not blank |
 | 13 | `logout` then `login 4829` | Login works |

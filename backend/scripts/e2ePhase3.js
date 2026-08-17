@@ -145,7 +145,7 @@ async function main() {
   r = await cmd('customer add "Phase3 Cust" 5550003333');
   assert("add customer", includes(r, "phase3 cust") || includes(r, "added") || includes(r, "success"), r);
 
-  r = await cmd('credit sale to "Phase3 Cust" 2 e2ebread');
+  r = await cmd('credit sale to "Phase3 Cust" 2 e2ebread due 2030-01-15');
   assert("credit sale", includes(r, "credit") || includes(r, "5.00") || includes(r, "phase3"), r);
   bread = await Product.findOne({ shopId: shop._id, name: /e2ebread/i });
   assert("stock after credit sale", bread.stock === 8, `stock=${bread.stock}`);

@@ -130,3 +130,19 @@ export function formatShopDayLabel(
 
   return formatShopDate(date, timeZone);
 }
+
+/** Add calendar days in shop TZ; returns YYYY-MM-DD. */
+export function addShopCalendarDays(
+  value: string | Date | null | undefined,
+  days: number,
+  timeZone = DEFAULT_SHOP_TIMEZONE,
+): string {
+  const key = shopDayKey(value ?? new Date(), timeZone);
+  if (!key) return '';
+  const [year, month, day] = key.split('-').map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + days));
+  const y = shifted.getUTCFullYear();
+  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(shifted.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}

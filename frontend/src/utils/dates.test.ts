@@ -7,6 +7,7 @@ import {
   formatShopTime,
   resolveShopTimezone,
   shopDayKey,
+  addShopCalendarDays,
 } from './dates';
 
 describe('dates', () => {
@@ -49,6 +50,12 @@ describe('dates', () => {
     expect(shopDayKey('2026-08-05T22:30:00.000Z', 'Africa/Harare')).toBe(
       '2026-08-06',
     );
+  });
+
+  it('adds calendar days in shop timezone', () => {
+    expect(
+      addShopCalendarDays('2026-08-05T22:30:00.000Z', 7, 'Africa/Harare'),
+    ).toBe('2026-08-13');
   });
 
   it('handles empty values', () => {

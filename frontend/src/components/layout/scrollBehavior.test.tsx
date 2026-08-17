@@ -27,6 +27,16 @@ vi.mock('@/auth', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useUnreadNotifications', () => ({
+  useUnreadNotifications: () => ({
+    unreadCount: 0,
+    seenKeys: new Set<string>(),
+    markNotificationsRead: vi.fn(),
+    markKeysRead: vi.fn(),
+    dueQuery: { data: undefined, isLoading: false, isError: false },
+  }),
+}));
+
 vi.mock('@/components/demo/DemoTour', () => ({
   DemoTourProvider: ({ children }: { children: ReactNode }) => children,
   useDemoTour: () => ({
@@ -202,6 +212,10 @@ describe('scroll behaviour', () => {
               <Route
                 path="customers"
                 element={<TallPage label="Customers" />}
+              />
+              <Route
+                path="notifications"
+                element={<TallPage label="Notifications" />}
               />
               <Route path="orders" element={<TallPage label="Orders" />} />
               <Route path="expenses" element={<TallPage label="Expenses" />} />

@@ -488,6 +488,7 @@ describe("Platform leak sweep — API + chat", () => {
       body: {
         customer: "Credit Cust",
         items: [{ productId: id, quantity: 2 }],
+        dueDate: "2030-01-15",
       },
     });
     assert.equal(credit.status, 201, credit.raw);

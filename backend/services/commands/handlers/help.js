@@ -96,7 +96,7 @@ CREDIT & PAYMENTS
 =================
 • credit John 2 bread - Ledger credit (items)
 • credit "Jane Doe" 1 milk 2 eggs - Quoted names OK
-• credit sale to John 2 bread - Credit sale (stock + invoice)
+• credit sale to John 2 bread due 2026-08-20 - Credit sale (stock + invoice)
 • payment John 50.00 - Record payment
 • credit history John - Credit history
 

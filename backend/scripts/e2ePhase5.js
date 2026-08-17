@@ -199,7 +199,7 @@ async function main() {
   r = await cmd(TG_CHAT, 'customer add "Phase5 Cust" 5550005555', "telegram");
   assert("add customer", includes(r, "phase5 cust") || includes(r, "added"), r);
 
-  r = await cmd(TG_CHAT, 'credit sale to "Phase5 Cust" 1 e2ebread', "telegram");
+  r = await cmd(TG_CHAT, 'credit sale to "Phase5 Cust" 1 e2ebread due 2030-01-15', "telegram");
   assert("credit sale", includes(r, "credit"), r);
 
   r = await cmd(TG_CHAT, "logout", "telegram");

@@ -117,6 +117,7 @@ export type Sale = {
     total: number;
   }>;
   date?: string;
+  dueDate?: string | null;
 };
 
 export type Customer = {
