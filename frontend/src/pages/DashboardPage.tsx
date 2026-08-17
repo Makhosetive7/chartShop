@@ -651,7 +651,7 @@ export function DashboardPage() {
                 />
                 Debtors and inventory warnings
                 {' · '}
-                <Link to="/app/notifications">Credit due</Link>
+                <Link to="/app/notifications">Notifications</Link>
               </PanelLead>
               {(overview.customers.debtors || []).length ? (
                 <Table compact>

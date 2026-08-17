@@ -7,9 +7,11 @@ import {
   Bell,
   CalendarClock,
   Clock,
+  Package,
 } from 'lucide-react';
 import { fetchActivity, type ActivityItem } from '@/api/chat';
 import { recordPayment } from '@/api/customers';
+import { updateStock, type StockAlertItem } from '@/api/products';
 import { type CreditDueItem } from '@/api/sales';
 import { getErrorMessage, money } from '@/api/types';
 import {
@@ -30,7 +32,9 @@ import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 import {
   alertSeenKey,
   isChaseUnread,
+  isStockUnread,
   notificationSeenKey,
+  stockSeenKey,
 } from '@/utils/notificationUnread';
 
 type Filter = 'all' | 'unread';
@@ -40,9 +44,10 @@ type FeedRow = {
   seenKey: string;
   unread: boolean;
   sort: number;
-  kind: 'chase' | 'alert';
+  kind: 'chase' | 'alert' | 'stock';
   chase?: CreditDueItem;
   alert?: ActivityItem;
+  stock?: StockAlertItem;
 };
 
 const Shell = styled.div`
@@ -315,6 +320,43 @@ function chaseSort(item: CreditDueItem) {
   return 100 - item.daysUntilDue;
 }
 
+function stockLabel(item: StockAlertItem) {
+  if (item.variantLabel) return `${item.productName} · ${item.variantLabel}`;
+  return item.productName;
+}
+
+function stockCopy(item: StockAlertItem) {
+  const name = stockLabel(item);
+  if (item.status === 'out') {
+    return (
+      <>
+        <strong>{name}</strong> is out of stock. Alert is {item.lowStockThreshold}{' '}
+        unit{item.lowStockThreshold === 1 ? '' : 's'}.
+      </>
+    );
+  }
+  return (
+    <>
+      <strong>{name}</strong> is down to {item.stock} unit
+      {item.stock === 1 ? '' : 's'} (alert at {item.lowStockThreshold}).
+    </>
+  );
+}
+
+function stockWhen(item: StockAlertItem) {
+  if (item.status === 'out') return 'Out of stock';
+  return `${item.stock} left · alert at ${item.lowStockThreshold}`;
+}
+
+function stockSort(item: StockAlertItem) {
+  if (item.status === 'out') return 950;
+  return 450 - item.stock;
+}
+
+function restockQty(item: StockAlertItem) {
+  return Math.max(1, item.lowStockThreshold - item.stock + 1);
+}
+
 function PayTowardBalance({ item }: { item: CreditDueItem }) {
   const qc = useQueryClient();
   const guardDemoWrite = useGuardDemoWrite();
@@ -363,12 +405,64 @@ function PayTowardBalance({ item }: { item: CreditDueItem }) {
   );
 }
 
+function AddStock({ item }: { item: StockAlertItem }) {
+  const qc = useQueryClient();
+  const guardDemoWrite = useGuardDemoWrite();
+  const [quantity, setQuantity] = useState(String(restockQty(item)));
+
+  const stockM = useMutation({
+    mutationFn: () =>
+      updateStock(item.productId, {
+        op: '+',
+        quantity: Number(quantity),
+        variantId: item.variantId,
+      }),
+    onSuccess: (product) => {
+      toastSuccess(`Added ${quantity} to ${product.name}.`);
+      void qc.invalidateQueries({ queryKey: ['stock-alerts'] });
+      void qc.invalidateQueries({ queryKey: ['products'] });
+      void qc.invalidateQueries({ queryKey: ['stats'] });
+      void qc.invalidateQueries({ queryKey: ['activity'] });
+    },
+    onError: (error) => toastError(getErrorMessage(error)),
+  });
+
+  function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (guardDemoWrite('change products')) return;
+    const value = Number(quantity);
+    if (!Number.isFinite(value) || value <= 0) {
+      toastError('Enter how many to add.');
+      return;
+    }
+    stockM.mutate();
+  }
+
+  return (
+    <PayForm onSubmit={onSubmit} onClick={(event) => event.stopPropagation()}>
+      <AmountInput
+        type="number"
+        min="1"
+        step="1"
+        value={quantity}
+        onChange={(event) => setQuantity(event.target.value)}
+        aria-label={`Add stock to ${stockLabel(item)}`}
+      />
+      <Button type="submit" $size="sm" loading={stockM.isPending}>
+        Add stock
+      </Button>
+    </PayForm>
+  );
+}
+
 export function NotificationsPage() {
   const timeZone = useShopTimezone();
   const [filter, setFilter] = useState<Filter>('all');
   const [openId, setOpenId] = useState<string | null>(null);
   const {
     dueQuery: dueQ,
+    stockQuery: stockQ,
     seenKeys,
     markNotificationsRead,
     markKeysRead,
@@ -391,6 +485,17 @@ export function NotificationsPage() {
         chase: item,
       });
     }
+    for (const item of stockQ.data || []) {
+      const unread = isStockUnread(item, seenKeys);
+      rows.push({
+        key: `stock-${item.id}`,
+        seenKey: stockSeenKey(item),
+        unread,
+        sort: stockSort(item) + (unread ? 10_000 : 0),
+        kind: 'stock',
+        stock: item,
+      });
+    }
     for (const alert of alertsQ.data || []) {
       const seenKey = alertSeenKey(alert.id);
       const unread = !seenKeys.has(seenKey);
@@ -405,12 +510,12 @@ export function NotificationsPage() {
     }
     rows.sort((a, b) => b.sort - a.sort);
     return rows;
-  }, [alertsQ.data, dueQ.data?.items, seenKeys]);
+  }, [alertsQ.data, dueQ.data?.items, seenKeys, stockQ.data]);
 
   const visible = filter === 'unread' ? feed.filter((row) => row.unread) : feed;
   const newRows = visible.filter((row) => row.unread);
   const earlierRows = visible.filter((row) => !row.unread);
-  const loading = dueQ.isLoading || alertsQ.isLoading;
+  const loading = dueQ.isLoading || stockQ.isLoading || alertsQ.isLoading;
   const feedUnread = feed.filter((row) => row.unread).length;
 
   function openRow(row: FeedRow) {
@@ -420,7 +525,7 @@ export function NotificationsPage() {
 
   function markAll() {
     const extra = (alertsQ.data || []).map((alert) => alertSeenKey(alert.id));
-    markNotificationsRead(dueQ.data?.items || [], extra);
+    markNotificationsRead(dueQ.data?.items || [], extra, stockQ.data || []);
     setOpenId(null);
   }
 
@@ -434,9 +539,12 @@ export function NotificationsPage() {
           </MarkAll>
         </Head>
 
-        {dueQ.isError ? (
+        {dueQ.isError || stockQ.isError ? (
           <ErrorBanner>
-            {getErrorMessage(dueQ.error, 'Could not load notifications.')}
+            {getErrorMessage(
+              dueQ.error || stockQ.error,
+              'Could not load notifications.',
+            )}
           </ErrorBanner>
         ) : null}
 
@@ -476,8 +584,8 @@ export function NotificationsPage() {
               </strong>
               <p>
                 {filter === 'unread'
-                  ? 'Credit due today, tomorrow, and overdue will show here until you read them.'
-                  : 'Credit sales with a pay-by date land here, along with chase alerts.'}
+                  ? 'Credit due, low stock, and chase alerts stay here until you read them.'
+                  : 'Credit sales with a pay-by date land here, along with low stock and chase alerts.'}
               </p>
             </EmptyState>
           ) : null}
@@ -546,6 +654,33 @@ function NotificationRow({
           </Body>
           {row.unread ? <Dot /> : null}
         </RowBtn>
+      </div>
+    );
+  }
+
+  if (row.kind === 'stock' && row.stock) {
+    const item = row.stock;
+    const tone = item.status === 'out' ? 'danger' : 'warning';
+    return (
+      <div>
+        <RowBtn type="button" $unread={row.unread} onClick={onOpen}>
+          <Avatar $tone={tone}>
+            {initials(item.productName)}
+            <BadgeIcon $tone={tone}>
+              <Package size={11} strokeWidth={2.4} />
+            </BadgeIcon>
+          </Avatar>
+          <Body>
+            <Copy>{stockCopy(item)}</Copy>
+            <Meta $unread={row.unread}>{stockWhen(item)}</Meta>
+          </Body>
+          {row.unread ? <Dot /> : null}
+        </RowBtn>
+        {open ? (
+          <Expand>
+            <AddStock key={`${item.id}-${item.stock}`} item={item} />
+          </Expand>
+        ) : null}
       </div>
     );
   }

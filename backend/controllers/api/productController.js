@@ -13,6 +13,7 @@ import {
   serializeProduct,
   syncProductMirrors,
 } from "../../utils/productVariants.js";
+import { collectStockAlerts } from "../../utils/stockAlerts.js";
 
 async function findProduct(shopId, idOrName) {
   if (/^[0-9a-fA-F]{24}$/.test(idOrName)) {
@@ -65,17 +66,17 @@ export async function lowStock(req, res) {
 
     await Promise.all(products.map((p) => persistEnsuredVariants(p)));
 
-    const low = products.filter((p) =>
-      (p.variants || []).some(
-        (v) =>
-          v.isActive !== false &&
-          v.trackStock &&
-          (v.stock || 0) <= (v.lowStockThreshold ?? p.lowStockThreshold ?? 0)
-      )
-    );
+    const items = collectStockAlerts(products);
+    const alertingIds = new Set(items.map((item) => item.productId));
+    const low = products.filter((p) => alertingIds.has(String(p._id)));
 
     return res.json({
       success: true,
+      items,
+      summary: {
+        out: items.filter((item) => item.status === "out").length,
+        low: items.filter((item) => item.status === "low").length,
+      },
       products: low.map(serializeProduct),
     });
   } catch (error) {
