@@ -18,7 +18,7 @@ Run after Phase 1 changes. Goal: concurrent sells can’t oversell; cancel fixes
 | 4 | `list` | phase1bread stock still 2 |
 | 5 | `cancel last "phase1 test"` | Stock restored to 5 |
 | 6 | `customer add "Phase1 Cust" 5550002222` | Customer created |
-| 7 | `credit sale to Phase1 Cust 2 phase1bread` | Credit sale; stock 3; customer owes $5.00 |
+| 7 | `credit sale to Phase1 Cust 2 phase1bread due 2030-01-15` | Credit sale; stock 3; customer owes $5.00 |
 | 8 | `cancel last "phase1 credit reverse"` | Stock back to 5; customer balance **0** |
 | 9 | `daily` | Shows **Operating Result** (not fake Gross Profit $0); period aligns with local midnight |
 | 10 | `laybye Phase1 Cust 1 phase1bread deposit 1` | Agreement says stock **not reserved** |

@@ -21,11 +21,13 @@ import {
   Settings,
   Ellipsis,
   X,
+  Bell,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { Button } from '@/components/ui/Button';
 import { BrandMark } from '@/components/ui/BrandMark';
 import { DemoBanner } from '@/components/demo/DemoBanner';
+import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 
 const NAV_HEIGHT_MOBILE = '64px';
 const NAV_HEIGHT_DESKTOP = '76px';
@@ -59,6 +61,7 @@ const MORE: LinkItem[] = [
   { to: '/app/expenses', icon: Wallet, label: 'Expenses' },
   { to: '/app/reports', icon: FileBarChart, label: 'Reports', tour: 'nav-reports' },
   { to: '/app/activity', icon: History, label: 'Activity' },
+  { to: '/app/notifications', icon: Bell, label: 'Notifications' },
   { to: '/app/settings', icon: Settings, label: 'Settings' },
 ];
 
@@ -300,6 +303,24 @@ const Item = styled(NavLink)`
   }
 `;
 
+const IconSlot = styled.span`
+  position: relative;
+  display: inline-flex;
+  line-height: 0;
+`;
+
+const UnreadDot = styled.span`
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: ${({ theme }) => theme.colors.danger};
+  box-shadow: 0 0 0 2px ${({ theme }) => theme.colors.surface};
+  pointer-events: none;
+`;
+
 const MoreTrigger = styled.button<{ $active?: boolean }>`
   display: flex;
   flex-direction: column;
@@ -422,6 +443,23 @@ function pathMatches(pathname: string, to: string, end?: boolean) {
   return Boolean(matchPath({ path: to, end: Boolean(end) }, pathname));
 }
 
+function NavGlyph({
+  icon: Icon,
+  unread,
+  size = 20,
+}: {
+  icon: typeof MessageCircle;
+  unread: number;
+  size?: number;
+}) {
+  return (
+    <IconSlot>
+      <Icon size={size} strokeWidth={1.85} />
+      {unread > 0 ? <UnreadDot aria-hidden /> : null}
+    </IconSlot>
+  );
+}
+
 export function AppLayout() {
   const { shop, user, logout } = useAuth();
   const navigate = useNavigate();
@@ -429,6 +467,7 @@ export function AppLayout() {
   const mainRef = useRef<HTMLElement>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const { unreadCount } = useUnreadNotifications();
 
   const flush =
     location.pathname === '/app/chat' || location.pathname === '/app/chat/';
@@ -523,7 +562,7 @@ export function AppLayout() {
                 end={Boolean(end)}
                 data-tour={tour}
               >
-                <Icon size={20} strokeWidth={1.85} />
+                <NavGlyph icon={Icon} unread={0} />
                 <span>{short || label}</span>
               </Item>
             ))}
@@ -532,26 +571,39 @@ export function AppLayout() {
               $active={moreActive || moreOpen}
               aria-expanded={moreOpen}
               aria-haspopup="dialog"
+              aria-label={
+                unreadCount > 0
+                  ? `More, ${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`
+                  : 'More'
+              }
               disabled={loggingOut}
               onClick={() => setMoreOpen(true)}
             >
-              <Ellipsis size={20} strokeWidth={1.85} />
+              <NavGlyph icon={Ellipsis} unread={unreadCount} />
               <span>More</span>
             </MoreTrigger>
           </MobileNav>
 
           <DesktopNav>
-            {ALL.map(({ to, icon: Icon, label, end, tour }) => (
+            {ALL.map(({ to, icon: Icon, label, end, tour }) => {
+              const unread = to === '/app/notifications' ? unreadCount : 0;
+              return (
               <Item
                 key={to}
                 to={to}
                 end={Boolean(end)}
                 data-tour={tour}
+                aria-label={
+                  unread > 0
+                    ? `${label}, ${unread} unread`
+                    : undefined
+                }
               >
-                <Icon size={20} strokeWidth={1.85} />
+                <NavGlyph icon={Icon} unread={unread} />
                 <span>{label}</span>
               </Item>
-            ))}
+              );
+            })}
           </DesktopNav>
         </NavTrack>
       </BottomNav>
@@ -577,12 +629,25 @@ export function AppLayout() {
               </CloseBtn>
             </SheetHead>
             <SheetGrid>
-              {MORE.map(({ to, icon: Icon, label, end, tour }) => (
-                <SheetLink key={to} to={to} end={Boolean(end)} data-tour={tour}>
-                  <Icon size={22} strokeWidth={1.85} />
+              {MORE.map(({ to, icon: Icon, label, end, tour }) => {
+                const unread = to === '/app/notifications' ? unreadCount : 0;
+                return (
+                <SheetLink
+                  key={to}
+                  to={to}
+                  end={Boolean(end)}
+                  data-tour={tour}
+                  aria-label={
+                    unread > 0
+                      ? `${label}, ${unread} unread`
+                      : undefined
+                  }
+                >
+                  <NavGlyph icon={Icon} unread={unread} size={22} />
                   {label}
                 </SheetLink>
-              ))}
+                );
+              })}
               <SheetLogout>
                 <Button
                   type="button"

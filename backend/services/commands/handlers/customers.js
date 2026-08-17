@@ -378,7 +378,7 @@ export async function handleCustomerCredit(shopId, text, actorUserId = null) {
     );
 
     if (!match) {
-      return `*Invalid Format*\n\nUse: credit [customer] [qty] [product]...\n\n*Examples:*\n• credit John 10 bread\n• credit "Jane Doe" 5 bread 3 milk\n• credit 0771234567 2 sugar\n\n_For stock + invoice credit sales use:_ credit sale to [customer] [items]`;
+      return `*Invalid Format*\n\nUse: credit [customer] [qty] [product]...\n\n*Examples:*\n• credit John 10 bread\n• credit "Jane Doe" 5 bread 3 milk\n• credit 0771234567 2 sugar\n\n_For stock + invoice credit sales use:_ credit sale to [customer] [items] due YYYY-MM-DD`;
     }
 
     const customerIdentifier = match[1] || match[2];

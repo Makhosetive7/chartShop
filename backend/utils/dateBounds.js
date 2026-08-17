@@ -80,6 +80,43 @@ export function getZonedYmd(date = new Date(), timeZone = DEFAULT_TIMEZONE) {
   return { year: parts.year, month: parts.month, day: parts.day };
 }
 
+export function getZonedDateTime(date = new Date(), timeZone = DEFAULT_TIMEZONE) {
+  const parts = getZonedParts(date, timeZone);
+  return {
+    year: parts.year,
+    month: parts.month,
+    day: parts.day,
+    hour: parts.hour,
+    minute: parts.minute,
+    second: parts.second,
+  };
+}
+
+/** Add calendar days to a Y-M-D (month is 1-based). */
+export function addYmdDays(ymd, days) {
+  const shifted = new Date(Date.UTC(ymd.year, ymd.month - 1, ymd.day + days));
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+  };
+}
+
+/** Calendar-day difference: toYmd − fromYmd. */
+export function ymdDiffDays(fromYmd, toYmd) {
+  const from = Date.UTC(fromYmd.year, fromYmd.month - 1, fromYmd.day);
+  const to = Date.UTC(toYmd.year, toYmd.month - 1, toYmd.day);
+  return Math.round((to - from) / 86400000);
+}
+
+export function ymdEqual(a, b) {
+  return a.year === b.year && a.month === b.month && a.day === b.day;
+}
+
+export function formatYmd(ymd) {
+  return `${ymd.year}-${String(ymd.month).padStart(2, "0")}-${String(ymd.day).padStart(2, "0")}`;
+}
+
 /**
  * Start/end of the calendar day containing `date` in `timeZone`.
  * End is exclusive-safe: start of next local day minus 1ms.

@@ -25,6 +25,16 @@ const saleSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  /** Agreed payment date for credit sales. Null on cash / existing sales. */
+  dueDate: {
+    type: Date,
+    default: null,
+  },
+  /** Reminder slots already sent: "before", "due", "overdue:3", … "overdue:30". */
+  creditReminderKeys: {
+    type: [String],
+    default: [],
+  },
   // for laybye
   installments: [
     {
@@ -110,5 +120,7 @@ const saleSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
+
+saleSchema.index({ type: 1, isCancelled: 1, dueDate: 1 });
 
 export default mongoose.model("Sale", saleSchema);

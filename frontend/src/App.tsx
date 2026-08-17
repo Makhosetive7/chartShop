@@ -20,6 +20,7 @@ import { CustomersPage } from '@/pages/CustomersPage';
 import { OrdersPage } from '@/pages/OrdersPage';
 import { ExpensesPage } from '@/pages/ExpensesPage';
 import { ReportsPage } from '@/pages/ReportsPage';
+import { NotificationsPage } from '@/pages/NotificationsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 
 export function App() {
@@ -51,6 +52,7 @@ export function App() {
                 <Route path="sales" element={<SalesPage />} />
                 <Route path="laybyes" element={<LaybyesPage />} />
                 <Route path="customers" element={<CustomersPage />} />
+                <Route path="notifications" element={<NotificationsPage />} />
                 <Route path="orders" element={<OrdersPage />} />
                 <Route path="expenses" element={<ExpensesPage />} />
                 <Route path="reports" element={<ReportsPage />} />

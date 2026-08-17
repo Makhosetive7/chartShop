@@ -5,6 +5,7 @@ import connectDB from "./config/database.js";
 import createApp from "./app.js";
 import telegramService from "./services/telegramService.js";
 import { handleTelegramUpdate } from "./adapters/telegram.js";
+import { stopCreditDueReminderJob } from "./jobs/creditDueReminders.js";
 
 dotenv.config();
 
@@ -88,6 +89,11 @@ app.listen(PORT, HOST, async () => {
   console.log(`Health check: http://${HOST}:${PORT}/health`);
   console.log(`API: http://${HOST}:${PORT}/api/v1`);
 
+  const { startCreditDueReminderJob } = await import(
+    "./jobs/creditDueReminders.js"
+  );
+  startCreditDueReminderJob();
+
   if (USE_POLLING) {
     console.log(`Mode: POLLING (Development)`);
     console.log(`Webhook disabled for local development`);
@@ -128,11 +134,13 @@ app.listen(PORT, HOST, async () => {
 process.on("SIGTERM", () => {
   console.log("SIGTERM signal received: closing HTTP server");
   stopPolling();
+  stopCreditDueReminderJob();
   process.exit(0);
 });
 
 process.on("SIGINT", () => {
   console.log("SIGINT signal received: closing HTTP server");
   stopPolling();
+  stopCreditDueReminderJob();
   process.exit(0);
 });

@@ -34,7 +34,7 @@ export function verifyWhatsAppWebhook(query = {}) {
   return { ok: false };
 }
 
-async function sendWhatsAppText(to, body) {
+export async function sendWhatsAppText(to, body) {
   const cfg = getConfig();
   if (!cfg.token || !cfg.phoneNumberId) {
     throw new Error("WhatsApp is not configured");

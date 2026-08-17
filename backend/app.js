@@ -65,6 +65,32 @@ export function createApp() {
     });
   });
 
+  app.post("/jobs/credit-due-reminders", async (req, res) => {
+    const secret = process.env.CRON_SECRET;
+    if (!secret) {
+      return res.status(404).json({ error: "Route not found" });
+    }
+    const header =
+      req.get("X-Cron-Secret") ||
+      String(req.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+    if (header !== secret) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const { runCreditDueReminders } = await import(
+        "./services/CreditDueReminderService.js"
+      );
+      const result = await runCreditDueReminders();
+      return res.json({ success: true, ...result });
+    } catch (error) {
+      console.error("[credit-due] http job failed:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to run credit due reminders.",
+      });
+    }
+  });
+
   app.use((err, req, res, next) => {
     console.error("Server Error:", err);
     res.status(500).json({

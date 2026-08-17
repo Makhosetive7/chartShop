@@ -193,6 +193,7 @@ describe("Cash guardrails + dashboard KPIs e2e", () => {
       body: {
         customer: "Till Debtor",
         items: [{ name: "till-bread", quantity: 2 }],
+        dueDate: "2030-01-15",
       },
     });
     assert.equal(credit.status, 201, credit.raw);
@@ -335,6 +336,7 @@ describe("Cash guardrails + dashboard KPIs e2e", () => {
       body: {
         customer: "KPI Debtor",
         items: [{ name: "till-bread", quantity: 1 }],
+        dueDate: "2030-01-15",
       },
     });
 

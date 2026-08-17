@@ -11,6 +11,13 @@ import {
 } from "../../utils/apiSaleItems.js";
 import { stripMarkdown } from "../../utils/apiResponse.js";
 import { logApiActivity } from "../../utils/logApiActivity.js";
+import { parseCreditDueDate } from "../../utils/creditDueDate.js";
+import { creditChaseStatus } from "../../utils/creditDueReminders.js";
+import {
+  DEFAULT_TIMEZONE,
+  formatYmd,
+  getZonedYmd,
+} from "../../utils/dateBounds.js";
 
 function money(amount) {
   return `$${Number(amount).toFixed(2)}`;
@@ -111,6 +118,14 @@ export async function createCreditSale(req, res) {
       parsed.items
     );
 
+    const due = parseCreditDueDate(req.body?.dueDate);
+    if (!due.ok) {
+      return res.status(400).json({
+        success: false,
+        error: due.error,
+      });
+    }
+
     const stockResult = await InventoryService.deductSaleItems(parsed.items);
     if (!stockResult.success) {
       return res.status(409).json({
@@ -133,6 +148,7 @@ export async function createCreditSale(req, res) {
         profit,
         amountPaid: 0,
         balanceDue: total,
+        dueDate: due.dueDate,
         status: "completed",
         createdByUserId: req.userId,
       });
@@ -165,7 +181,12 @@ export async function createCreditSale(req, res) {
       summary: `Credit sale ${money(total)} (${itemCountLabel(lineItems.length)})`,
       entityType: "sale",
       entityId: sale._id,
-      metadata: { total, itemCount: lineItems.length, customerId: String(customer._id) },
+      metadata: {
+        total,
+        itemCount: lineItems.length,
+        customerId: String(customer._id),
+        dueDate: due.dueDate,
+      },
     });
 
     return res.status(201).json({
@@ -281,6 +302,99 @@ export async function listRecentSales(req, res) {
     return res.status(500).json({
       success: false,
       error: "Failed to list recent sales.",
+    });
+  }
+}
+
+function chaseSortRank(status) {
+  if (status === "overdue") return 0;
+  if (status === "due") return 1;
+  if (status === "tomorrow") return 2;
+  return 3;
+}
+
+export async function listCreditDue(req, res) {
+  try {
+    const now = new Date();
+    const sales = await Sale.find({
+      shopId: req.shopId,
+      type: "credit",
+      isCancelled: { $ne: true },
+      status: { $ne: "cancelled" },
+      dueDate: { $ne: null },
+    })
+      .sort({ dueDate: 1 })
+      .limit(200)
+      .lean();
+
+    const customerIds = [
+      ...new Set(
+        sales
+          .map((sale) => (sale.customerId ? String(sale.customerId) : null))
+          .filter(Boolean)
+      ),
+    ];
+    const customers = await Customer.find({
+      _id: { $in: customerIds },
+      currentBalance: { $gt: 0 },
+    })
+      .select("_id name phone currentBalance")
+      .lean();
+    const owing = new Map(
+      customers.map((customer) => [String(customer._id), customer])
+    );
+
+    const items = [];
+    for (const sale of sales) {
+      if (!sale.customerId || !owing.has(String(sale.customerId))) continue;
+      const chase = creditChaseStatus(sale.dueDate, now, DEFAULT_TIMEZONE);
+      if (!chase) continue;
+      const customer = owing.get(String(sale.customerId));
+      items.push({
+        id: String(sale._id),
+        customerId: String(sale.customerId),
+        customerName: customer?.name || sale.customerName,
+        customerPhone: customer?.phone || sale.customerPhone || null,
+        customerBalance: customer?.currentBalance || 0,
+        total: sale.total,
+        dueDate: sale.dueDate,
+        status: chase.status,
+        daysOverdue: chase.daysOverdue,
+        daysUntilDue: chase.daysUntilDue,
+        items: (sale.items || []).map((item) => ({
+          productName: item.productName,
+          quantity: item.quantity,
+          variantLabel: item.variantLabel || "",
+          packLabel: item.packLabel || "",
+        })),
+      });
+    }
+
+    items.sort((a, b) => {
+      const rank = chaseSortRank(a.status) - chaseSortRank(b.status);
+      if (rank !== 0) return rank;
+      if (a.status === "overdue") return b.daysOverdue - a.daysOverdue;
+      return a.daysUntilDue - b.daysUntilDue;
+    });
+
+    const summary = {
+      overdue: items.filter((item) => item.status === "overdue").length,
+      due: items.filter((item) => item.status === "due").length,
+      tomorrow: items.filter((item) => item.status === "tomorrow").length,
+      upcoming: items.filter((item) => item.status === "upcoming").length,
+    };
+
+    return res.json({
+      success: true,
+      date: formatYmd(getZonedYmd(now, DEFAULT_TIMEZONE)),
+      summary,
+      items,
+    });
+  } catch (error) {
+    console.error("[api/sales/credit-due]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to list credit due.",
     });
   }
 }

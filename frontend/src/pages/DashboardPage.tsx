@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
@@ -203,6 +204,11 @@ const PanelLead = styled.p`
   margin: 0 0 ${({ theme }) => theme.space[4]};
   color: ${({ theme }) => theme.colors.textSecondary};
   font-size: 0.85rem;
+
+  a {
+    color: ${({ theme }) => theme.colors.maroon};
+    font-weight: ${({ theme }) => theme.fontWeights.semibold};
+  }
 `;
 
 const HighlightStrip = styled.div`
@@ -644,6 +650,8 @@ export function DashboardPage() {
                   style={{ display: 'inline', marginRight: 6, verticalAlign: -2 }}
                 />
                 Debtors and inventory warnings
+                {' · '}
+                <Link to="/app/notifications">Credit due</Link>
               </PanelLead>
               {(overview.customers.debtors || []).length ? (
                 <Table compact>

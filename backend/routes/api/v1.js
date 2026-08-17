@@ -145,6 +145,7 @@ router.post(
   saleController.sellToCustomer
 );
 router.get("/sales/recent", requireApiAuth, saleController.listRecentSales);
+router.get("/sales/credit-due", requireApiAuth, saleController.listCreditDue);
 router.get("/sales/refunds", requireApiAuth, saleController.refundsReport);
 router.post(
   "/sales/cancel/last",

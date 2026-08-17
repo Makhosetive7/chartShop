@@ -39,12 +39,16 @@ export async function createCashSale(items: SaleItemInput[]) {
   return data.sale;
 }
 
-export async function createCreditSale(customer: string, items: SaleItemInput[]) {
+export async function createCreditSale(
+  customer: string,
+  items: SaleItemInput[],
+  dueDate: string,
+) {
   const { data } = await api.post<{
     success: boolean;
     sale: Sale;
     customerBalance?: number;
-  }>('/sales/credit', { customer, items });
+  }>('/sales/credit', { customer, items, dueDate });
   return data;
 }
 
@@ -134,4 +138,44 @@ export async function listLaybyes(
     laybyes?: Laybye[];
   }>(`/laybye?status=${encodeURIComponent(status)}`);
   return data.laybyes || [];
+}
+
+export type CreditDueItem = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerPhone?: string | null;
+  customerBalance: number;
+  total: number;
+  dueDate: string;
+  status: 'overdue' | 'due' | 'tomorrow' | 'upcoming';
+  daysOverdue: number;
+  daysUntilDue: number;
+  items: Array<{
+    productName: string;
+    quantity: number;
+    variantLabel?: string;
+    packLabel?: string;
+  }>;
+};
+
+export type CreditDueSummary = {
+  overdue: number;
+  due: number;
+  tomorrow: number;
+  upcoming: number;
+};
+
+export async function listCreditDue() {
+  const { data } = await api.get<{
+    success: boolean;
+    date?: string;
+    summary: CreditDueSummary;
+    items: CreditDueItem[];
+  }>('/sales/credit-due');
+  return {
+    date: data.date,
+    summary: data.summary || { overdue: 0, due: 0, tomorrow: 0, upcoming: 0 },
+    items: data.items || [],
+  };
 }

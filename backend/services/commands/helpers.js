@@ -98,7 +98,11 @@ export function generateCreditSaleReceipt(sale, customer, items) {
   receipt += `FINANCIAL SUMMARY\n`;
   receipt += `Total Amount: $${sale.total.toFixed(2)}\n`;
   receipt += `Amount Paid: $${sale.amountPaid.toFixed(2)}\n`;
-  receipt += `Balance Due: $${sale.balanceDue.toFixed(2)}\n\n`;
+  receipt += `Balance Due: $${sale.balanceDue.toFixed(2)}\n`;
+  if (sale.dueDate) {
+    receipt += `Due Date: ${new Date(sale.dueDate).toLocaleDateString()}\n`;
+  }
+  receipt += `\n`;
 
   receipt += `NOTES\n`;
   receipt += `Stock has been deducted.\n`;

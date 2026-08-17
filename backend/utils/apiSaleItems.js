@@ -163,6 +163,7 @@ export function serializeSale(sale) {
     profit: sale.profit,
     amountPaid: sale.amountPaid,
     balanceDue: sale.balanceDue,
+    dueDate: sale.dueDate || null,
     status: sale.status,
     isCancelled: sale.isCancelled,
     customerId: sale.customerId ? String(sale.customerId) : null,
