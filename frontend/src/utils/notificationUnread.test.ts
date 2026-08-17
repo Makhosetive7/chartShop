@@ -6,6 +6,8 @@ import {
   pruneSeenKeys,
   readSeenKeys,
   stockSeenKey,
+  orderSeenKey,
+  laybyeSeenKey,
 } from './notificationUnread';
 
 describe('notificationUnread', () => {
@@ -39,28 +41,29 @@ describe('notificationUnread', () => {
     ).toBe(1);
   });
 
-  it('counts low and out-of-stock rows until they are read', () => {
-    const stock = [
-      { id: 'milk:2l', status: 'out' as const },
-      { id: 'bread:white', status: 'low' as const },
+  it('counts prefixed stock, order, and laybye rows until they are read', () => {
+    const prefixed = [
+      { seenKey: stockSeenKey({ id: 'milk:2l', status: 'out' }) },
+      { seenKey: orderSeenKey({ id: 'ord1', status: 'stale' }) },
+      { seenKey: laybyeSeenKey({ id: 'lb1', status: 'quiet' }) },
     ];
-    expect(countUnreadNotifications([], new Set(), stock)).toBe(2);
+    expect(countUnreadNotifications([], new Set(), prefixed)).toBe(3);
     expect(
       countUnreadNotifications(
         [],
-        new Set([stockSeenKey(stock[0])]),
-        stock,
+        new Set([prefixed[0].seenKey]),
+        prefixed,
       ),
-    ).toBe(1);
+    ).toBe(2);
   });
 
-  it('re-alerts stock after it leaves the list and comes back low', () => {
-    const low = { id: 'milk:2l', status: 'low' as const };
+  it('re-alerts prefixed rows after they leave the list and come back', () => {
+    const low = { seenKey: stockSeenKey({ id: 'milk:2l', status: 'low' }) };
     markNotificationsSeen('shop-1', [], [], [low]);
-    expect(readSeenKeys('shop-1').has(stockSeenKey(low))).toBe(true);
+    expect(readSeenKeys('shop-1').has(low.seenKey)).toBe(true);
 
     pruneSeenKeys('shop-1', [], []);
-    expect(readSeenKeys('shop-1').has(stockSeenKey(low))).toBe(false);
+    expect(readSeenKeys('shop-1').has(low.seenKey)).toBe(false);
     expect(
       countUnreadNotifications([], readSeenKeys('shop-1'), [low]),
     ).toBe(1);

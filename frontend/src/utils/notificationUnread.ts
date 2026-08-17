@@ -2,6 +2,9 @@ import type { StockAlertItem } from '@/api/products';
 import type { CreditDueItem } from '@/api/sales';
 
 const ACTIONABLE = new Set(['overdue', 'due', 'tomorrow']);
+const PREFIXED = ['stock:', 'order:', 'laybye:'] as const;
+
+export type PrefixedSeen = { seenKey: string };
 
 export function notificationSeenKey(item: Pick<CreditDueItem, 'id' | 'status'>) {
   return `${item.id}:${item.status}`;
@@ -9,6 +12,14 @@ export function notificationSeenKey(item: Pick<CreditDueItem, 'id' | 'status'>) 
 
 export function stockSeenKey(item: Pick<StockAlertItem, 'id' | 'status'>) {
   return `stock:${item.id}:${item.status}`;
+}
+
+export function orderSeenKey(item: Pick<{ id: string; status: string }, 'id' | 'status'>) {
+  return `order:${item.id}:${item.status}`;
+}
+
+export function laybyeSeenKey(item: Pick<{ id: string; status: string }, 'id' | 'status'>) {
+  return `laybye:${item.id}:${item.status}`;
 }
 
 export function alertSeenKey(id: string) {
@@ -29,6 +40,10 @@ function sameSet(a: Set<string>, b: Set<string>) {
     if (!b.has(value)) return false;
   }
   return true;
+}
+
+function isPrefixedKey(key: string) {
+  return PREFIXED.some((prefix) => key.startsWith(prefix));
 }
 
 export function readSeenKeys(shopId: string): Set<string> {
@@ -58,11 +73,15 @@ export function isChaseUnread(
   );
 }
 
+export function isPrefixedUnread(item: PrefixedSeen, seen: Set<string>) {
+  return !seen.has(item.seenKey);
+}
+
 export function isStockUnread(
   item: Pick<StockAlertItem, 'id' | 'status'>,
   seen: Set<string>,
 ) {
-  return !seen.has(stockSeenKey(item));
+  return isPrefixedUnread({ seenKey: stockSeenKey(item) }, seen);
 }
 
 export function addSeenKeys(shopId: string, keys: string[]) {
@@ -75,30 +94,30 @@ export function addSeenKeys(shopId: string, keys: string[]) {
 export function countUnreadNotifications(
   items: Pick<CreditDueItem, 'id' | 'status'>[],
   seen: Set<string>,
-  stockItems: Pick<StockAlertItem, 'id' | 'status'>[] = [],
+  prefixedItems: PrefixedSeen[] = [],
 ) {
   return (
     items.filter((item) => isChaseUnread(item, seen)).length +
-    stockItems.filter((item) => isStockUnread(item, seen)).length
+    prefixedItems.filter((item) => isPrefixedUnread(item, seen)).length
   );
 }
 
-/** Keep seen keys that still match a live credit/stock row (plus alert events). */
+/** Keep seen keys that still match a live credit/prefixed row (plus alert events). */
 export function liveSeenKeys(
   stored: Set<string>,
   creditItems: Pick<CreditDueItem, 'id' | 'status'>[],
-  stockItems: Pick<StockAlertItem, 'id' | 'status'>[] = [],
+  prefixedItems: PrefixedSeen[] = [],
 ) {
   const liveCreditIds = new Set(creditItems.map((item) => item.id));
-  const liveStockKeys = new Set(stockItems.map((item) => stockSeenKey(item)));
+  const livePrefixed = new Set(prefixedItems.map((item) => item.seenKey));
   const next = new Set<string>();
   for (const key of stored) {
     if (key.startsWith('alert:')) {
       next.add(key);
       continue;
     }
-    if (key.startsWith('stock:')) {
-      if (liveStockKeys.has(key)) next.add(key);
+    if (isPrefixedKey(key)) {
+      if (livePrefixed.has(key)) next.add(key);
       continue;
     }
     const id = key.split(':')[0];
@@ -111,10 +130,10 @@ export function liveSeenKeys(
 export function pruneSeenKeys(
   shopId: string,
   creditItems: Pick<CreditDueItem, 'id' | 'status'>[],
-  stockItems: Pick<StockAlertItem, 'id' | 'status'>[] = [],
+  prefixedItems: PrefixedSeen[] = [],
 ) {
   const prev = readSeenKeys(shopId);
-  const next = liveSeenKeys(prev, creditItems, stockItems);
+  const next = liveSeenKeys(prev, creditItems, prefixedItems);
   if (sameSet(prev, next)) return prev;
   writeSeenKeys(shopId, next);
   return next;
@@ -125,14 +144,14 @@ export function markNotificationsSeen(
   shopId: string,
   items: Pick<CreditDueItem, 'id' | 'status'>[],
   extraKeys: string[] = [],
-  stockItems: Pick<StockAlertItem, 'id' | 'status'>[] = [],
+  prefixedItems: PrefixedSeen[] = [],
 ) {
-  const next = liveSeenKeys(readSeenKeys(shopId), items, stockItems);
+  const next = liveSeenKeys(readSeenKeys(shopId), items, prefixedItems);
   for (const item of items) {
     next.add(notificationSeenKey(item));
   }
-  for (const item of stockItems) {
-    next.add(stockSeenKey(item));
+  for (const item of prefixedItems) {
+    next.add(item.seenKey);
   }
   for (const key of extraKeys) next.add(key);
   writeSeenKeys(shopId, next);

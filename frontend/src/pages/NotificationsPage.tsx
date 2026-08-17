@@ -6,13 +6,19 @@ import {
   AlertTriangle,
   Bell,
   CalendarClock,
+  ClipboardList,
   Clock,
   Package,
 } from 'lucide-react';
 import { fetchActivity, type ActivityItem } from '@/api/chat';
 import { recordPayment } from '@/api/customers';
+import { updateOrderStatus, type OrderAlertItem } from '@/api/ops';
 import { updateStock, type StockAlertItem } from '@/api/products';
-import { type CreditDueItem } from '@/api/sales';
+import {
+  payLaybye,
+  type CreditDueItem,
+  type LaybyeAlertItem,
+} from '@/api/sales';
 import { getErrorMessage, money } from '@/api/types';
 import {
   Page,
@@ -32,8 +38,10 @@ import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 import {
   alertSeenKey,
   isChaseUnread,
-  isStockUnread,
+  isPrefixedUnread,
+  laybyeSeenKey,
   notificationSeenKey,
+  orderSeenKey,
   stockSeenKey,
 } from '@/utils/notificationUnread';
 
@@ -44,10 +52,12 @@ type FeedRow = {
   seenKey: string;
   unread: boolean;
   sort: number;
-  kind: 'chase' | 'alert' | 'stock';
+  kind: 'chase' | 'alert' | 'stock' | 'order' | 'laybye';
   chase?: CreditDueItem;
   alert?: ActivityItem;
   stock?: StockAlertItem;
+  order?: OrderAlertItem;
+  laybye?: LaybyeAlertItem;
 };
 
 const Shell = styled.div`
@@ -357,6 +367,146 @@ function restockQty(item: StockAlertItem) {
   return Math.max(1, item.lowStockThreshold - item.stock + 1);
 }
 
+function goodsLabel(
+  items: Array<{
+    productName?: string;
+    quantity?: number;
+    variantLabel?: string;
+    packLabel?: string;
+  }>,
+  fallback: string,
+) {
+  const preview = (items || [])
+    .slice(0, 2)
+    .map((line) => formatSaleItemLabel(line))
+    .filter(Boolean)
+    .join(', ');
+  if (!preview) return fallback;
+  if ((items || []).length > 2) return `${preview} +${items.length - 2}`;
+  return preview;
+}
+
+function orderKind(type: string) {
+  if (type === 'delivery') return 'delivery';
+  if (type === 'reservation') return 'reservation';
+  return 'pickup';
+}
+
+function orderCopy(item: OrderAlertItem) {
+  const kind = orderKind(item.orderType);
+  const goods = goodsLabel(item.items, kind);
+  if (item.status === 'overdue') {
+    return (
+      <>
+        <strong>{item.customerName}</strong> still has a {kind} for {goods}. It is{' '}
+        {item.daysOverdue} day{item.daysOverdue === 1 ? '' : 's'} late.
+      </>
+    );
+  }
+  if (item.status === 'due') {
+    return (
+      <>
+        <strong>{item.customerName}</strong> has a {kind} for {goods} due today.
+      </>
+    );
+  }
+  if (item.status === 'tomorrow') {
+    return (
+      <>
+        <strong>{item.customerName}</strong> has a {kind} for {goods} tomorrow.
+      </>
+    );
+  }
+  return (
+    <>
+      <strong>{item.customerName}</strong>&apos;s {kind} for {goods} is still{' '}
+      {item.orderStatus} · {item.daysOpen} day{item.daysOpen === 1 ? '' : 's'}.
+    </>
+  );
+}
+
+function orderWhen(item: OrderAlertItem, timeZone: string) {
+  if (item.status === 'overdue') {
+    return item.pickupDate
+      ? `${item.daysOverdue}d late · ${formatShopDate(item.pickupDate, timeZone)}`
+      : `${item.daysOverdue}d late`;
+  }
+  if (item.status === 'due') return 'Due today';
+  if (item.status === 'tomorrow') return 'Tomorrow';
+  return `${item.daysOpen}d open`;
+}
+
+function orderSort(item: OrderAlertItem) {
+  if (item.status === 'overdue') return 920 + item.daysOverdue;
+  if (item.status === 'due') return 480;
+  if (item.status === 'tomorrow') return 380;
+  return 350 + item.daysOpen;
+}
+
+function laybyeCopy(item: LaybyeAlertItem) {
+  const goods = goodsLabel(item.items, 'a laybye');
+  if (item.status === 'overdue') {
+    return (
+      <>
+        <strong>{item.customerName}</strong> still owes {money(item.balanceDue)} on{' '}
+        {goods}. Payment is {item.daysOverdue} day
+        {item.daysOverdue === 1 ? '' : 's'} late.
+      </>
+    );
+  }
+  if (item.status === 'due') {
+    return (
+      <>
+        <strong>{item.customerName}</strong> owes {money(item.balanceDue)} on {goods}.
+        Payment is due today.
+      </>
+    );
+  }
+  if (item.status === 'tomorrow') {
+    return (
+      <>
+        <strong>{item.customerName}</strong> owes {money(item.balanceDue)} on {goods}.
+        Payment is due tomorrow.
+      </>
+    );
+  }
+  return (
+    <>
+      <strong>{item.customerName}</strong>&apos;s laybye for {goods} has had no
+      payment in {item.daysQuiet} day{item.daysQuiet === 1 ? '' : 's'} ·{' '}
+      {money(item.balanceDue)} left.
+    </>
+  );
+}
+
+function laybyeWhen(item: LaybyeAlertItem, timeZone: string) {
+  if (item.status === 'overdue' && item.dueDate) {
+    return `${item.daysOverdue}d late · pay by ${formatShopDate(item.dueDate, timeZone)}`;
+  }
+  if (item.status === 'due') return 'Due today';
+  if (item.status === 'tomorrow') return 'Tomorrow';
+  return `${item.daysQuiet}d quiet`;
+}
+
+function laybyeSort(item: LaybyeAlertItem) {
+  if (item.status === 'overdue') return 910 + item.daysOverdue;
+  if (item.status === 'due') return 440;
+  if (item.status === 'tomorrow') return 390;
+  return 340 + item.daysQuiet;
+}
+
+function laybyeTone(status: LaybyeAlertItem['status']) {
+  if (status === 'overdue') return 'danger' as const;
+  if (status === 'due' || status === 'quiet') return 'warning' as const;
+  return 'info' as const;
+}
+
+function orderTone(status: OrderAlertItem['status']) {
+  if (status === 'overdue') return 'danger' as const;
+  if (status === 'due' || status === 'stale') return 'warning' as const;
+  return 'info' as const;
+}
+
 function PayTowardBalance({ item }: { item: CreditDueItem }) {
   const qc = useQueryClient();
   const guardDemoWrite = useGuardDemoWrite();
@@ -456,6 +606,109 @@ function AddStock({ item }: { item: StockAlertItem }) {
   );
 }
 
+function OrderActions({ item }: { item: OrderAlertItem }) {
+  const qc = useQueryClient();
+  const guardDemoWrite = useGuardDemoWrite();
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function apply(status: 'completed' | 'cancelled') {
+    if (guardDemoWrite('update order status')) return;
+    try {
+      setBusy(status);
+      await updateOrderStatus(item.id, status);
+      toastSuccess(
+        status === 'cancelled'
+          ? `Cancelled ${item.customerName}'s order.`
+          : `Completed ${item.customerName}'s order.`,
+      );
+      void qc.invalidateQueries({ queryKey: ['order-alerts'] });
+      void qc.invalidateQueries({ queryKey: ['orders'] });
+      void qc.invalidateQueries({ queryKey: ['stats'] });
+      void qc.invalidateQueries({ queryKey: ['activity'] });
+    } catch (error) {
+      toastError(getErrorMessage(error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <PayForm onClick={(event) => event.stopPropagation()}>
+      <Button
+        type="button"
+        $size="sm"
+        loading={busy === 'completed'}
+        disabled={Boolean(busy)}
+        onClick={() => void apply('completed')}
+      >
+        Complete
+      </Button>
+      <Button
+        type="button"
+        $variant="ghost"
+        $size="sm"
+        loading={busy === 'cancelled'}
+        disabled={Boolean(busy)}
+        onClick={() => void apply('cancelled')}
+      >
+        Cancel
+      </Button>
+    </PayForm>
+  );
+}
+
+function PayLaybyeBalance({ item }: { item: LaybyeAlertItem }) {
+  const qc = useQueryClient();
+  const guardDemoWrite = useGuardDemoWrite();
+  const [amount, setAmount] = useState(
+    String(Number(item.balanceDue || 0).toFixed(2)),
+  );
+
+  const payM = useMutation({
+    mutationFn: () => payLaybye(item.customerName, Number(amount)),
+    onSuccess: (data) => {
+      toastSuccess(
+        data.completed
+          ? `Completed ${item.customerName}'s laybye.`
+          : `Recorded ${money(Number(amount))} on ${item.customerName}'s laybye.`,
+      );
+      void qc.invalidateQueries({ queryKey: ['laybye-alerts'] });
+      void qc.invalidateQueries({ queryKey: ['laybyes'] });
+      void qc.invalidateQueries({ queryKey: ['stats'] });
+      void qc.invalidateQueries({ queryKey: ['activity'] });
+    },
+    onError: (error) => toastError(getErrorMessage(error)),
+  });
+
+  function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (guardDemoWrite('record laybye payments')) return;
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) {
+      toastError('Enter a payment amount.');
+      return;
+    }
+    payM.mutate();
+  }
+
+  return (
+    <PayForm onSubmit={onSubmit} onClick={(event) => event.stopPropagation()}>
+      <AmountInput
+        type="number"
+        min="0.01"
+        step="0.01"
+        value={amount}
+        onChange={(event) => setAmount(event.target.value)}
+        aria-label={`Laybye payment from ${item.customerName}`}
+      />
+      <Button type="submit" $size="sm" loading={payM.isPending}>
+        Record payment
+      </Button>
+    </PayForm>
+  );
+}
+
 export function NotificationsPage() {
   const timeZone = useShopTimezone();
   const [filter, setFilter] = useState<Filter>('all');
@@ -463,6 +716,8 @@ export function NotificationsPage() {
   const {
     dueQuery: dueQ,
     stockQuery: stockQ,
+    orderQuery: orderQ,
+    laybyeQuery: laybyeQ,
     seenKeys,
     markNotificationsRead,
     markKeysRead,
@@ -486,14 +741,39 @@ export function NotificationsPage() {
       });
     }
     for (const item of stockQ.data || []) {
-      const unread = isStockUnread(item, seenKeys);
+      const seenKey = stockSeenKey(item);
+      const unread = isPrefixedUnread({ seenKey }, seenKeys);
       rows.push({
         key: `stock-${item.id}`,
-        seenKey: stockSeenKey(item),
+        seenKey,
         unread,
         sort: stockSort(item) + (unread ? 10_000 : 0),
         kind: 'stock',
         stock: item,
+      });
+    }
+    for (const item of orderQ.data || []) {
+      const seenKey = orderSeenKey(item);
+      const unread = isPrefixedUnread({ seenKey }, seenKeys);
+      rows.push({
+        key: `order-${item.id}`,
+        seenKey,
+        unread,
+        sort: orderSort(item) + (unread ? 10_000 : 0),
+        kind: 'order',
+        order: item,
+      });
+    }
+    for (const item of laybyeQ.data || []) {
+      const seenKey = laybyeSeenKey(item);
+      const unread = isPrefixedUnread({ seenKey }, seenKeys);
+      rows.push({
+        key: `laybye-${item.id}`,
+        seenKey,
+        unread,
+        sort: laybyeSort(item) + (unread ? 10_000 : 0),
+        kind: 'laybye',
+        laybye: item,
       });
     }
     for (const alert of alertsQ.data || []) {
@@ -510,12 +790,24 @@ export function NotificationsPage() {
     }
     rows.sort((a, b) => b.sort - a.sort);
     return rows;
-  }, [alertsQ.data, dueQ.data?.items, seenKeys, stockQ.data]);
+  }, [
+    alertsQ.data,
+    dueQ.data?.items,
+    laybyeQ.data,
+    orderQ.data,
+    seenKeys,
+    stockQ.data,
+  ]);
 
   const visible = filter === 'unread' ? feed.filter((row) => row.unread) : feed;
   const newRows = visible.filter((row) => row.unread);
   const earlierRows = visible.filter((row) => !row.unread);
-  const loading = dueQ.isLoading || stockQ.isLoading || alertsQ.isLoading;
+  const loading =
+    dueQ.isLoading ||
+    stockQ.isLoading ||
+    orderQ.isLoading ||
+    laybyeQ.isLoading ||
+    alertsQ.isLoading;
   const feedUnread = feed.filter((row) => row.unread).length;
 
   function openRow(row: FeedRow) {
@@ -525,7 +817,7 @@ export function NotificationsPage() {
 
   function markAll() {
     const extra = (alertsQ.data || []).map((alert) => alertSeenKey(alert.id));
-    markNotificationsRead(dueQ.data?.items || [], extra, stockQ.data || []);
+    markNotificationsRead(dueQ.data?.items || [], extra);
     setOpenId(null);
   }
 
@@ -539,10 +831,10 @@ export function NotificationsPage() {
           </MarkAll>
         </Head>
 
-        {dueQ.isError || stockQ.isError ? (
+        {dueQ.isError || stockQ.isError || orderQ.isError || laybyeQ.isError ? (
           <ErrorBanner>
             {getErrorMessage(
-              dueQ.error || stockQ.error,
+              dueQ.error || stockQ.error || orderQ.error || laybyeQ.error,
               'Could not load notifications.',
             )}
           </ErrorBanner>
@@ -584,8 +876,8 @@ export function NotificationsPage() {
               </strong>
               <p>
                 {filter === 'unread'
-                  ? 'Credit due, low stock, and chase alerts stay here until you read them.'
-                  : 'Credit sales with a pay-by date land here, along with low stock and chase alerts.'}
+                  ? 'Credit, stock, orders, and laybyes stay here until you read them.'
+                  : 'Credit due, low stock, waiting orders, and quiet laybyes land here.'}
               </p>
             </EmptyState>
           ) : null}
@@ -679,6 +971,63 @@ function NotificationRow({
         {open ? (
           <Expand>
             <AddStock key={`${item.id}-${item.stock}`} item={item} />
+          </Expand>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (row.kind === 'order' && row.order) {
+    const item = row.order;
+    const tone = orderTone(item.status);
+    return (
+      <div>
+        <RowBtn type="button" $unread={row.unread} onClick={onOpen}>
+          <Avatar $tone={tone}>
+            {initials(item.customerName)}
+            <BadgeIcon $tone={tone}>
+              <ClipboardList size={11} strokeWidth={2.4} />
+            </BadgeIcon>
+          </Avatar>
+          <Body>
+            <Copy>{orderCopy(item)}</Copy>
+            <Meta $unread={row.unread}>{orderWhen(item, timeZone)}</Meta>
+          </Body>
+          {row.unread ? <Dot /> : null}
+        </RowBtn>
+        {open ? (
+          <Expand>
+            <OrderActions item={item} />
+          </Expand>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (row.kind === 'laybye' && row.laybye) {
+    const item = row.laybye;
+    const tone = laybyeTone(item.status);
+    return (
+      <div>
+        <RowBtn type="button" $unread={row.unread} onClick={onOpen}>
+          <Avatar $tone={tone}>
+            {initials(item.customerName)}
+            <BadgeIcon $tone={tone}>
+              <CalendarClock size={11} strokeWidth={2.4} />
+            </BadgeIcon>
+          </Avatar>
+          <Body>
+            <Copy>{laybyeCopy(item)}</Copy>
+            <Meta $unread={row.unread}>{laybyeWhen(item, timeZone)}</Meta>
+          </Body>
+          {row.unread ? <Dot /> : null}
+        </RowBtn>
+        {open ? (
+          <Expand>
+            <PayLaybyeBalance
+              key={`${item.id}-${item.balanceDue}`}
+              item={item}
+            />
           </Expand>
         ) : null}
       </div>

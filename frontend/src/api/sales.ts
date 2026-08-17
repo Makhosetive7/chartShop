@@ -166,6 +166,36 @@ export type CreditDueSummary = {
   upcoming: number;
 };
 
+export type LaybyeAlertItem = {
+  id: string;
+  customerId?: string | null;
+  customerName: string;
+  customerPhone?: string | null;
+  totalAmount: number;
+  amountPaid: number;
+  balanceDue: number;
+  dueDate?: string | null;
+  lastPaymentAt?: string | null;
+  status: 'overdue' | 'due' | 'tomorrow' | 'quiet';
+  daysOverdue: number;
+  daysUntilDue: number;
+  daysQuiet: number;
+  items: Array<{
+    productName?: string;
+    quantity?: number;
+    variantLabel?: string;
+    packLabel?: string;
+  }>;
+};
+
+export async function listLaybyeAlerts() {
+  const { data } = await api.get<{
+    success: boolean;
+    items?: LaybyeAlertItem[];
+  }>('/laybye/alerts');
+  return data.items || [];
+}
+
 export async function listCreditDue() {
   const { data } = await api.get<{
     success: boolean;

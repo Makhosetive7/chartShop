@@ -1,6 +1,36 @@
 import { api } from './client';
 import type { Expense, Order, SaleItemInput } from './types';
 
+export type OrderAlertItem = {
+  id: string;
+  shortId: string;
+  customerId?: string | null;
+  customerName: string;
+  orderType: string;
+  orderStatus: string;
+  total: number;
+  orderDate?: string | null;
+  pickupDate?: string | null;
+  status: 'overdue' | 'due' | 'tomorrow' | 'stale';
+  daysOverdue: number;
+  daysUntilPickup: number | null;
+  daysOpen: number;
+  items: Array<{
+    productName?: string;
+    quantity?: number;
+    variantLabel?: string;
+    packLabel?: string;
+  }>;
+};
+
+export async function listOrderAlerts() {
+  const { data } = await api.get<{
+    success: boolean;
+    items?: OrderAlertItem[];
+  }>('/orders/alerts');
+  return data.items || [];
+}
+
 export async function listOrders(status = 'all', limit = 30) {
   const { data } = await api.get<{ success: boolean; orders: Order[] }>(
     `/orders?status=${status}&limit=${limit}`,
