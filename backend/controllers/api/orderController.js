@@ -1,3 +1,4 @@
+import Order from "../../models/Order.js";
 import OrderService from "../../services/OrderService.js";
 import {
   itemsToCommandText,
@@ -5,6 +6,8 @@ import {
 } from "../../utils/apiSaleItems.js";
 import { stripMarkdown } from "../../utils/apiResponse.js";
 import { logApiActivity } from "../../utils/logApiActivity.js";
+import { collectOrderAlerts, OPEN_ORDER_STATUSES } from "../../utils/orderAlerts.js";
+import { DEFAULT_TIMEZONE } from "../../utils/dateBounds.js";
 
 function serializeOrder(o) {
   if (!o) return null;
@@ -27,6 +30,37 @@ function serializeOrder(o) {
     paymentStatus: o.paymentStatus,
     saleId: o.saleId ? String(o.saleId) : null,
   };
+}
+
+export async function listOrderAlerts(req, res) {
+  try {
+    const timeZone = req.shop?.settings?.timezone || DEFAULT_TIMEZONE;
+    const orders = await Order.find({
+      shopId: req.shopId,
+      status: { $in: OPEN_ORDER_STATUSES },
+    })
+      .sort({ orderDate: 1 })
+      .limit(200)
+      .lean();
+
+    const items = collectOrderAlerts(orders, new Date(), timeZone);
+    return res.json({
+      success: true,
+      items,
+      summary: {
+        overdue: items.filter((item) => item.status === "overdue").length,
+        due: items.filter((item) => item.status === "due").length,
+        tomorrow: items.filter((item) => item.status === "tomorrow").length,
+        stale: items.filter((item) => item.status === "stale").length,
+      },
+    });
+  } catch (error) {
+    console.error("[api/orders/alerts]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to list order alerts.",
+    });
+  }
 }
 
 export async function listOrders(req, res) {

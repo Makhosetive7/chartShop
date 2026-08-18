@@ -13,6 +13,7 @@ import { stripMarkdown } from "../../utils/apiResponse.js";
 import { logApiActivity } from "../../utils/logApiActivity.js";
 import { parseCreditDueDate } from "../../utils/creditDueDate.js";
 import { creditChaseStatus } from "../../utils/creditDueReminders.js";
+import { collectLaybyeAlerts } from "../../utils/laybyeAlerts.js";
 import {
   DEFAULT_TIMEZONE,
   formatYmd,
@@ -502,6 +503,38 @@ function serializeLaybye(laybye) {
     completedDate: laybye.completedDate || null,
     notes: laybye.notes || null,
   };
+}
+
+export async function listLaybyeAlerts(req, res) {
+  try {
+    const timeZone = req.shop?.settings?.timezone || DEFAULT_TIMEZONE;
+    const laybyes = await LayBye.find({
+      shopId: req.shopId,
+      status: "active",
+      balanceDue: { $gt: 0 },
+    })
+      .sort({ dueDate: 1 })
+      .limit(200)
+      .lean();
+
+    const items = collectLaybyeAlerts(laybyes, new Date(), timeZone);
+    return res.json({
+      success: true,
+      items,
+      summary: {
+        overdue: items.filter((item) => item.status === "overdue").length,
+        due: items.filter((item) => item.status === "due").length,
+        tomorrow: items.filter((item) => item.status === "tomorrow").length,
+        quiet: items.filter((item) => item.status === "quiet").length,
+      },
+    });
+  } catch (error) {
+    console.error("[api/laybye/alerts]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to list laybye alerts.",
+    });
+  }
 }
 
 export async function listLaybyes(req, res) {

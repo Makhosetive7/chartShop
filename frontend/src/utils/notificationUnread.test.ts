@@ -3,7 +3,11 @@ import {
   countUnreadNotifications,
   markNotificationsSeen,
   notificationSeenKey,
+  pruneSeenKeys,
   readSeenKeys,
+  stockSeenKey,
+  orderSeenKey,
+  laybyeSeenKey,
 } from './notificationUnread';
 
 describe('notificationUnread', () => {
@@ -34,6 +38,34 @@ describe('notificationUnread', () => {
         [{ id: 'a', status: 'due' }],
         readSeenKeys('shop-1'),
       ),
+    ).toBe(1);
+  });
+
+  it('counts prefixed stock, order, and laybye rows until they are read', () => {
+    const prefixed = [
+      { seenKey: stockSeenKey({ id: 'milk:2l', status: 'out' }) },
+      { seenKey: orderSeenKey({ id: 'ord1', status: 'stale' }) },
+      { seenKey: laybyeSeenKey({ id: 'lb1', status: 'quiet' }) },
+    ];
+    expect(countUnreadNotifications([], new Set(), prefixed)).toBe(3);
+    expect(
+      countUnreadNotifications(
+        [],
+        new Set([prefixed[0].seenKey]),
+        prefixed,
+      ),
+    ).toBe(2);
+  });
+
+  it('re-alerts prefixed rows after they leave the list and come back', () => {
+    const low = { seenKey: stockSeenKey({ id: 'milk:2l', status: 'low' }) };
+    markNotificationsSeen('shop-1', [], [], [low]);
+    expect(readSeenKeys('shop-1').has(low.seenKey)).toBe(true);
+
+    pruneSeenKeys('shop-1', [], []);
+    expect(readSeenKeys('shop-1').has(low.seenKey)).toBe(false);
+    expect(
+      countUnreadNotifications([], readSeenKeys('shop-1'), [low]),
     ).toBe(1);
   });
 });

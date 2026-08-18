@@ -6,11 +6,30 @@ export async function listProducts() {
   return data.products || [];
 }
 
+export type StockAlertItem = {
+  id: string;
+  productId: string;
+  variantId: string;
+  productName: string;
+  variantLabel: string;
+  stock: number;
+  lowStockThreshold: number;
+  status: 'out' | 'low';
+};
+
 export async function listLowStock() {
   const { data } = await api.get<{ success: boolean; products: Product[] }>(
     '/products/low-stock',
   );
   return data.products || [];
+}
+
+export async function listStockAlerts() {
+  const { data } = await api.get<{
+    success: boolean;
+    items?: StockAlertItem[];
+  }>('/products/low-stock');
+  return data.items || [];
 }
 
 export async function createProduct(body: {

@@ -41,6 +41,8 @@ const CATALOG = [
   { name: "Airtime 10", price: 10, costPrice: 9.5, stock: 100 },
   { name: "Sugar 2kg", price: 3.8, costPrice: 2.6, stock: 35 },
   { name: "Cooking oil", price: 5.5, costPrice: 3.9, stock: 24 },
+  { name: "Eggs tray", price: 6.5, costPrice: 4.2, stock: 0, lowStockThreshold: 6 },
+  { name: "Bath soap", price: 1.2, costPrice: 0.6, stock: 3, lowStockThreshold: 8 },
 ];
 
 function dueAtOffset(daysFromToday) {
@@ -125,7 +127,7 @@ async function main() {
   const shop = await Shop.create({
     businessName: BUSINESS_NAME,
     businessDescription:
-      "Writable test shop for credit due dates, notifications, and chase alerts.",
+      "Writable test shop for credit due, low stock, stale orders, and quiet laybyes.",
     isActive: true,
     isDemo: false,
     registeredAt,
@@ -151,11 +153,12 @@ async function main() {
 
   const products = [];
   for (const entry of CATALOG) {
+    const threshold = entry.lowStockThreshold ?? 6;
     const variant = buildDefaultVariant({
       price: entry.price,
       costPrice: entry.costPrice,
       stock: entry.stock,
-      lowStockThreshold: 6,
+      lowStockThreshold: threshold,
     });
     const doc = {
       shopId: shop._id,
@@ -163,7 +166,7 @@ async function main() {
       price: entry.price,
       costPrice: entry.costPrice,
       stock: entry.stock,
-      lowStockThreshold: 6,
+      lowStockThreshold: threshold,
       trackStock: true,
       variants: [variant],
       isActive: true,
@@ -173,7 +176,39 @@ async function main() {
     products.push(await Product.create(doc));
   }
 
-  const [bread, milk, airtime, sugar, oil] = products;
+  const coke500 = buildDefaultVariant({
+    label: "500ml",
+    price: 1.2,
+    costPrice: 0.7,
+    stock: 0,
+    lowStockThreshold: 6,
+    sortOrder: 0,
+  });
+  const coke2l = buildDefaultVariant({
+    label: "2L",
+    price: 2.5,
+    costPrice: 1.5,
+    stock: 2,
+    lowStockThreshold: 6,
+    sortOrder: 1,
+  });
+  const cokeDoc = {
+    shopId: shop._id,
+    name: "Coca-Cola",
+    price: coke500.price,
+    costPrice: coke500.costPrice,
+    stock: 0,
+    lowStockThreshold: 6,
+    trackStock: true,
+    variants: [coke500, coke2l],
+    isActive: true,
+    createdAt: registeredAt,
+  };
+  syncProductMirrors(cokeDoc);
+  const coke = await Product.create(cokeDoc);
+  products.push(coke);
+
+  const [bread, milk, airtime, sugar, oil, eggs, soap] = products;
 
   const customerSeeds = [
     { name: "Thabo Ncube", phone: "0772002001" },
@@ -184,6 +219,10 @@ async function main() {
     { name: "Farai Mutasa", phone: "0772002006" },
     { name: "Chipo Mhlanga", phone: "0772002007" },
     { name: "Tendai Zhou", phone: "0772002008" },
+    { name: "Blessing Ndlovu", phone: "0772002009" },
+    { name: "Tadiwa Gumbo", phone: "0772002010" },
+    { name: "Mai Chengetai", phone: "0772002011" },
+    { name: "Kuda Banda", phone: "0772002012" },
   ];
 
   const customers = await Customer.insertMany(
@@ -211,6 +250,10 @@ async function main() {
     farai,
     chipo,
     tendai,
+    blessing,
+    tadiwa,
+    chengetai,
+    kuda,
   ] = customers;
 
   const scenarios = [
@@ -376,6 +419,133 @@ async function main() {
     date: saleTime(1),
   });
 
+  function orderItems(product, quantity) {
+    const line = lineFromProduct(product, quantity);
+    return [
+      {
+        productId: line.productId,
+        productName: line.productName,
+        variantId: line.variantId,
+        variantLabel: line.variantLabel,
+        packId: line.packId,
+        packLabel: line.packLabel,
+        unitsPerPack: line.unitsPerPack,
+        baseUnitsDeducted: line.baseUnitsDeducted,
+        quantity: line.quantity,
+        price: line.price,
+        total: line.total,
+      },
+    ];
+  }
+
+  await Order.create([
+    {
+      shopId: shop._id,
+      customerId: blessing._id,
+      customerName: blessing.name,
+      customerPhone: blessing.phone,
+      items: orderItems(bread, 4),
+      total: bread.price * 4,
+      orderType: "pickup",
+      status: "pending",
+      paymentStatus: "pending",
+      orderDate: saleTime(4),
+    },
+    {
+      shopId: shop._id,
+      customerId: tadiwa._id,
+      customerName: tadiwa.name,
+      customerPhone: tadiwa.phone,
+      items: orderItems(milk, 2),
+      total: milk.price * 2,
+      orderType: "delivery",
+      status: "pending",
+      paymentStatus: "pending",
+      orderDate: saleTime(1),
+      pickupDate: dueAtOffset(-2),
+      deliveryAddress: "Mbare, Harare",
+    },
+    {
+      shopId: shop._id,
+      customerId: tendai._id,
+      customerName: tendai.name,
+      customerPhone: tendai.phone,
+      items: orderItems(sugar, 1),
+      total: sugar.price,
+      orderType: "pickup",
+      status: "pending",
+      paymentStatus: "pending",
+      orderDate: saleTime(0),
+      pickupDate: dueAtOffset(0),
+    },
+    {
+      shopId: shop._id,
+      customerId: jane._id,
+      customerName: jane.name,
+      customerPhone: jane.phone,
+      items: orderItems(oil, 1),
+      total: oil.price,
+      orderType: "pickup",
+      status: "pending",
+      paymentStatus: "pending",
+      orderDate: saleTime(0),
+    },
+  ]);
+
+  await LayBye.create([
+    {
+      shopId: shop._id,
+      customerId: chengetai._id,
+      customerName: chengetai.name,
+      customerPhone: chengetai.phone,
+      items: orderItems(coke, 1),
+      totalAmount: 80,
+      amountPaid: 20,
+      balanceDue: 60,
+      installments: [
+        { amount: 20, date: saleTime(20), paymentMethod: "cash" },
+      ],
+      status: "active",
+      startDate: saleTime(20),
+      dueDate: dueAtOffset(15),
+      reservedStock: false,
+    },
+    {
+      shopId: shop._id,
+      customerId: kuda._id,
+      customerName: kuda.name,
+      customerPhone: kuda.phone,
+      items: orderItems(oil, 2),
+      totalAmount: 55,
+      amountPaid: 15,
+      balanceDue: 40,
+      installments: [
+        { amount: 15, date: saleTime(4), paymentMethod: "cash" },
+      ],
+      status: "active",
+      startDate: saleTime(10),
+      dueDate: dueAtOffset(-3),
+      reservedStock: false,
+    },
+    {
+      shopId: shop._id,
+      customerId: farai._id,
+      customerName: farai.name,
+      customerPhone: farai.phone,
+      items: orderItems(soap, 6),
+      totalAmount: soap.price * 6,
+      amountPaid: soap.price * 2,
+      balanceDue: soap.price * 4,
+      installments: [
+        { amount: soap.price * 2, date: saleTime(2), paymentMethod: "cash" },
+      ],
+      status: "active",
+      startDate: saleTime(8),
+      dueDate: dueAtOffset(20),
+      reservedStock: false,
+    },
+  ]);
+
   await ActivityLog.create([
     {
       shopId: shop._id,
@@ -407,14 +577,33 @@ async function main() {
     shopId: shop._id,
     type: "credit",
   });
+  const openOrders = await Order.countDocuments({
+    shopId: shop._id,
+    status: "pending",
+  });
+  const activeLaybyes = await LayBye.countDocuments({
+    shopId: shop._id,
+    status: "active",
+  });
 
   console.log("Seeded test shop");
   console.log(`  username: ${USERNAME}`);
   console.log(`  pin:      ${PIN}`);
   console.log(`  credit sales: ${creditSales}`);
   console.log(`  customers owing: ${owing}`);
+  console.log(`  open orders: ${openOrders}`);
+  console.log(`  active laybyes: ${activeLaybyes}`);
   console.log(
-    "  expected notifications: overdue (Thabo, Jane, Sam, Chipo), due today (Rudo), tomorrow (Nomsa), upcoming (Farai)"
+    "  credit: overdue (Thabo, Jane, Sam, Chipo), due today (Rudo), tomorrow (Nomsa), upcoming (Farai)"
+  );
+  console.log(
+    "  stock: out (Eggs tray, Coca-Cola 500ml), low (Bath soap, Coca-Cola 2L)"
+  );
+  console.log(
+    "  orders: stale (Blessing), overdue pickup (Tadiwa), due today (Tendai); Jane's fresh pickup should stay off the bell"
+  );
+  console.log(
+    "  laybyes: quiet (Mai Chengetai), overdue (Kuda); Farai's recent payment should stay off the bell"
   );
 
   await mongoose.disconnect();

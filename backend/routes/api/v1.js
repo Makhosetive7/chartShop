@@ -156,6 +156,7 @@ router.post("/sales/:id/cancel", requireApiAuth, saleController.cancelSale);
 
 // Laybye
 router.get("/laybye", requireApiAuth, saleController.listLaybyes);
+router.get("/laybye/alerts", requireApiAuth, saleController.listLaybyeAlerts);
 router.post("/laybye", requireApiAuth, saleController.createLaybye);
 router.post("/laybye/pay", requireApiAuth, saleController.payLaybye);
 router.post("/laybye/complete", requireApiAuth, saleController.completeLaybye);
@@ -186,6 +187,7 @@ router.post(
 );
 
 // Orders
+router.get("/orders/alerts", requireApiAuth, orderController.listOrderAlerts);
 router.get("/orders", requireApiAuth, orderController.listOrders);
 router.post("/orders", requireApiAuth, orderController.createOrder);
 router.get("/orders/:id", requireApiAuth, orderController.getOrder);
