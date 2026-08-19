@@ -10,6 +10,7 @@ function serializeExpense(e) {
     amount: e.amount,
     description: e.description,
     category: e.category,
+    kind: e.kind || "operating_expense",
     paymentMethod: e.paymentMethod,
     receiptNumber: e.receiptNumber,
     date: e.date,
@@ -21,6 +22,7 @@ export async function createExpense(req, res) {
     const amount = Number(req.body?.amount);
     const description = String(req.body?.description || "").trim();
     const category = String(req.body?.category || "other").toLowerCase();
+    const kind = String(req.body?.kind || "operating_expense").toLowerCase();
     const paymentMethod = String(req.body?.paymentMethod || "cash").toLowerCase();
     const receiptNumber = String(req.body?.receiptNumber || "");
     const allowOverspend = Boolean(req.body?.allowOverspend);
@@ -32,7 +34,7 @@ export async function createExpense(req, res) {
       category,
       paymentMethod,
       receiptNumber,
-      { createdByUserId: req.userId, allowOverspend }
+      { createdByUserId: req.userId, allowOverspend, kind, actorRole: req.role }
     );
 
     if (!result.success) {
@@ -46,6 +48,13 @@ export async function createExpense(req, res) {
           shortfall: result.shortfall,
         });
       }
+      if (result.code === "ADMIN_REQUIRED") {
+        return res.status(403).json({
+          success: false,
+          code: "ADMIN_REQUIRED",
+          error: stripMarkdown(result.message),
+        });
+      }
 
       return res.status(400).json({
         success: false,
@@ -55,12 +64,13 @@ export async function createExpense(req, res) {
 
     await logApiActivity(req, {
       action: "expense.recorded",
-      summary: `Recorded expense $${Number(amount).toFixed(2)} — ${category}`,
+      summary: `Recorded ${kind === "inventory_fund_transfer" ? "inventory transfer" : "expense"} $${Number(amount).toFixed(2)} — ${category}`,
       entityType: "expense",
       entityId: result.expense?._id,
       metadata: {
         amount,
         category,
+        kind,
         description,
         allowOverspend,
         ownerCashIn: result.ownerCashIn || 0,
@@ -123,6 +133,10 @@ export async function listExpenses(req, res) {
       success: true,
       period: result.period || period,
       total: result.total,
+      operatingTotal: result.operatingTotal,
+      inventoryTransferTotal: result.inventoryTransferTotal,
+      operatingCount: result.operatingCount,
+      inventoryTransferCount: result.inventoryTransferCount,
       expenses: (result.expenses || []).map(serializeExpense),
       message: result.message ? stripMarkdown(result.message) : undefined,
     });
@@ -151,6 +165,10 @@ export async function expenseBreakdown(req, res) {
       success: true,
       period: result.period || period,
       total: result.total,
+      operatingTotal: result.operatingTotal,
+      inventoryTransferTotal: result.inventoryTransferTotal,
+      operatingCount: result.operatingCount,
+      inventoryTransferCount: result.inventoryTransferCount,
       breakdown: result.breakdown,
       message: result.message ? stripMarkdown(result.message) : undefined,
     });

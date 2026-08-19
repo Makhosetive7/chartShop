@@ -20,6 +20,7 @@ const expenseSchema = new mongoose.Schema({
     type: String,
     enum: [
       "purchases",
+      "restocking",
       "sales",
       "rent",
       "utilities",
@@ -54,6 +55,11 @@ const expenseSchema = new mongoose.Schema({
     type: String,
     enum: ["cash", "bank", "mobile", "credit", "other"],
     default: "cash",
+  },
+  kind: {
+    type: String,
+    enum: ["operating_expense", "inventory_fund_transfer"],
+    default: "operating_expense",
   },
   date: {
     type: Date,

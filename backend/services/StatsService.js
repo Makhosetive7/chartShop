@@ -513,7 +513,7 @@ class StatsService {
         shopId,
         date: { $gte: today.startDate, $lte: today.endDate },
       })
-        .select("amount")
+        .select("amount kind")
         .lean(),
       FinancialService.getCashAvailable(shopId),
     ]);
@@ -540,8 +540,17 @@ class StatsService {
     }
 
     const todaySummary = sumSales(todaySales);
+    const todayOperatingExpenses = todayExpenses.filter(
+      (e) => e.kind !== "inventory_fund_transfer"
+    );
+    const todayInventoryTransfers = todayExpenses.filter(
+      (e) => e.kind === "inventory_fund_transfer"
+    );
     const todayExpensesTotal = round2(
-      todayExpenses.reduce((s, e) => s + (e.amount || 0), 0)
+      todayOperatingExpenses.reduce((s, e) => s + (e.amount || 0), 0)
+    );
+    const todayInventoryTransfersTotal = round2(
+      todayInventoryTransfers.reduce((s, e) => s + (e.amount || 0), 0)
     );
     const laybyeDueAmount = round2(
       activeLaybyeDocs.reduce((s, lb) => s + (lb.balanceDue || 0), 0)
@@ -562,6 +571,7 @@ class StatsService {
         week: sumSales(weekSales),
         month: sumSales(monthSales),
         todayExpenses: todayExpensesTotal,
+        todayInventoryTransfers: todayInventoryTransfersTotal,
         todayLeft: round2(todaySummary.revenue - todayExpensesTotal),
         cashAvailable,
         laybyeDue: {

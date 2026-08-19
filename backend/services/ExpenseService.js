@@ -1,6 +1,7 @@
 import Expense from "../models/Expense.js";
 import Sale from "../models/Sale.js";
 import Shop from "../models/Shop.js";
+import User from "../models/User.js";
 import FinancialService from "./FinancialService.js";
 import {
   DEFAULT_TIMEZONE,
@@ -21,7 +22,12 @@ class ExpenseService {
     category = "other",
     paymentMethod = "cash",
     receiptNumber = "",
-    { createdByUserId, allowOverspend = false } = {}
+    {
+      createdByUserId,
+      allowOverspend = false,
+      kind = "operating_expense",
+      actorRole = null,
+    } = {}
   ) {
     try {
       // Validate amount
@@ -42,6 +48,7 @@ class ExpenseService {
 
       const validCategories = [
         "purchases",
+        "restocking",
         "sales",
         "rent",
         "utilities",
@@ -76,6 +83,29 @@ class ExpenseService {
           success: false,
           message: `Invalid category. Available: ${validCategories.join(", ")}`,
         };
+      }
+
+      const validKinds = ["operating_expense", "inventory_fund_transfer"];
+      if (!validKinds.includes(kind)) {
+        return {
+          success: false,
+          message: `Invalid type. Available: ${validKinds.join(", ")}`,
+        };
+      }
+
+      if (kind === "inventory_fund_transfer") {
+        let role = actorRole;
+        if (!role && createdByUserId) {
+          const user = await User.findById(createdByUserId).select("role").lean();
+          role = user?.role || null;
+        }
+        if (role !== "admin") {
+          return {
+            success: false,
+            code: "ADMIN_REQUIRED",
+            message: "Only admins can record restock transfers.",
+          };
+        }
       }
 
       const amountRounded = FinancialService.roundMoney(amount);
@@ -123,6 +153,7 @@ class ExpenseService {
         description: description.trim(),
         category,
         paymentMethod,
+        kind,
         receiptNumber: receiptNumber.trim(),
         date: new Date(),
         ...(createdByUserId != null ? { createdByUserId } : {}),
@@ -205,6 +236,18 @@ class ExpenseService {
         success: true,
         expenses,
         total: expenses.reduce((sum, exp) => sum + exp.amount, 0),
+        operatingTotal: expenses
+          .filter((exp) => exp.kind !== "inventory_fund_transfer")
+          .reduce((sum, exp) => sum + exp.amount, 0),
+        inventoryTransferTotal: expenses
+          .filter((exp) => exp.kind === "inventory_fund_transfer")
+          .reduce((sum, exp) => sum + exp.amount, 0),
+        operatingCount: expenses.filter(
+          (exp) => exp.kind !== "inventory_fund_transfer"
+        ).length,
+        inventoryTransferCount: expenses.filter(
+          (exp) => exp.kind === "inventory_fund_transfer"
+        ).length,
         startDate,
         endDate,
       };
@@ -239,7 +282,7 @@ class ExpenseService {
       });
 
       const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
-      const totalExpenses = expenseResult.total;
+      const totalExpenses = expenseResult.operatingTotal || 0;
       const profit = totalRevenue - totalExpenses;
 
       return {
@@ -251,7 +294,7 @@ class ExpenseService {
         startDate,
         endDate,
         salesCount: sales.length,
-        expensesCount: expenseResult.expenses.length,
+        expensesCount: expenseResult.operatingCount || 0,
       };
     } catch (error) {
       console.error("Calculate profit error:", error);
@@ -295,6 +338,10 @@ class ExpenseService {
         success: true,
         breakdown: sortedCategories,
         total: expenseResult.total,
+        operatingTotal: expenseResult.operatingTotal,
+        inventoryTransferTotal: expenseResult.inventoryTransferTotal,
+        operatingCount: expenseResult.operatingCount,
+        inventoryTransferCount: expenseResult.inventoryTransferCount,
         period,
         startDate: expenseResult.startDate,
         endDate: expenseResult.endDate,
@@ -316,6 +363,11 @@ class ExpenseService {
     message += `Amount: $${expense.amount.toFixed(2)}\n`;
     message += `Description: ${expense.description}\n`;
     message += `Category: ${expense.category.toUpperCase()}\n`;
+    message += `Type: ${
+      expense.kind === "inventory_fund_transfer"
+        ? "INVENTORY FUND TRANSFER"
+        : "OPERATING EXPENSE"
+    }\n`;
     message += `Payment: ${expense.paymentMethod.toUpperCase()}\n`;
     message += `Date: ${expense.date.toLocaleString()}\n`;
 
@@ -339,7 +391,7 @@ class ExpenseService {
   /**
    * Generate expenses report message
    */
-  generateExpensesReportMessage(expenses, total, period, startDate, endDate) {
+  generateExpensesReportMessage(expenses, total, period, startDate, endDate, extras = {}) {
     const periodText =
       period === "daily"
         ? "TODAY"
@@ -349,10 +401,22 @@ class ExpenseService {
         ? "THIS MONTH"
         : period.toUpperCase();
 
+    const operatingTotal = extras.operatingTotal ?? total;
+    const inventoryTransferTotal = extras.inventoryTransferTotal ?? 0;
+    const operatingCount = extras.operatingCount ?? expenses.filter(
+      (e) => e.kind !== "inventory_fund_transfer"
+    ).length;
+    const inventoryTransferCount = extras.inventoryTransferCount ?? expenses.filter(
+      (e) => e.kind === "inventory_fund_transfer"
+    ).length;
+
     let message = `*EXPENSES REPORT - ${periodText}*\n\n`;
     message += `Period: ${startDate.toDateString()} - ${endDate.toDateString()}\n`;
-    message += `Total Expenses: $${total.toFixed(2)}\n`;
-    message += `Number of Expenses: ${expenses.length}\n\n`;
+    message += `Operating Expenses: $${Number(operatingTotal).toFixed(2)} (${operatingCount} items)\n`;
+    if (inventoryTransferTotal > 0) {
+      message += `Inventory Fund Transfers: $${Number(inventoryTransferTotal).toFixed(2)} (${inventoryTransferCount} transfer${inventoryTransferCount === 1 ? "" : "s"})\n`;
+    }
+    message += `Cash Out Total: $${Number(total).toFixed(2)}\n\n`;
 
     if (expenses.length === 0) {
       message += `No expenses recorded for this period.`;
@@ -362,8 +426,13 @@ class ExpenseService {
     message += `*RECENT EXPENSES:*\n\n`;
 
     expenses.slice(0, 5).forEach((expense, index) => {
+      const typeLabel =
+        expense.kind === "inventory_fund_transfer"
+          ? "Inventory transfer"
+          : "Operating expense";
       message += `${index + 1}. $${expense.amount.toFixed(2)}\n`;
       message += `   ${expense.description}\n`;
+      message += `   Type: ${typeLabel}\n`;
       message += `   Category: ${expense.category}\n`;
       message += `   Date: ${expense.date.toLocaleDateString()}\n\n`;
     });
@@ -475,7 +544,11 @@ class ExpenseService {
 
     let message = `*EXPENSE BREAKDOWN - ${periodText}*\n\n`;
     message += `Period: ${breakdownResult.startDate.toDateString()} - ${breakdownResult.endDate.toDateString()}\n`;
-    message += `Total Expenses: $${breakdownResult.total.toFixed(2)}\n\n`;
+    message += `Operating Expenses: $${Number(breakdownResult.operatingTotal ?? breakdownResult.total).toFixed(2)}\n`;
+    if ((breakdownResult.inventoryTransferTotal || 0) > 0) {
+      message += `Inventory Fund Transfers: $${Number(breakdownResult.inventoryTransferTotal).toFixed(2)}\n`;
+    }
+    message += `Cash Out Total: $${breakdownResult.total.toFixed(2)}\n\n`;
 
     const categoryNames = {
       supplies: "Supplies",
@@ -490,6 +563,7 @@ class ExpenseService {
       packaging: "Packaging",
       other: "Other",
       purchases: "Purchases",
+      restocking: "Restocking",
       sales: "Sales",
       salary_wages: "Salary & Wages",
       equipment: "Equipment",

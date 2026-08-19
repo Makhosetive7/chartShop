@@ -408,6 +408,7 @@ class PDFService {
     const tx =
       (cashFlowData.transactions?.totalSales || 0) +
       (cashFlowData.transactions?.expenses || 0) +
+      (cashFlowData.transactions?.inventoryTransfers || 0) +
       (cashFlowData.transactions?.refunds || 0) +
       (cashFlowData.cashFlow?.inflows?.debtPayments?.count || 0) +
       (cashFlowData.cashFlow?.inflows?.laybyePayments?.count || 0);
@@ -422,8 +423,11 @@ class PDFService {
   }
 
   buildRecommendations(cashFlowData) {
-    const { cashFlow, outstanding, revenue, details } = cashFlowData;
-    const totalExpenses = details.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const { cashFlow, outstanding, revenue, profitability } = cashFlowData;
+    const totalExpenses =
+      profitability?.expenses ??
+      cashFlow?.outflows?.expenses?.amount ??
+      0;
     const recommendations = [];
 
     if (cashFlow.net < 0) {
@@ -484,9 +488,12 @@ class PDFService {
     const inflowTx =
       cashFlow.inflows.cashSales.count +
       cashFlow.inflows.debtPayments.count +
-      cashFlow.inflows.laybyePayments.count;
+      cashFlow.inflows.laybyePayments.count +
+      (cashFlow.inflows.ownerCashIns?.count || 0);
     const outflowItems =
-      cashFlow.outflows.expenses.count + cashFlow.outflows.refunds.count;
+      cashFlow.outflows.expenses.count +
+      (cashFlow.outflows.inventoryTransfers?.count || 0) +
+      cashFlow.outflows.refunds.count;
     const revenueTx =
       revenue.cash.count + revenue.credit.count + revenue.completedLaybyes.count;
     const outstandingAccounts =
@@ -494,9 +501,11 @@ class PDFService {
     const totalActivity =
       (transactions?.totalSales || 0) +
       (transactions?.expenses || 0) +
+      (transactions?.inventoryTransfers || 0) +
       (transactions?.refunds || 0) +
       cashFlow.inflows.debtPayments.count +
-      cashFlow.inflows.laybyePayments.count;
+      cashFlow.inflows.laybyePayments.count +
+      (cashFlow.inflows.ownerCashIns?.count || 0);
 
     const flowNote =
       cashFlow.net >= 0
@@ -552,12 +561,31 @@ class PDFService {
           amount: this.money(cashFlow.inflows.laybyePayments.amount),
           count: cashFlow.inflows.laybyePayments.count,
         },
+        ...(cashFlow.inflows.ownerCashIns?.amount > 0
+          ? [
+              {
+                label: 'Owner cash in',
+                amount: this.money(cashFlow.inflows.ownerCashIns.amount),
+                count: cashFlow.inflows.ownerCashIns.count,
+              },
+            ]
+          : []),
         {
           label: 'Expenses',
           amount: this.moneyParen(cashFlow.outflows.expenses.amount),
           count: cashFlow.outflows.expenses.count,
           accent: true,
         },
+        ...((cashFlow.outflows.inventoryTransfers?.amount || 0) > 0
+          ? [
+              {
+                label: 'Inventory transfers',
+                amount: this.moneyParen(cashFlow.outflows.inventoryTransfers.amount),
+                count: cashFlow.outflows.inventoryTransfers.count,
+                accent: true,
+              },
+            ]
+          : []),
         {
           label: 'Refunds',
           amount: this.moneyParen(cashFlow.outflows.refunds.amount),

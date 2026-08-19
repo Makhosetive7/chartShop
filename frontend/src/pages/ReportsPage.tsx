@@ -325,6 +325,7 @@ function activityCount(data: CashFlowData) {
   return (
     (data.transactions?.totalSales || 0) +
     (data.transactions?.expenses || 0) +
+    (data.transactions?.inventoryTransfers || 0) +
     (data.transactions?.refunds || 0) +
     (data.cashFlow?.inflows?.debtPayments?.count || 0) +
     (data.cashFlow?.inflows?.laybyePayments?.count || 0) +
@@ -386,7 +387,9 @@ function CashFlowSummary({
     (cf?.inflows?.laybyePayments?.count || 0) +
     (cf?.inflows?.ownerCashIns?.count || 0);
   const outflowItems =
-    (cf?.outflows?.expenses?.count || 0) + (cf?.outflows?.refunds?.count || 0);
+    (cf?.outflows?.expenses?.count || 0) +
+    (cf?.outflows?.inventoryTransfers?.count || 0) +
+    (cf?.outflows?.refunds?.count || 0);
   const revenueTx =
     (rev?.cash?.count || 0) +
     (rev?.credit?.count || 0) +
@@ -496,6 +499,13 @@ function CashFlowSummary({
               <span>({money(cf?.outflows?.expenses?.amount || 0)})</span>
               <span>{cf?.outflows?.expenses?.count || 0}</span>
             </Row>
+            {(cf?.outflows?.inventoryTransfers?.amount || 0) > 0 ? (
+              <Row $accent>
+                <span>Inventory transfers</span>
+                <span>({money(cf?.outflows?.inventoryTransfers?.amount || 0)})</span>
+                <span>{cf?.outflows?.inventoryTransfers?.count || 0}</span>
+              </Row>
+            ) : null}
             <Row $accent>
               <span>Refunds</span>
               <span>({money(cf?.outflows?.refunds?.amount || 0)})</span>

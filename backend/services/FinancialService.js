@@ -310,7 +310,21 @@ class FinancialService {
         date: { $gte: startDate, $lte: endDate },
       });
 
-      const expensesTotal = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+      const operatingExpenses = expenses.filter(
+        (exp) => exp.kind !== 'inventory_fund_transfer'
+      );
+      const inventoryTransfers = expenses.filter(
+        (exp) => exp.kind === 'inventory_fund_transfer'
+      );
+      const operatingExpensesTotal = operatingExpenses.reduce(
+        (sum, exp) => sum + exp.amount,
+        0
+      );
+      const inventoryTransfersTotal = inventoryTransfers.reduce(
+        (sum, exp) => sum + exp.amount,
+        0
+      );
+      const expensesTotal = operatingExpensesTotal + inventoryTransfersTotal;
 
       const refunds = await Sale.find({
         shopId,
@@ -363,7 +377,7 @@ class FinancialService {
 
       // Operating result = revenue − expenses (always).
       // Gross profit = revenue − COGS when costPrice was set on sold products.
-      const operatingResult = totalRevenue - expensesTotal;
+      const operatingResult = totalRevenue - operatingExpensesTotal;
       const profitMargin =
         totalRevenue > 0 ? (operatingResult / totalRevenue) * 100 : 0;
       const grossMarginPct =
@@ -399,7 +413,14 @@ class FinancialService {
             total: totalCashIn,
           },
           outflows: {
-            expenses: { amount: expensesTotal, count: expenses.length },
+            expenses: {
+              amount: operatingExpensesTotal,
+              count: operatingExpenses.length,
+            },
+            inventoryTransfers: {
+              amount: inventoryTransfersTotal,
+              count: inventoryTransfers.length,
+            },
             refunds: { amount: refundsTotal, count: refunds.length },
             total: totalCashOut,
           },
@@ -418,7 +439,7 @@ class FinancialService {
 
         profitability: {
           operatingResult,
-          expenses: expensesTotal,
+          expenses: operatingExpensesTotal,
           profitMargin,
           cogs,
           grossProfit,
@@ -437,12 +458,15 @@ class FinancialService {
 
         transactions: {
           totalSales: cashSales.length + creditSales.length + completedLaybyes.length,
-          expenses: expenses.length,
+          expenses: operatingExpenses.length,
+          inventoryTransfers: inventoryTransfers.length,
           refunds: refunds.length,
         },
 
         details: {
           expenses,
+          operatingExpenses,
+          inventoryTransfers,
           cashSales,
           creditSales,
           completedLaybyes,
@@ -466,6 +490,10 @@ class FinancialService {
 
       const categoryBreakdown = {};
       let total = 0;
+      let operatingTotal = 0;
+      let inventoryTransferTotal = 0;
+      let operatingCount = 0;
+      let inventoryTransferCount = 0;
 
       expenses.forEach((expense) => {
         if (!categoryBreakdown[expense.category]) {
@@ -479,6 +507,13 @@ class FinancialService {
         categoryBreakdown[expense.category].count += 1;
         categoryBreakdown[expense.category].items.push(expense);
         total += expense.amount;
+        if (expense.kind === "inventory_fund_transfer") {
+          inventoryTransferTotal += expense.amount;
+          inventoryTransferCount += 1;
+        } else {
+          operatingTotal += expense.amount;
+          operatingCount += 1;
+        }
       });
 
       // Sort by total amount
@@ -494,6 +529,10 @@ class FinancialService {
         success: true,
         categories: sorted,
         total,
+        operatingTotal,
+        inventoryTransferTotal,
+        operatingCount,
+        inventoryTransferCount,
         count: expenses.length,
       };
     } catch (error) {
@@ -534,7 +573,10 @@ class FinancialService {
       report += `Total Money In: $${cashFlow.cashFlow.inflows.total.toFixed(2)}\n\n`;
 
       report += `MONEY OUT:\n`;
-      report += `- Expenses Paid: $${cashFlow.cashFlow.outflows.expenses.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.expenses.count} items)\n`;
+      report += `- Operating Expenses Paid: $${cashFlow.cashFlow.outflows.expenses.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.expenses.count} items)\n`;
+      if ((cashFlow.cashFlow.outflows.inventoryTransfers?.amount || 0) > 0) {
+        report += `- Inventory Fund Transfers: $${cashFlow.cashFlow.outflows.inventoryTransfers.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.inventoryTransfers.count} transfer${cashFlow.cashFlow.outflows.inventoryTransfers.count === 1 ? '' : 's'})\n`;
+      }
       report += `- Refunds Given: $${cashFlow.cashFlow.outflows.refunds.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.refunds.count} refunds)\n`;
       report += `Total Money Out: $${cashFlow.cashFlow.outflows.total.toFixed(2)}\n\n`;
 
@@ -557,7 +599,7 @@ class FinancialService {
       report += `OPERATING RESULT\n`;
       report += `----------------------------------------\n\n`;
       report += `- Total Revenue: $${cashFlow.revenue.total.toFixed(2)}\n`;
-      report += `- Total Expenses: $${cashFlow.profitability.expenses.toFixed(2)}\n`;
+      report += `- Operating Expenses: $${cashFlow.profitability.expenses.toFixed(2)}\n`;
       report += `- Operating Result: $${cashFlow.profitability.operatingResult.toFixed(2)}\n`;
       report += `- Margin: ${cashFlow.profitability.profitMargin.toFixed(1)}%\n`;
 

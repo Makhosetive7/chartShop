@@ -53,6 +53,7 @@ export type StatsOverview = {
     week: { count: number; revenue: number };
     month: { count: number; revenue: number };
     todayExpenses: number;
+    todayInventoryTransfers?: number;
     todayLeft?: number;
     cashAvailable?: number;
     laybyeDue?: { amount: number; count: number };
