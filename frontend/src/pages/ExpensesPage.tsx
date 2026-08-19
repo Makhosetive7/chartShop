@@ -32,10 +32,12 @@ import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate } from '@/utils/dates';
+import { useAuth } from '@/auth';
 
 const PERIODS = ['daily', 'weekly', 'monthly'] as const;
 const CATEGORIES = [
   'purchases',
+  'restocking',
   'rent',
   'utilities',
   'transport',
@@ -45,9 +47,22 @@ const CATEGORIES = [
   'other',
 ];
 
+const CATEGORY_LABELS: Record<string, string> = {
+  purchases: 'Purchases',
+  restocking: 'Restocking',
+  rent: 'Rent',
+  utilities: 'Utilities',
+  transport: 'Transport',
+  marketing: 'Marketing',
+  packaging: 'Packaging',
+  market_fees: 'Market fees',
+  other: 'Other',
+};
+
 type ExpenseForm = {
   amount: string;
   description: string;
+  kind: 'operating_expense' | 'inventory_fund_transfer';
   category: string;
   paymentMethod: string;
 };
@@ -55,15 +70,18 @@ type ExpenseForm = {
 const emptyForm: ExpenseForm = {
   amount: '',
   description: '',
+  kind: 'operating_expense',
   category: 'other',
   paymentMethod: 'cash',
 };
 
 export function ExpensesPage() {
   const qc = useQueryClient();
+  const { isAdmin } = useAuth();
   const timeZone = useShopTimezone();
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>('daily');
   const [form, setForm] = useState<ExpenseForm>(emptyForm);
+  const [isRestockMode, setIsRestockMode] = useState(false);
   const [overspend, setOverspend] = useState<InsufficientCashError | null>(
     null,
   );
@@ -92,6 +110,7 @@ export function ExpensesPage() {
           : '';
       toastSuccess(`Expense recorded.${topUp}`);
       setForm(emptyForm);
+      setIsRestockMode(false);
       setOverspend(null);
       void qc.invalidateQueries({ queryKey: ['expenses'] });
       void qc.invalidateQueries({ queryKey: ['stats'] });
@@ -111,6 +130,7 @@ export function ExpensesPage() {
     createM.mutate({
       amount: Number(form.amount),
       description: form.description.trim(),
+      kind: form.kind,
       category: form.category,
       paymentMethod: form.paymentMethod,
       ...(allowOverspend ? { allowOverspend: true } : {}),
@@ -122,11 +142,35 @@ export function ExpensesPage() {
     submitExpense(false);
   }
 
+  function useRestockMode() {
+    if (!isAdmin) return;
+    setIsRestockMode(true);
+    setForm((prev) => ({
+      ...prev,
+      kind: 'inventory_fund_transfer',
+      category: 'restocking',
+      description: prev.description || 'Stock restock',
+    }));
+  }
+
+  function useNormalMode() {
+    setIsRestockMode(false);
+    setForm((prev) => ({
+      ...prev,
+      kind: 'operating_expense',
+      category: prev.category === 'restocking' ? 'other' : prev.category,
+      description:
+        prev.description === 'Stock restock' ? '' : prev.description,
+    }));
+  }
+
   const expenses = listQ.data?.expenses || [];
   const breakdown = (breakdownQ.data?.breakdown || []) as Array<
     [string, { total: number; count: number }]
   >;
   const cashAvailable = cashQ.data?.cashAvailable;
+  const operatingTotal = listQ.data?.operatingTotal ?? 0;
+  const inventoryTransferTotal = listQ.data?.inventoryTransferTotal ?? 0;
 
   return (
     <Page>
@@ -144,6 +188,43 @@ export function ExpensesPage() {
 
       <Card>
         <form onSubmit={onCreate}>
+          <div
+            style={{
+              border: '1px solid var(--border-color, #e6d9d3)',
+              padding: 12,
+              marginBottom: 14,
+              background: 'var(--surface-muted, #fff7f4)',
+            }}
+          >
+            <p style={{ margin: '0 0 10px 0', fontWeight: 600 }}>
+              Quick actions
+            </p>
+            <p style={{ margin: '0 0 12px 0', fontSize: 13, opacity: 0.8 }}>
+              {isAdmin
+                ? 'Use Restock for supplier/stock top-ups. It auto-fills the right accounting type and category.'
+                : 'Restock is available to admins only. You can still record normal expenses below.'}
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {isAdmin ? (
+                <Button
+                  type="button"
+                  variant={isRestockMode ? 'filled' : 'light'}
+                  onClick={useRestockMode}
+                  style={{ minWidth: 210 }}
+                >
+                  Restock
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant={!isRestockMode ? 'filled' : 'light'}
+                onClick={useNormalMode}
+                style={{ minWidth: 210 }}
+              >
+                Normal expense
+              </Button>
+            </div>
+          </div>
           <Row>
             <Field>
               Amount
@@ -164,23 +245,29 @@ export function ExpensesPage() {
                 onChange={(e) =>
                   setForm({ ...form, description: e.target.value })
                 }
-                placeholder="What was this for"
+                placeholder={
+                  isRestockMode
+                    ? 'What stock are you buying'
+                    : 'What was this for'
+                }
                 required
               />
             </Field>
-            <Field>
-              Category
-              <Select
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+            {!isRestockMode ? (
+              <Field>
+                Category
+                <Select
+                  value={form.category}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                >
+                  {CATEGORIES.filter((c) => c !== 'restocking').map((c) => (
+                    <option key={c} value={c}>
+                      {CATEGORY_LABELS[c] || c}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
             <Field>
               Method
               <Select
@@ -220,20 +307,23 @@ export function ExpensesPage() {
           <>
             <Skeleton $w="10rem" $h="1rem" $mb="16px" />
             <TableSkeleton
-              columns={4}
+              columns={5}
               rows={6}
-              widths={['8rem', '10rem', '5rem', '4.5rem']}
+              widths={['8rem', '9rem', '10rem', '5rem', '4.5rem']}
             />
           </>
         ) : (
           <>
             <p>
-              Period total: <strong>{money(listQ.data?.total)}</strong>
+              Cash out total: <strong>{money(listQ.data?.total)}</strong> (Operating{' '}
+              {money(operatingTotal)} + Inventory transfers{' '}
+              {money(inventoryTransferTotal)})
             </p>
             <Table>
               <thead>
                 <tr>
                   <th>Date</th>
+                  <th>Type</th>
                   <th>Description</th>
                   <th>Category</th>
                   <th>Amount</th>
@@ -243,8 +333,13 @@ export function ExpensesPage() {
                 {expenses.map((ex) => (
                   <tr key={ex.id}>
                     <td>{formatShopDate(ex.date, timeZone)}</td>
+                    <td>
+                      {ex.kind === 'inventory_fund_transfer'
+                        ? 'Inventory transfer'
+                        : 'Operating expense'}
+                    </td>
                     <td>{ex.description}</td>
-                    <td>{ex.category}</td>
+                    <td>{CATEGORY_LABELS[ex.category] || ex.category}</td>
                     <td>{money(ex.amount)}</td>
                   </tr>
                 ))}
@@ -274,7 +369,7 @@ export function ExpensesPage() {
             <tbody>
               {breakdown.map(([cat, info]) => (
                 <tr key={cat}>
-                  <td>{cat}</td>
+                  <td>{CATEGORY_LABELS[cat] || cat}</td>
                   <td>{info.count}</td>
                   <td>{money(info.total)}</td>
                 </tr>

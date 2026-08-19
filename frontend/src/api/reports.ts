@@ -17,6 +17,7 @@ export type CashFlowData = {
     };
     outflows?: {
       expenses?: FlowBucket;
+      inventoryTransfers?: FlowBucket;
       refunds?: FlowBucket;
       total?: number;
     };
@@ -44,7 +45,12 @@ export type CashFlowData = {
     laybyeDue?: { amount?: number; count?: number };
     total?: number;
   };
-  transactions?: { totalSales?: number; expenses?: number; refunds?: number };
+  transactions?: {
+    totalSales?: number;
+    expenses?: number;
+    inventoryTransfers?: number;
+    refunds?: number;
+  };
   period?: { startDate?: string; endDate?: string };
   insights?: string[];
   cashAvailable?: number;

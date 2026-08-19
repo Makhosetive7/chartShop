@@ -20,6 +20,7 @@ function emptyCashFlow() {
       },
       outflows: {
         expenses: { amount: 0, count: 0 },
+        inventoryTransfers: { amount: 0, count: 0 },
         refunds: { amount: 0, count: 0 },
         total: 0,
       },
@@ -43,7 +44,7 @@ function emptyCashFlow() {
       laybyeDue: { amount: 0, count: 0 },
       total: 0,
     },
-    transactions: { totalSales: 0, expenses: 0, refunds: 0 },
+    transactions: { totalSales: 0, expenses: 0, inventoryTransfers: 0, refunds: 0 },
     details: {
       expenses: [],
       cashSales: [],
@@ -162,5 +163,62 @@ describe("PDFService redesign", () => {
     assert.ok(stat.size > 500, `expected PDF bytes, got ${stat.size}`);
     const head = fs.readFileSync(activePath).subarray(0, 5).toString("utf8");
     assert.equal(head, "%PDF-");
+  });
+
+  it("treats restock as cash out, not operating expense, in PDF helpers", async () => {
+    const data = emptyCashFlow();
+    data.cashFlow.inflows.cashSales = { amount: 200, count: 1 };
+    data.cashFlow.inflows.total = 200;
+    data.cashFlow.outflows.expenses = { amount: 20, count: 1 };
+    data.cashFlow.outflows.inventoryTransfers = { amount: 80, count: 1 };
+    data.cashFlow.outflows.refunds = { amount: 0, count: 0 };
+    data.cashFlow.outflows.total = 100;
+    data.cashFlow.net = 100;
+    data.revenue.cash = { amount: 200, count: 1 };
+    data.revenue.total = 200;
+    data.profitability.expenses = 20;
+    data.profitability.operatingResult = 180;
+    data.transactions.totalSales = 1;
+    data.transactions.expenses = 1;
+    data.transactions.inventoryTransfers = 1;
+    data.details.cashSales = [
+      {
+        date: new Date("2026-08-05T10:00:00"),
+        type: "cash",
+        total: 200,
+        items: [{ quantity: 1, productName: "Bread" }],
+      },
+    ];
+    data.details.expenses = [
+      {
+        date: new Date("2026-08-05"),
+        amount: 20,
+        description: "Rent",
+        category: "rent",
+        kind: "operating_expense",
+      },
+      {
+        date: new Date("2026-08-05"),
+        amount: 80,
+        description: "Stock",
+        category: "restocking",
+        kind: "inventory_fund_transfer",
+      },
+    ];
+
+    assert.equal(PDFService.buildStatusBadge(data, "today"), null);
+    const recs = PDFService.buildRecommendations(data);
+    assert.ok(recs.length >= 1);
+    assert.equal(
+      recs.some((r) => /60%|40%/.test(r.message || "")),
+      false,
+      "restock must not inflate expense-ratio warnings"
+    );
+
+    const restockPath = path.join(outDir, "test-redesign-restock.pdf");
+    await writeReportPdf(restockPath, data);
+    const stat = fs.statSync(restockPath);
+    assert.ok(stat.size > 500, `expected PDF bytes, got ${stat.size}`);
+    fs.unlinkSync(restockPath);
   });
 });

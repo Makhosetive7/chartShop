@@ -402,7 +402,7 @@ export function DashboardPage() {
                 {
                   label: 'Cash in till',
                   value: money(snap.cashAvailable ?? 0),
-                  hint: 'Recorded sales + payments − expenses',
+                  hint: 'Recorded sales + payments − expenses − restock',
                   icon: Banknote,
                 },
                 {
@@ -414,10 +414,14 @@ export function DashboardPage() {
                 {
                   label: "Today's expenses",
                   value: money(snap.todayExpenses || 0),
-                  hint:
-                    todayLeft >= 0
-                      ? `Left today ${money(todayLeft)}`
-                      : `Over by ${money(Math.abs(todayLeft))} today`,
+                  hint: (() => {
+                    const restock = snap.todayInventoryTransfers || 0;
+                    const restockNote =
+                      restock > 0 ? ` · Restock ${money(restock)}` : '';
+                    return todayLeft >= 0
+                      ? `Left today ${money(todayLeft)}${restockNote}`
+                      : `Over by ${money(Math.abs(todayLeft))} today${restockNote}`;
+                  })(),
                   hintTone: todayLeft >= 0 ? 'ok' : 'warning',
                   icon: Wallet,
                 },

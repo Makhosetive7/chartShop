@@ -68,6 +68,10 @@ export async function listExpenses(period = 'daily') {
     success: boolean;
     expenses: Expense[];
     total?: number;
+    operatingTotal?: number;
+    inventoryTransferTotal?: number;
+    operatingCount?: number;
+    inventoryTransferCount?: number;
   }>(`/expenses?period=${period}`);
   return data;
 }
@@ -92,6 +96,7 @@ export async function createExpense(body: {
   amount: number;
   description: string;
   category?: string;
+  kind?: 'operating_expense' | 'inventory_fund_transfer';
   paymentMethod?: string;
   allowOverspend?: boolean;
 }) {

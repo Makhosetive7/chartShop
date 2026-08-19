@@ -150,6 +150,7 @@ export type Expense = {
   amount: number;
   description: string;
   category: string;
+  kind?: 'operating_expense' | 'inventory_fund_transfer';
   paymentMethod: string;
   date?: string;
 };

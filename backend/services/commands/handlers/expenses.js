@@ -25,6 +25,7 @@ export async function handleExpenseRecording(shopId, text, actorUserId = null) {
     // Parse description (could be in quotes or multiple words)
     let description = "";
     let category = "other";
+    let kind = "operating_expense";
     let paymentMethod = "cash";
     let receiptNumber = "";
 
@@ -39,6 +40,10 @@ export async function handleExpenseRecording(shopId, text, actorUserId = null) {
           .split(" ")
           .filter(Boolean);
         if (remaining[0]) category = remaining[0];
+        if (category === "restocking" || category === "restock") {
+          category = "restocking";
+          kind = "inventory_fund_transfer";
+        }
         if (remaining[1]) paymentMethod = remaining[1];
         if (remaining[2]) receiptNumber = remaining[2];
       }
@@ -49,6 +54,8 @@ export async function handleExpenseRecording(shopId, text, actorUserId = null) {
       // Try to extract known categories and payment methods
       const knownCategories = [
         "supplies",
+        "restock",
+        "restocking",
         "utilities",
         "rent",
         "salary",
@@ -71,7 +78,17 @@ export async function handleExpenseRecording(shopId, text, actorUserId = null) {
           paymentMethod = word;
           words.splice(i, 1);
         } else if (knownCategories.includes(word) && category === "other") {
-          category = word === "supplies" ? "purchases" : word === "salary" ? "salary_wages" : word;
+          category =
+            word === "supplies"
+              ? "purchases"
+              : word === "salary"
+                ? "salary_wages"
+                : word === "restock"
+                  ? "restocking"
+                  : word;
+          if (category === "restocking") {
+            kind = "inventory_fund_transfer";
+          }
           words.splice(i, 1);
         } else if (word.match(/^[A-Z0-9]{3,}$/) && !receiptNumber) {
           // Looks like a receipt number
@@ -100,7 +117,7 @@ export async function handleExpenseRecording(shopId, text, actorUserId = null) {
       category,
       paymentMethod,
       receiptNumber,
-      { createdByUserId: actorUserId, allowOverspend }
+      { createdByUserId: actorUserId, allowOverspend, kind }
     );
 
     if (!result.success && result.code === "INSUFFICIENT_CASH") {
@@ -155,7 +172,13 @@ export async function handleExpenseReports(shopId, text) {
       result.total,
       actualPeriod,
       result.startDate,
-      result.endDate
+      result.endDate,
+      {
+        operatingTotal: result.operatingTotal,
+        inventoryTransferTotal: result.inventoryTransferTotal,
+        operatingCount: result.operatingCount,
+        inventoryTransferCount: result.inventoryTransferCount,
+      }
     );
   } catch (error) {
     console.error("Expense reports error:", error);
@@ -213,7 +236,11 @@ export async function handleExpenseBreakdown(shopId, text) {
 
     let report = `*EXPENSE BREAKDOWN - ${period.toUpperCase()}*\n\n`;
     report += `Period: ${startDate.toDateString()} - ${endDate.toDateString()}\n`;
-    report += `Total Expenses: $${result.total.toFixed(2)}\n`;
+    report += `Operating Expenses: $${Number(result.operatingTotal || 0).toFixed(2)}\n`;
+    if ((result.inventoryTransferTotal || 0) > 0) {
+      report += `Inventory Fund Transfers: $${Number(result.inventoryTransferTotal).toFixed(2)}\n`;
+    }
+    report += `Cash Out Total: $${result.total.toFixed(2)}\n`;
     report += `Categories: ${result.categories.length}\n\n`;
 
     result.categories.forEach((cat, index) => {
