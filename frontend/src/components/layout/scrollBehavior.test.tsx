@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { theme } from '@/styles/theme';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { MarketingLayout } from '@/components/marketing/MarketingLayout';
+import { SiteLayout } from '@/components/marketing/SiteLayout';
 import { App } from '@/App';
 
 vi.mock('@/auth', () => ({
@@ -176,7 +176,7 @@ describe('scroll behaviour', () => {
       <ThemeProvider theme={theme}>
         <MemoryRouter initialEntries={[initialPath]}>
           <Routes>
-            <Route element={<MarketingLayout />}>
+            <Route element={<SiteLayout />}>
               <Route index element={<MarketingProbe label="Home" />} />
               <Route path="login" element={<MarketingProbe label="Login" />} />
               <Route
@@ -249,7 +249,7 @@ describe('scroll behaviour', () => {
     });
   });
 
-  describe('MarketingLayout', () => {
+  describe('SiteLayout', () => {
     it('scrolls window to top on first marketing load', async () => {
       renderMarketing('/');
       await waitFor(() => {
@@ -411,7 +411,7 @@ describe('scroll behaviour', () => {
         <ThemeProvider theme={theme}>
           <MemoryRouter initialEntries={['/login']}>
             <Routes>
-              <Route element={<MarketingLayout />}>
+              <Route element={<SiteLayout />}>
                 <Route
                   path="login"
                   element={

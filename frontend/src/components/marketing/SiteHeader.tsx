@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { useAuth } from '@/auth';
 import { ArrowButton } from './marketingPrimitives';
 import { BrandMark } from '@/components/ui/BrandMark';
+import { ScrollProgressBar } from './ScrollProgressBar';
 
 const Bar = styled.header`
   position: sticky;
@@ -75,7 +76,11 @@ const Ghost = styled(Link)`
   }
 `;
 
-export function SiteHeader() {
+type SiteHeaderProps = {
+  showScrollProgress?: boolean;
+};
+
+export function SiteHeader({ showScrollProgress = false }: SiteHeaderProps) {
   const { isAuthenticated } = useAuth();
 
   return (
@@ -100,6 +105,7 @@ export function SiteHeader() {
           </>
         )}
       </Actions>
+      {showScrollProgress ? <ScrollProgressBar /> : null}
     </Bar>
   );
 }

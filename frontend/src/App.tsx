@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ProtectedRoute } from '@/routes/ProtectedRoute';
-import { MarketingLayout } from '@/components/marketing/MarketingLayout';
+import { SiteLayout } from '@/components/marketing/SiteLayout';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { DemoUpgradeProvider } from '@/components/demo/DemoUpgradeProvider';
 import { DemoTourProvider } from '@/components/demo/DemoTour';
@@ -35,7 +35,7 @@ export function App() {
       <DemoUpgradeProvider>
         <DemoTourProvider>
           <Routes>
-            <Route element={<MarketingLayout />}>
+            <Route element={<SiteLayout />}>
               <Route index element={<HomePage />} />
               <Route path="login" element={<LoginPage />} />
               <Route path="register" element={<RegisterPage />} />
