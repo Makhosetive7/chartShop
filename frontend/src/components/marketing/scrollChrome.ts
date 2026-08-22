@@ -9,12 +9,23 @@ export function getScrollProgress(
   return Math.min(1, Math.max(0, scrollTop / docHeight));
 }
 
-/** Pixels scrolled before the back-to-top control appears. */
-export const BACK_TO_TOP_THRESHOLD = 480;
+/** Routes that show scroll progress and back-to-top. */
+export const SCROLL_CHROME_ROUTES = new Set(['/']);
+
+export function isScrollChromeRoute(pathname: string): boolean {
+  return SCROLL_CHROME_ROUTES.has(pathname);
+}
+
+/** Viewport fraction scrolled before back-to-top appears. */
+export const BACK_TO_TOP_VIEWPORT_RATIO = 0.45;
+
+export function getBackToTopThreshold(viewportHeight = window.innerHeight): number {
+  return Math.round(viewportHeight * BACK_TO_TOP_VIEWPORT_RATIO);
+}
 
 export function shouldShowBackToTop(
   scrollTop = window.scrollY || document.documentElement.scrollTop,
-  threshold = BACK_TO_TOP_THRESHOLD,
+  viewportHeight = window.innerHeight,
 ): boolean {
-  return scrollTop >= threshold;
+  return scrollTop >= getBackToTopThreshold(viewportHeight);
 }

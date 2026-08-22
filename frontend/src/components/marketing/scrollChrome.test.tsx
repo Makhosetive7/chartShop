@@ -5,8 +5,10 @@ import { ThemeProvider } from 'styled-components';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { theme } from '@/styles/theme';
 import {
-  BACK_TO_TOP_THRESHOLD,
+  BACK_TO_TOP_VIEWPORT_RATIO,
+  getBackToTopThreshold,
   getScrollProgress,
+  isScrollChromeRoute,
   shouldShowBackToTop,
 } from './scrollChrome';
 import { ScrollProgressBar } from './ScrollProgressBar';
@@ -29,11 +31,27 @@ describe('scrollChrome helpers', () => {
     expect(getScrollProgress(1500, 2000, 1000)).toBe(1);
   });
 
-  it('shows back-to-top past the threshold', () => {
-    expect(shouldShowBackToTop(0)).toBe(false);
-    expect(shouldShowBackToTop(BACK_TO_TOP_THRESHOLD - 1)).toBe(false);
-    expect(shouldShowBackToTop(BACK_TO_TOP_THRESHOLD)).toBe(true);
-    expect(shouldShowBackToTop(BACK_TO_TOP_THRESHOLD + 100)).toBe(true);
+  it('enables scroll chrome on homepage only', () => {
+    expect(isScrollChromeRoute('/')).toBe(true);
+    expect(isScrollChromeRoute('/login')).toBe(false);
+    expect(isScrollChromeRoute('/register')).toBe(false);
+    expect(isScrollChromeRoute('/recover')).toBe(false);
+    expect(isScrollChromeRoute('/setup')).toBe(false);
+  });
+
+  it('computes back-to-top threshold from viewport height', () => {
+    expect(getBackToTopThreshold(1000)).toBe(Math.round(1000 * BACK_TO_TOP_VIEWPORT_RATIO));
+    expect(getBackToTopThreshold(667)).toBe(Math.round(667 * BACK_TO_TOP_VIEWPORT_RATIO));
+  });
+
+  it('shows back-to-top past the viewport threshold', () => {
+    const viewport = 1000;
+    const threshold = getBackToTopThreshold(viewport);
+
+    expect(shouldShowBackToTop(0, viewport)).toBe(false);
+    expect(shouldShowBackToTop(threshold - 1, viewport)).toBe(false);
+    expect(shouldShowBackToTop(threshold, viewport)).toBe(true);
+    expect(shouldShowBackToTop(threshold + 100, viewport)).toBe(true);
   });
 });
 
@@ -52,7 +70,7 @@ describe('ScrollProgressBar', () => {
     });
   });
 
-  it('renders a fixed progress track', () => {
+  it('renders a progress track', () => {
     renderWithTheme(<ScrollProgressBar />);
     expect(screen.getByTestId('scroll-progress')).toBeInTheDocument();
   });
@@ -64,6 +82,7 @@ describe('BackToTop', () => {
       'scrollTo',
       vi.fn((..._args: unknown[]) => undefined),
     );
+    Object.defineProperty(window, 'innerHeight', { value: 1000, configurable: true });
     Object.defineProperty(window, 'scrollY', {
       value: 0,
       configurable: true,
@@ -87,8 +106,9 @@ describe('BackToTop', () => {
 
   it('appears after scrolling past the threshold and scrolls to top on click', async () => {
     const user = userEvent.setup();
+    const threshold = getBackToTopThreshold(1000);
     Object.defineProperty(window, 'scrollY', {
-      value: BACK_TO_TOP_THRESHOLD + 20,
+      value: threshold + 20,
       configurable: true,
       writable: true,
     });

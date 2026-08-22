@@ -3,14 +3,13 @@ import styled from 'styled-components';
 import { getScrollProgress } from './scrollChrome';
 
 const Track = styled.div`
-  position: fixed;
-  top: 0;
+  position: absolute;
   left: 0;
   right: 0;
-  height: 3px;
-  z-index: 50;
+  bottom: 0;
+  height: 2px;
   pointer-events: none;
-  background: transparent;
+  background: rgba(74, 14, 28, 0.08);
 `;
 
 const Fill = styled.div<{ $progress: number }>`
@@ -18,8 +17,8 @@ const Fill = styled.div<{ $progress: number }>`
   width: 100%;
   transform-origin: left center;
   transform: scaleX(${({ $progress }) => $progress});
-  background: ${({ theme }) => theme.colors.primary};
-  transition: transform 80ms linear;
+  background: ${({ theme }) => theme.colors.primaryLight};
+  transition: transform 60ms linear;
 `;
 
 export function ScrollProgressBar() {
