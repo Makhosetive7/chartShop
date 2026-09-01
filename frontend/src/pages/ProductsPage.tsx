@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import styled from 'styled-components';
-import { Search } from 'lucide-react';
+import styled, { keyframes } from 'styled-components';
+import { Loader2, Search } from 'lucide-react';
 import {
   listProducts,
   createProduct,
@@ -284,6 +284,16 @@ const StepBtn = styled.button`
   }
 `;
 
+const spin = keyframes`
+  to {
+    transform: rotate(360deg);
+  }
+`;
+
+const StepSpinner = styled(Loader2)`
+  animation: ${spin} 0.75s linear infinite;
+`;
+
 const Truncate = styled.span`
   display: block;
   min-width: 0;
@@ -305,6 +315,17 @@ const NameCell = styled.div`
     flex-shrink: 0;
   }
 `;
+
+function variantStockBusy(
+  rowBusy: string | null,
+  productId: string,
+  variantId: string,
+  op?: '+' | '-',
+) {
+  if (!rowBusy) return false;
+  if (op) return rowBusy === `${productId}:${variantId}:${op}`;
+  return rowBusy.startsWith(`${productId}:${variantId}:`);
+}
 
 function stockStatus(p: Product): 'ok' | 'low' | 'out' | 'off' {
   if (!p.trackStock) return 'off';
@@ -967,6 +988,9 @@ export function ProductsPage() {
               {variantsOf(expandedProduct).map((v) => {
                 const packs = (v.packs || []).filter((pk) => pk.isActive !== false);
                 const variants = variantsOf(expandedProduct);
+                const stockBusy = variantStockBusy(rowBusy, expandedProduct.id, v.id);
+                const addBusy = variantStockBusy(rowBusy, expandedProduct.id, v.id, '+');
+                const subBusy = variantStockBusy(rowBusy, expandedProduct.id, v.id, '-');
                 const packSummary = packs
                   .map((pk) =>
                     pk.unitsPerPack === 1
@@ -983,20 +1007,25 @@ export function ProductsPage() {
                         {packSummary ? ` · ${packSummary}` : ''}
                       </SizeDetails>
                       <SizeStock>
-                        {v.trackStock ? `${v.stock} in stock` : 'Stock tracking off'}
+                        {v.trackStock
+                          ? stockBusy
+                            ? 'Updating stock…'
+                            : `${v.stock} in stock`
+                          : 'Stock tracking off'}
                       </SizeStock>
                     </SizeMeta>
                     <SizeActions>
                       {v.trackStock ? (
                         <>
                           <StockLabel>Change stock</StockLabel>
-                          <AdjustGroup>
+                          <AdjustGroup aria-busy={stockBusy || undefined}>
                             <QtyInput
                               type="number"
                               min="1"
                               placeholder="Qty"
                               aria-label={`How many to change for ${v.label || expandedProduct.name}`}
                               value={stockEdit[v.id] || ''}
+                              disabled={stockBusy}
                               onChange={(e) =>
                                 setStockEdit({
                                   ...stockEdit,
@@ -1007,24 +1036,34 @@ export function ProductsPage() {
                             <StepBtn
                               type="button"
                               title="Add stock"
-                              aria-label="Add stock"
-                              disabled={rowBusy === `${expandedProduct.id}:${v.id}:+`}
+                              aria-label={addBusy ? 'Adding stock' : 'Add stock'}
+                              aria-busy={addBusy || undefined}
+                              disabled={stockBusy}
                               onClick={() =>
                                 void adjustVariantStock(expandedProduct, v.id, '+')
                               }
                             >
-                              +
+                              {addBusy ? (
+                                <StepSpinner size={14} strokeWidth={2.5} aria-hidden />
+                              ) : (
+                                '+'
+                              )}
                             </StepBtn>
                             <StepBtn
                               type="button"
                               title="Take out stock"
-                              aria-label="Take out stock"
-                              disabled={rowBusy === `${expandedProduct.id}:${v.id}:-`}
+                              aria-label={subBusy ? 'Removing stock' : 'Take out stock'}
+                              aria-busy={subBusy || undefined}
+                              disabled={stockBusy}
                               onClick={() =>
                                 void adjustVariantStock(expandedProduct, v.id, '-')
                               }
                             >
-                              −
+                              {subBusy ? (
+                                <StepSpinner size={14} strokeWidth={2.5} aria-hidden />
+                              ) : (
+                                '−'
+                              )}
                             </StepBtn>
                           </AdjustGroup>
                         </>
