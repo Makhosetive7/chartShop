@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import styled from 'styled-components';
 import {
   AlertTriangle,
@@ -11,26 +10,11 @@ import {
   Package,
 } from 'lucide-react';
 import { fetchActivity, type ActivityItem } from '@/api/chat';
-import { recordPayment } from '@/api/customers';
-import { updateOrderStatus, type OrderAlertItem } from '@/api/ops';
-import { updateStock, type StockAlertItem } from '@/api/products';
-import {
-  payLaybye,
-  type CreditDueItem,
-  type LaybyeAlertItem,
-} from '@/api/sales';
+import { type OrderAlertItem } from '@/api/ops';
+import { type StockAlertItem } from '@/api/products';
+import { type CreditDueItem, type LaybyeAlertItem } from '@/api/sales';
 import { getErrorMessage, money } from '@/api/types';
-import {
-  Page,
-  PageTitle,
-  Tabs,
-  Tab,
-  ErrorBanner,
-  Input,
-  Button,
-} from '@/components/ui/primitives';
-import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
-import { toastError, toastSuccess } from '@/lib/toast';
+import { Page, PageTitle, Tabs, Tab, ErrorBanner } from '@/components/ui/primitives';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate, formatShopDateTime } from '@/utils/dates';
 import { formatSaleItemLabel } from '@/utils/productCatalog';
@@ -118,13 +102,13 @@ const RowBtn = styled.button<{ $unread?: boolean }>`
   background: ${({ theme, $unread }) =>
     $unread ? theme.colors.primaryTint : theme.colors.surface};
   text-align: left;
-  cursor: pointer;
+  cursor: ${({ $unread }) => ($unread ? 'pointer' : 'default')};
   font: inherit;
   color: inherit;
 
   &:hover {
     background: ${({ theme, $unread }) =>
-      $unread ? theme.colors.peachSoft : theme.colors.cream};
+      $unread ? theme.colors.peachSoft : theme.colors.surface};
   }
 `;
 
@@ -199,24 +183,6 @@ const Dot = styled.span`
   margin-top: 18px;
   border-radius: 50%;
   background: ${({ theme }) => theme.colors.primaryLight};
-`;
-
-const Expand = styled.div`
-  padding: 0 16px 14px 76px;
-  background: ${({ theme }) => theme.colors.cream};
-`;
-
-const PayForm = styled.form`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-`;
-
-const AmountInput = styled(Input)`
-  width: 7.5rem;
-  flex: 0 0 auto;
-  background: ${({ theme }) => theme.colors.surface};
 `;
 
 const EmptyState = styled.div`
@@ -363,10 +329,6 @@ function stockSort(item: StockAlertItem) {
   return 450 - item.stock;
 }
 
-function restockQty(item: StockAlertItem) {
-  return Math.max(1, item.lowStockThreshold - item.stock + 1);
-}
-
 function goodsLabel(
   items: Array<{
     productName?: string;
@@ -507,212 +469,9 @@ function orderTone(status: OrderAlertItem['status']) {
   return 'info' as const;
 }
 
-function PayTowardBalance({ item }: { item: CreditDueItem }) {
-  const qc = useQueryClient();
-  const guardDemoWrite = useGuardDemoWrite();
-  const [amount, setAmount] = useState(
-    String(Number(item.customerBalance || 0).toFixed(2)),
-  );
-
-  const payM = useMutation({
-    mutationFn: () => recordPayment(item.customerId, Number(amount)),
-    onSuccess: (data) => {
-      toastSuccess(`Recorded ${money(data.amountPaid)} from ${item.customerName}.`);
-      void qc.invalidateQueries({ queryKey: ['credit-due'] });
-      void qc.invalidateQueries({ queryKey: ['customers'] });
-      void qc.invalidateQueries({ queryKey: ['stats'] });
-      void qc.invalidateQueries({ queryKey: ['activity'] });
-    },
-    onError: (error) => toastError(getErrorMessage(error)),
-  });
-
-  function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (guardDemoWrite('record a payment')) return;
-    const value = Number(amount);
-    if (!Number.isFinite(value) || value <= 0) {
-      toastError('Enter a payment amount.');
-      return;
-    }
-    payM.mutate();
-  }
-
-  return (
-    <PayForm onSubmit={onSubmit} onClick={(event) => event.stopPropagation()}>
-      <AmountInput
-        type="number"
-        min="0.01"
-        step="0.01"
-        value={amount}
-        onChange={(event) => setAmount(event.target.value)}
-        aria-label={`Payment from ${item.customerName}`}
-      />
-      <Button type="submit" $size="sm" loading={payM.isPending}>
-        Record payment
-      </Button>
-    </PayForm>
-  );
-}
-
-function AddStock({ item }: { item: StockAlertItem }) {
-  const qc = useQueryClient();
-  const guardDemoWrite = useGuardDemoWrite();
-  const [quantity, setQuantity] = useState(String(restockQty(item)));
-
-  const stockM = useMutation({
-    mutationFn: () =>
-      updateStock(item.productId, {
-        op: '+',
-        quantity: Number(quantity),
-        variantId: item.variantId,
-      }),
-    onSuccess: (product) => {
-      toastSuccess(`Added ${quantity} to ${product.name}.`);
-      void qc.invalidateQueries({ queryKey: ['stock-alerts'] });
-      void qc.invalidateQueries({ queryKey: ['products'] });
-      void qc.invalidateQueries({ queryKey: ['stats'] });
-      void qc.invalidateQueries({ queryKey: ['activity'] });
-    },
-    onError: (error) => toastError(getErrorMessage(error)),
-  });
-
-  function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (guardDemoWrite('change products')) return;
-    const value = Number(quantity);
-    if (!Number.isFinite(value) || value <= 0) {
-      toastError('Enter how many to add.');
-      return;
-    }
-    stockM.mutate();
-  }
-
-  return (
-    <PayForm onSubmit={onSubmit} onClick={(event) => event.stopPropagation()}>
-      <AmountInput
-        type="number"
-        min="1"
-        step="1"
-        value={quantity}
-        onChange={(event) => setQuantity(event.target.value)}
-        aria-label={`Add stock to ${stockLabel(item)}`}
-      />
-      <Button type="submit" $size="sm" loading={stockM.isPending}>
-        Add stock
-      </Button>
-    </PayForm>
-  );
-}
-
-function OrderActions({ item }: { item: OrderAlertItem }) {
-  const qc = useQueryClient();
-  const guardDemoWrite = useGuardDemoWrite();
-  const [busy, setBusy] = useState<string | null>(null);
-
-  async function apply(status: 'completed' | 'cancelled') {
-    if (guardDemoWrite('update order status')) return;
-    try {
-      setBusy(status);
-      await updateOrderStatus(item.id, status);
-      toastSuccess(
-        status === 'cancelled'
-          ? `Cancelled ${item.customerName}'s order.`
-          : `Completed ${item.customerName}'s order.`,
-      );
-      void qc.invalidateQueries({ queryKey: ['order-alerts'] });
-      void qc.invalidateQueries({ queryKey: ['orders'] });
-      void qc.invalidateQueries({ queryKey: ['stats'] });
-      void qc.invalidateQueries({ queryKey: ['activity'] });
-    } catch (error) {
-      toastError(getErrorMessage(error));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  return (
-    <PayForm onClick={(event) => event.stopPropagation()}>
-      <Button
-        type="button"
-        $size="sm"
-        loading={busy === 'completed'}
-        disabled={Boolean(busy)}
-        onClick={() => void apply('completed')}
-      >
-        Complete
-      </Button>
-      <Button
-        type="button"
-        $variant="ghost"
-        $size="sm"
-        loading={busy === 'cancelled'}
-        disabled={Boolean(busy)}
-        onClick={() => void apply('cancelled')}
-      >
-        Cancel
-      </Button>
-    </PayForm>
-  );
-}
-
-function PayLaybyeBalance({ item }: { item: LaybyeAlertItem }) {
-  const qc = useQueryClient();
-  const guardDemoWrite = useGuardDemoWrite();
-  const [amount, setAmount] = useState(
-    String(Number(item.balanceDue || 0).toFixed(2)),
-  );
-
-  const payM = useMutation({
-    mutationFn: () => payLaybye(item.customerName, Number(amount)),
-    onSuccess: (data) => {
-      toastSuccess(
-        data.completed
-          ? `Completed ${item.customerName}'s laybye.`
-          : `Recorded ${money(Number(amount))} on ${item.customerName}'s laybye.`,
-      );
-      void qc.invalidateQueries({ queryKey: ['laybye-alerts'] });
-      void qc.invalidateQueries({ queryKey: ['laybyes'] });
-      void qc.invalidateQueries({ queryKey: ['stats'] });
-      void qc.invalidateQueries({ queryKey: ['activity'] });
-    },
-    onError: (error) => toastError(getErrorMessage(error)),
-  });
-
-  function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (guardDemoWrite('record laybye payments')) return;
-    const value = Number(amount);
-    if (!Number.isFinite(value) || value <= 0) {
-      toastError('Enter a payment amount.');
-      return;
-    }
-    payM.mutate();
-  }
-
-  return (
-    <PayForm onSubmit={onSubmit} onClick={(event) => event.stopPropagation()}>
-      <AmountInput
-        type="number"
-        min="0.01"
-        step="0.01"
-        value={amount}
-        onChange={(event) => setAmount(event.target.value)}
-        aria-label={`Laybye payment from ${item.customerName}`}
-      />
-      <Button type="submit" $size="sm" loading={payM.isPending}>
-        Record payment
-      </Button>
-    </PayForm>
-  );
-}
-
 export function NotificationsPage() {
   const timeZone = useShopTimezone();
   const [filter, setFilter] = useState<Filter>('all');
-  const [openId, setOpenId] = useState<string | null>(null);
   const {
     dueQuery: dueQ,
     stockQuery: stockQ,
@@ -810,15 +569,14 @@ export function NotificationsPage() {
     alertsQ.isLoading;
   const feedUnread = feed.filter((row) => row.unread).length;
 
-  function openRow(row: FeedRow) {
-    if (row.unread) markKeysRead([row.seenKey]);
-    setOpenId((current) => (current === row.key ? null : row.key));
+  function markRowRead(row: FeedRow) {
+    if (!row.unread) return;
+    markKeysRead([row.seenKey]);
   }
 
   function markAll() {
     const extra = (alertsQ.data || []).map((alert) => alertSeenKey(alert.id));
     markNotificationsRead(dueQ.data?.items || [], extra);
-    setOpenId(null);
   }
 
   return (
@@ -889,9 +647,8 @@ export function NotificationsPage() {
                 <NotificationRow
                   key={row.key}
                   row={row}
-                  open={openId === row.key}
                   timeZone={timeZone}
-                  onOpen={() => openRow(row)}
+                  onMarkRead={() => markRowRead(row)}
                 />
               ))}
             </>
@@ -904,9 +661,8 @@ export function NotificationsPage() {
                 <NotificationRow
                   key={row.key}
                   row={row}
-                  open={openId === row.key}
                   timeZone={timeZone}
-                  onOpen={() => openRow(row)}
+                  onMarkRead={() => markRowRead(row)}
                 />
               ))}
             </>
@@ -919,34 +675,35 @@ export function NotificationsPage() {
 
 function NotificationRow({
   row,
-  open,
   timeZone,
-  onOpen,
+  onMarkRead,
 }: {
   row: FeedRow;
-  open: boolean;
   timeZone: string;
-  onOpen: () => void;
+  onMarkRead: () => void;
 }) {
   if (row.kind === 'alert' && row.alert) {
     return (
-      <div>
-        <RowBtn type="button" $unread={row.unread} onClick={onOpen}>
-          <Avatar $tone="muted">
-            <Bell size={22} strokeWidth={1.8} />
-            <BadgeIcon $tone="muted">
-              <Bell size={11} strokeWidth={2.4} />
-            </BadgeIcon>
-          </Avatar>
-          <Body>
-            <Copy>{row.alert.summary}</Copy>
-            <Meta $unread={row.unread}>
-              {formatShopDateTime(row.alert.createdAt, timeZone)}
-            </Meta>
-          </Body>
-          {row.unread ? <Dot /> : null}
-        </RowBtn>
-      </div>
+      <RowBtn
+        type="button"
+        $unread={row.unread}
+        disabled={!row.unread}
+        onClick={onMarkRead}
+      >
+        <Avatar $tone="muted">
+          <Bell size={22} strokeWidth={1.8} />
+          <BadgeIcon $tone="muted">
+            <Bell size={11} strokeWidth={2.4} />
+          </BadgeIcon>
+        </Avatar>
+        <Body>
+          <Copy>{row.alert.summary}</Copy>
+          <Meta $unread={row.unread}>
+            {formatShopDateTime(row.alert.createdAt, timeZone)}
+          </Meta>
+        </Body>
+        {row.unread ? <Dot /> : null}
+      </RowBtn>
     );
   }
 
@@ -954,26 +711,24 @@ function NotificationRow({
     const item = row.stock;
     const tone = item.status === 'out' ? 'danger' : 'warning';
     return (
-      <div>
-        <RowBtn type="button" $unread={row.unread} onClick={onOpen}>
-          <Avatar $tone={tone}>
-            {initials(item.productName)}
-            <BadgeIcon $tone={tone}>
-              <Package size={11} strokeWidth={2.4} />
-            </BadgeIcon>
-          </Avatar>
-          <Body>
-            <Copy>{stockCopy(item)}</Copy>
-            <Meta $unread={row.unread}>{stockWhen(item)}</Meta>
-          </Body>
-          {row.unread ? <Dot /> : null}
-        </RowBtn>
-        {open ? (
-          <Expand>
-            <AddStock key={`${item.id}-${item.stock}`} item={item} />
-          </Expand>
-        ) : null}
-      </div>
+      <RowBtn
+        type="button"
+        $unread={row.unread}
+        disabled={!row.unread}
+        onClick={onMarkRead}
+      >
+        <Avatar $tone={tone}>
+          {initials(item.productName)}
+          <BadgeIcon $tone={tone}>
+            <Package size={11} strokeWidth={2.4} />
+          </BadgeIcon>
+        </Avatar>
+        <Body>
+          <Copy>{stockCopy(item)}</Copy>
+          <Meta $unread={row.unread}>{stockWhen(item)}</Meta>
+        </Body>
+        {row.unread ? <Dot /> : null}
+      </RowBtn>
     );
   }
 
@@ -981,26 +736,24 @@ function NotificationRow({
     const item = row.order;
     const tone = orderTone(item.status);
     return (
-      <div>
-        <RowBtn type="button" $unread={row.unread} onClick={onOpen}>
-          <Avatar $tone={tone}>
-            {initials(item.customerName)}
-            <BadgeIcon $tone={tone}>
-              <ClipboardList size={11} strokeWidth={2.4} />
-            </BadgeIcon>
-          </Avatar>
-          <Body>
-            <Copy>{orderCopy(item)}</Copy>
-            <Meta $unread={row.unread}>{orderWhen(item, timeZone)}</Meta>
-          </Body>
-          {row.unread ? <Dot /> : null}
-        </RowBtn>
-        {open ? (
-          <Expand>
-            <OrderActions item={item} />
-          </Expand>
-        ) : null}
-      </div>
+      <RowBtn
+        type="button"
+        $unread={row.unread}
+        disabled={!row.unread}
+        onClick={onMarkRead}
+      >
+        <Avatar $tone={tone}>
+          {initials(item.customerName)}
+          <BadgeIcon $tone={tone}>
+            <ClipboardList size={11} strokeWidth={2.4} />
+          </BadgeIcon>
+        </Avatar>
+        <Body>
+          <Copy>{orderCopy(item)}</Copy>
+          <Meta $unread={row.unread}>{orderWhen(item, timeZone)}</Meta>
+        </Body>
+        {row.unread ? <Dot /> : null}
+      </RowBtn>
     );
   }
 
@@ -1008,29 +761,24 @@ function NotificationRow({
     const item = row.laybye;
     const tone = laybyeTone(item.status);
     return (
-      <div>
-        <RowBtn type="button" $unread={row.unread} onClick={onOpen}>
-          <Avatar $tone={tone}>
-            {initials(item.customerName)}
-            <BadgeIcon $tone={tone}>
-              <CalendarClock size={11} strokeWidth={2.4} />
-            </BadgeIcon>
-          </Avatar>
-          <Body>
-            <Copy>{laybyeCopy(item)}</Copy>
-            <Meta $unread={row.unread}>{laybyeWhen(item, timeZone)}</Meta>
-          </Body>
-          {row.unread ? <Dot /> : null}
-        </RowBtn>
-        {open ? (
-          <Expand>
-            <PayLaybyeBalance
-              key={`${item.id}-${item.balanceDue}`}
-              item={item}
-            />
-          </Expand>
-        ) : null}
-      </div>
+      <RowBtn
+        type="button"
+        $unread={row.unread}
+        disabled={!row.unread}
+        onClick={onMarkRead}
+      >
+        <Avatar $tone={tone}>
+          {initials(item.customerName)}
+          <BadgeIcon $tone={tone}>
+            <CalendarClock size={11} strokeWidth={2.4} />
+          </BadgeIcon>
+        </Avatar>
+        <Body>
+          <Copy>{laybyeCopy(item)}</Copy>
+          <Meta $unread={row.unread}>{laybyeWhen(item, timeZone)}</Meta>
+        </Body>
+        {row.unread ? <Dot /> : null}
+      </RowBtn>
     );
   }
 
@@ -1045,28 +793,23 @@ function NotificationRow({
         : Clock;
 
   return (
-    <div>
-      <RowBtn type="button" $unread={row.unread} onClick={onOpen}>
-        <Avatar $tone={tone}>
-          {initials(item.customerName)}
-          <BadgeIcon $tone={tone}>
-            <Icon size={11} strokeWidth={2.4} />
-          </BadgeIcon>
-        </Avatar>
-        <Body>
-          <Copy>{chaseCopy(item)}</Copy>
-          <Meta $unread={row.unread}>{chaseWhen(item, timeZone)}</Meta>
-        </Body>
-        {row.unread ? <Dot /> : null}
-      </RowBtn>
-      {open ? (
-        <Expand>
-          <PayTowardBalance
-            key={`${item.id}-${item.customerBalance}`}
-            item={item}
-          />
-        </Expand>
-      ) : null}
-    </div>
+    <RowBtn
+      type="button"
+      $unread={row.unread}
+      disabled={!row.unread}
+      onClick={onMarkRead}
+    >
+      <Avatar $tone={tone}>
+        {initials(item.customerName)}
+        <BadgeIcon $tone={tone}>
+          <Icon size={11} strokeWidth={2.4} />
+        </BadgeIcon>
+      </Avatar>
+      <Body>
+        <Copy>{chaseCopy(item)}</Copy>
+        <Meta $unread={row.unread}>{chaseWhen(item, timeZone)}</Meta>
+      </Body>
+      {row.unread ? <Dot /> : null}
+    </RowBtn>
   );
 }
