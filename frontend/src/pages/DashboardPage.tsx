@@ -370,7 +370,9 @@ export function DashboardPage() {
               const snap = overview.snapshots;
               const todayCash = snap.today.byType?.cash ?? 0;
               const todayCredit = snap.today.byType?.credit ?? 0;
+              // D3-A: Prefer new field name, fall back to legacy
               const todayLeft =
+                snap.todayOperatingResult ??
                 snap.todayLeft ??
                 snap.today.revenue - (snap.todayExpenses || 0);
               const owed = overview.customers.totals.totalOutstanding || 0;
@@ -402,7 +404,7 @@ export function DashboardPage() {
                 {
                   label: 'Cash in till',
                   value: money(snap.cashAvailable ?? 0),
-                  hint: 'Recorded sales + payments − expenses − restock',
+                  hint: 'Cash sales + payments − cash expenses only', // D1-A & D2-A: Updated to reflect new logic
                   icon: Banknote,
                 },
                 {
@@ -417,10 +419,11 @@ export function DashboardPage() {
                   hint: (() => {
                     const restock = snap.todayInventoryTransfers || 0;
                     const restockNote =
-                      restock > 0 ? ` · Restock ${money(restock)}` : '';
+                      restock > 0 ? ` · Restock cash-out ${money(restock)}` : ''; // D4-A
+                    // D3-A: Clarify this is operating result, not till movement
                     return todayLeft >= 0
-                      ? `Left today ${money(todayLeft)}${restockNote}`
-                      : `Over by ${money(Math.abs(todayLeft))} today${restockNote}`;
+                      ? `Operating result: +${money(todayLeft)}${restockNote}`
+                      : `Operating result: ${money(todayLeft)}${restockNote}`;
                   })(),
                   hintTone: todayLeft >= 0 ? 'ok' : 'warning',
                   icon: Wallet,

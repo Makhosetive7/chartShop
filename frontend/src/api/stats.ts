@@ -54,7 +54,8 @@ export type StatsOverview = {
     month: { count: number; revenue: number };
     todayExpenses: number;
     todayInventoryTransfers?: number;
-    todayLeft?: number;
+    todayLeft?: number; // Legacy field (D3-A)
+    todayOperatingResult?: number; // D3-A: New clear label
     cashAvailable?: number;
     laybyeDue?: { amount: number; count: number };
     activeLaybyes: number;
