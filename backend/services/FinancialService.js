@@ -95,10 +95,14 @@ class FinancialService {
   }
 
   /**
-   * Lifetime till cash the system knows about:
-   * cash sales + debt payments + laybye installments + owner cash-ins
-   * − expenses − cancelled-sale refunds.
-   * Credit sales and unfinished laybye balances are not cash in the till.
+   * Lifetime till cash the system knows about (D1-A: Net cash sales only):
+   * cash sales (non-cancelled only) + debt payments + laybye installments + owner cash-ins
+   * − cash-method expenses only (D2-A).
+   * 
+   * D1-A Changes:
+   * - Uses non-cancelled cash sales only (cancelled sales "never happened")
+   * - No separate refund subtraction (fixes double-count bug)
+   * - Credit cancels never affect till (they were never in till to begin with)
    */
   async getCashAvailable(shopId) {
     try {
@@ -108,10 +112,10 @@ class FinancialService {
         cashSalesAgg,
         debtPaymentsAgg,
         laybyePaymentsAgg,
-        expensesAgg,
-        refundsAgg,
+        cashExpensesAgg,
         shop,
       ] = await Promise.all([
+        // D1-A: Non-cancelled cash sales only (no separate refund subtraction)
         Sale.aggregate([
           {
             $match: {
@@ -145,8 +149,14 @@ class FinancialService {
             },
           },
         ]),
+        // D2-A: Only cash-method expenses drain till
         Expense.aggregate([
-          { $match: { shopId: shopObjectId } },
+          { 
+            $match: { 
+              shopId: shopObjectId,
+              paymentMethod: 'cash'
+            } 
+          },
           {
             $group: {
               _id: null,
@@ -155,23 +165,13 @@ class FinancialService {
             },
           },
         ]),
-        Sale.aggregate([
-          {
-            $match: {
-              shopId: shopObjectId,
-              isCancelled: true,
-            },
-          },
-          { $group: { _id: null, total: { $sum: '$total' }, count: { $sum: 1 } } },
-        ]),
         Shop.findById(shopId).select('ownerCashIns').lean(),
       ]);
 
       const cashSales = cashSalesAgg[0]?.total || 0;
       const debtPayments = debtPaymentsAgg[0]?.total || 0;
       const laybyePayments = laybyePaymentsAgg[0]?.total || 0;
-      const expenses = expensesAgg[0]?.total || 0;
-      const refunds = refundsAgg[0]?.total || 0;
+      const cashExpenses = cashExpensesAgg[0]?.total || 0;
       const ownerCashInsList = shop?.ownerCashIns || [];
       const ownerCashIns = ownerCashInsList.reduce(
         (sum, entry) => sum + (entry.amount || 0),
@@ -179,20 +179,20 @@ class FinancialService {
       );
 
       const cashIn = cashSales + debtPayments + laybyePayments + ownerCashIns;
-      const cashOut = expenses + refunds;
+      const cashOut = cashExpenses; // D1-A: No separate refunds, D2-A: cash expenses only
       const available = this.roundMoney(cashIn - cashOut);
 
       return {
         success: true,
-        available: Math.max(0, available),
+        available: Math.max(0, available), // D5-A: Keep floor at 0
         raw: available,
         breakdown: {
           cashSales: this.roundMoney(cashSales),
           debtPayments: this.roundMoney(debtPayments),
           laybyePayments: this.roundMoney(laybyePayments),
           ownerCashIns: this.roundMoney(ownerCashIns),
-          expenses: this.roundMoney(expenses),
-          refunds: this.roundMoney(refunds),
+          cashExpenses: this.roundMoney(cashExpenses), // D2-A: Renamed from 'expenses'
+          // D1-A: Removed 'refunds' field (no longer used)
         },
       };
     } catch (error) {
@@ -310,12 +310,25 @@ class FinancialService {
         date: { $gte: startDate, $lte: endDate },
       });
 
+      // D2-A: Split expenses by payment method for cash flow tracking
+      const cashExpenses = expenses.filter((exp) => exp.paymentMethod === 'cash');
+      const nonCashExpenses = expenses.filter((exp) => exp.paymentMethod !== 'cash');
+
       const operatingExpenses = expenses.filter(
         (exp) => exp.kind !== 'inventory_fund_transfer'
       );
       const inventoryTransfers = expenses.filter(
         (exp) => exp.kind === 'inventory_fund_transfer'
       );
+      
+      // Cash expenses that actually drain till (D2-A)
+      const cashOperatingExpenses = operatingExpenses.filter(
+        (exp) => exp.paymentMethod === 'cash'
+      );
+      const cashInventoryTransfers = inventoryTransfers.filter(
+        (exp) => exp.paymentMethod === 'cash'
+      );
+
       const operatingExpensesTotal = operatingExpenses.reduce(
         (sum, exp) => sum + exp.amount,
         0
@@ -326,15 +339,23 @@ class FinancialService {
       );
       const expensesTotal = operatingExpensesTotal + inventoryTransfersTotal;
 
-      const refunds = await Sale.find({
+      // D2-A: Cash expenses that actually moved money out of till
+      const cashExpensesTotal = cashExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+      const nonCashExpensesTotal = nonCashExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+
+      // D1-A: Only cash sales that were cancelled in this period affect cash flow
+      // (but they don't double-subtract since getCashAvailable now handles this correctly)
+      const cancelledCashSales = await Sale.find({
         shopId,
         cancelledAt: { $gte: startDate, $lte: endDate },
         isCancelled: true,
+        type: 'cash',
       });
 
-      const refundsTotal = refunds.reduce((sum, sale) => sum + sale.total, 0);
+      const cashRefundsTotal = cancelledCashSales.reduce((sum, sale) => sum + sale.total, 0);
 
-      const totalCashOut = expensesTotal + refundsTotal;
+      // D1-A & D2-A: Total cash out = cash expenses + cash refunds (for period reporting)
+      const totalCashOut = cashExpensesTotal + cashRefundsTotal;
 
       const netCashFlow = totalCashIn - totalCashOut;
 
@@ -413,6 +434,16 @@ class FinancialService {
             total: totalCashIn,
           },
           outflows: {
+            // D2-A: Split expenses by payment method for accurate cash flow
+            cashExpenses: {
+              amount: cashExpensesTotal,
+              count: cashExpenses.length,
+            },
+            nonCashExpenses: {
+              amount: nonCashExpensesTotal,
+              count: nonCashExpenses.length,
+            },
+            // Legacy totals for compatibility
             expenses: {
               amount: operatingExpensesTotal,
               count: operatingExpenses.length,
@@ -421,7 +452,8 @@ class FinancialService {
               amount: inventoryTransfersTotal,
               count: inventoryTransfers.length,
             },
-            refunds: { amount: refundsTotal, count: refunds.length },
+            // D1-A: Only cash refunds (cancelled cash sales) affect cash flow
+            cashRefunds: { amount: cashRefundsTotal, count: cancelledCashSales.length },
             total: totalCashOut,
           },
           net: netCashFlow,
@@ -460,17 +492,21 @@ class FinancialService {
           totalSales: cashSales.length + creditSales.length + completedLaybyes.length,
           expenses: operatingExpenses.length,
           inventoryTransfers: inventoryTransfers.length,
-          refunds: refunds.length,
+          cashExpenses: cashExpenses.length, // D2-A
+          nonCashExpenses: nonCashExpenses.length, // D2-A
+          cashRefunds: cancelledCashSales.length, // D1-A
         },
 
         details: {
           expenses,
           operatingExpenses,
           inventoryTransfers,
+          cashExpenses, // D2-A
+          nonCashExpenses, // D2-A
           cashSales,
           creditSales,
           completedLaybyes,
-          refunds,
+          cancelledCashSales, // D1-A: Only cash sales cancelled in period
         },
       };
     } catch (error) {
@@ -573,11 +609,22 @@ class FinancialService {
       report += `Total Money In: $${cashFlow.cashFlow.inflows.total.toFixed(2)}\n\n`;
 
       report += `MONEY OUT:\n`;
-      report += `- Operating Expenses Paid: $${cashFlow.cashFlow.outflows.expenses.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.expenses.count} items)\n`;
-      if ((cashFlow.cashFlow.outflows.inventoryTransfers?.amount || 0) > 0) {
-        report += `- Inventory Fund Transfers: $${cashFlow.cashFlow.outflows.inventoryTransfers.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.inventoryTransfers.count} transfer${cashFlow.cashFlow.outflows.inventoryTransfers.count === 1 ? '' : 's'})\n`;
+      // D2-A: Show cash vs non-cash expenses breakdown
+      if ((cashFlow.cashFlow.outflows.cashExpenses?.amount || 0) > 0) {
+        report += `- Cash Expenses (drain till): $${cashFlow.cashFlow.outflows.cashExpenses.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.cashExpenses.count} items)\n`;
       }
-      report += `- Refunds Given: $${cashFlow.cashFlow.outflows.refunds.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.refunds.count} refunds)\n`;
+      if ((cashFlow.cashFlow.outflows.nonCashExpenses?.amount || 0) > 0) {
+        report += `- Bank/Mobile Expenses (separate): $${cashFlow.cashFlow.outflows.nonCashExpenses.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.nonCashExpenses.count} items)\n`;
+      }
+      // Legacy total for compatibility
+      report += `- Total Operating Expenses: $${cashFlow.cashFlow.outflows.expenses.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.expenses.count} items)\n`;
+      if ((cashFlow.cashFlow.outflows.inventoryTransfers?.amount || 0) > 0) {
+        report += `- Restock (cash out, stock separate): $${cashFlow.cashFlow.outflows.inventoryTransfers.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.inventoryTransfers.count} transfer${cashFlow.cashFlow.outflows.inventoryTransfers.count === 1 ? '' : 's'})\n`; // D4-A
+      }
+      // D1-A: Only cash refunds (cancelled cash sales) affect cash flow
+      if ((cashFlow.cashFlow.outflows.cashRefunds?.amount || 0) > 0) {
+        report += `- Cash Refunds (cancelled cash sales): $${cashFlow.cashFlow.outflows.cashRefunds.amount.toFixed(2)} (${cashFlow.cashFlow.outflows.cashRefunds.count} refunds)\n`;
+      }
       report += `Total Money Out: $${cashFlow.cashFlow.outflows.total.toFixed(2)}\n\n`;
 
       const netText =
@@ -701,8 +748,9 @@ class FinancialService {
 
       const cashAvail = await this.getCashAvailable(shopId);
       if (cashAvail.success) {
+        // D1-A & D2-A: Updated to reflect new till logic
         insights.push(
-          `Cash available in the till (all-time recorded): $${cashAvail.available.toFixed(2)}.`
+          `Cash in till (cash sales + payments - cash expenses only): $${cashAvail.available.toFixed(2)}. Bank/mobile expenses don't drain till.`
         );
       }
 

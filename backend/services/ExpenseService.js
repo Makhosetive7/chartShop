@@ -109,42 +109,48 @@ class ExpenseService {
       }
 
       const amountRounded = FinancialService.roundMoney(amount);
-      const cashResult = await FinancialService.getCashAvailable(shopId);
-      if (!cashResult.success) {
-        return {
-          success: false,
-          message: cashResult.message || "Could not check cash available.",
-        };
-      }
+      
+      // D2-A: Only check cash availability for cash-method expenses
+      let shortfall = 0;
+      if (paymentMethod === 'cash') {
+        const cashResult = await FinancialService.getCashAvailable(shopId);
+        if (!cashResult.success) {
+          return {
+            success: false,
+            message: cashResult.message || "Could not check cash available.",
+          };
+        }
 
-      const cashAvailable = cashResult.available;
-      const shortfall = FinancialService.roundMoney(
-        amountRounded - cashAvailable
-      );
+        const cashAvailable = cashResult.available;
+        shortfall = FinancialService.roundMoney(
+          amountRounded - cashAvailable
+        );
 
-      if (shortfall > 0 && !allowOverspend) {
-        return {
-          success: false,
-          code: "INSUFFICIENT_CASH",
-          message:
-            `Not enough recorded cash in the till.\n\n` +
-            `Expense: $${amountRounded.toFixed(2)}\n` +
-            `Cash available: $${cashAvailable.toFixed(2)}\n` +
-            `Shortfall: $${shortfall.toFixed(2)}\n\n` +
-            `If you paid this from your own pocket (or cash not yet recorded), confirm to continue. ` +
-            `We will record an owner cash-in for the shortfall so the till stays honest.`,
-          cashAvailable,
-          amount: amountRounded,
-          shortfall,
-        };
-      }
+        if (shortfall > 0 && !allowOverspend) {
+          return {
+            success: false,
+            code: "INSUFFICIENT_CASH",
+            message:
+              `Not enough recorded cash in the till.\n\n` +
+              `Expense: $${amountRounded.toFixed(2)} (CASH)\n` +
+              `Cash available: $${cashAvailable.toFixed(2)}\n` +
+              `Shortfall: $${shortfall.toFixed(2)}\n\n` +
+              `If you paid this from your own pocket (or cash not yet recorded), confirm to continue. ` +
+              `We will record an owner cash-in for the shortfall so the till stays honest.`,
+            cashAvailable,
+            amount: amountRounded,
+            shortfall,
+          };
+        }
 
-      if (shortfall > 0 && allowOverspend) {
-        await FinancialService.recordOwnerCashIn(shopId, shortfall, {
-          note: `Owner cash in for expense: ${description.trim()}`,
-          createdByUserId,
-        });
+        if (shortfall > 0 && allowOverspend) {
+          await FinancialService.recordOwnerCashIn(shopId, shortfall, {
+            note: `Owner cash in for cash expense: ${description.trim()}`,
+            createdByUserId,
+          });
+        }
       }
+      // D2-A: Non-cash expenses (bank, mobile, etc.) bypass till validation
 
       // Create expense
       const expense = await Expense.create({
@@ -159,17 +165,23 @@ class ExpenseService {
         ...(createdByUserId != null ? { createdByUserId } : {}),
       });
 
-      const updatedCash = await FinancialService.getCashAvailable(shopId);
+      // D2-A: Only get updated cash for cash expenses (others don't affect till)
+      let updatedCashAvailable = null;
+      if (paymentMethod === 'cash') {
+        const updatedCash = await FinancialService.getCashAvailable(shopId);
+        updatedCashAvailable = updatedCash.success ? updatedCash.available : null;
+      }
 
       return {
         success: true,
         message: this.generateExpenseRecordedMessage(expense, {
           ownerCashIn: shortfall > 0 ? shortfall : 0,
-          cashAvailable: updatedCash.success ? updatedCash.available : null,
+          cashAvailable: updatedCashAvailable,
+          paymentMethod, // D2-A: Include payment method for message
         }),
         expense,
         ownerCashIn: shortfall > 0 ? shortfall : 0,
-        cashAvailable: updatedCash.success ? updatedCash.available : null,
+        cashAvailable: updatedCashAvailable,
       };
     } catch (error) {
       console.error("Record expense error:", error);
@@ -365,7 +377,7 @@ class ExpenseService {
     message += `Category: ${expense.category.toUpperCase()}\n`;
     message += `Type: ${
       expense.kind === "inventory_fund_transfer"
-        ? "INVENTORY FUND TRANSFER"
+        ? "RESTOCK (CASH OUT - STOCK MANAGED SEPARATELY)" // D4-A
         : "OPERATING EXPENSE"
     }\n`;
     message += `Payment: ${expense.paymentMethod.toUpperCase()}\n`;
@@ -379,8 +391,13 @@ class ExpenseService {
       message += `\nOwner cash-in recorded: $${Number(extras.ownerCashIn).toFixed(2)} (paid from pocket / unrecorded cash)\n`;
     }
 
-    if (extras.cashAvailable != null) {
-      message += `Cash available now: $${Number(extras.cashAvailable).toFixed(2)}\n`;
+    // D2-A: Clear messaging about till impact based on payment method
+    if (expense.paymentMethod === 'cash') {
+      if (extras.cashAvailable != null) {
+        message += `Cash in till now: $${Number(extras.cashAvailable).toFixed(2)}\n`;
+      }
+    } else {
+      message += `\n💡 This ${expense.paymentMethod.toUpperCase()} expense did not drain your cash till.\n`;
     }
 
     message += `\nUse "expenses daily" to track your spending.`;
@@ -414,7 +431,7 @@ class ExpenseService {
     message += `Period: ${startDate.toDateString()} - ${endDate.toDateString()}\n`;
     message += `Operating Expenses: $${Number(operatingTotal).toFixed(2)} (${operatingCount} items)\n`;
     if (inventoryTransferTotal > 0) {
-      message += `Inventory Fund Transfers: $${Number(inventoryTransferTotal).toFixed(2)} (${inventoryTransferCount} transfer${inventoryTransferCount === 1 ? "" : "s"})\n`;
+      message += `Restock (cash out): $${Number(inventoryTransferTotal).toFixed(2)} (${inventoryTransferCount} transfer${inventoryTransferCount === 1 ? "" : "s"})\n`; // D4-A
     }
     message += `Cash Out Total: $${Number(total).toFixed(2)}\n\n`;
 
@@ -428,7 +445,7 @@ class ExpenseService {
     expenses.slice(0, 5).forEach((expense, index) => {
       const typeLabel =
         expense.kind === "inventory_fund_transfer"
-          ? "Inventory transfer"
+          ? "Restock (cash out)" // D4-A
           : "Operating expense";
       message += `${index + 1}. $${expense.amount.toFixed(2)}\n`;
       message += `   ${expense.description}\n`;
@@ -546,7 +563,7 @@ class ExpenseService {
     message += `Period: ${breakdownResult.startDate.toDateString()} - ${breakdownResult.endDate.toDateString()}\n`;
     message += `Operating Expenses: $${Number(breakdownResult.operatingTotal ?? breakdownResult.total).toFixed(2)}\n`;
     if ((breakdownResult.inventoryTransferTotal || 0) > 0) {
-      message += `Inventory Fund Transfers: $${Number(breakdownResult.inventoryTransferTotal).toFixed(2)}\n`;
+      message += `Restock (cash out): $${Number(breakdownResult.inventoryTransferTotal).toFixed(2)}\n`; // D4-A
     }
     message += `Cash Out Total: $${breakdownResult.total.toFixed(2)}\n\n`;
 

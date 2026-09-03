@@ -579,7 +579,7 @@ class PDFService {
         ...((cashFlow.outflows.inventoryTransfers?.amount || 0) > 0
           ? [
               {
-                label: 'Inventory transfers',
+                label: 'Restock (cash out)', // D4-A
                 amount: this.moneyParen(cashFlow.outflows.inventoryTransfers.amount),
                 count: cashFlow.outflows.inventoryTransfers.count,
                 accent: true,

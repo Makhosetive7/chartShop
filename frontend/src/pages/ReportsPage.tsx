@@ -501,7 +501,7 @@ function CashFlowSummary({
             </Row>
             {(cf?.outflows?.inventoryTransfers?.amount || 0) > 0 ? (
               <Row $accent>
-                <span>Inventory transfers</span>
+                <span>Restock (cash out)</span> {/* D4-A */}
                 <span>({money(cf?.outflows?.inventoryTransfers?.amount || 0)})</span>
                 <span>{cf?.outflows?.inventoryTransfers?.count || 0}</span>
               </Row>

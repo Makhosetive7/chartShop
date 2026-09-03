@@ -201,7 +201,7 @@ export function ExpensesPage() {
             </p>
             <p style={{ margin: '0 0 12px 0', fontSize: 13, opacity: 0.8 }}>
               {isAdmin
-                ? 'Use Restock for supplier/stock top-ups. It auto-fills the right accounting type and category.'
+                ? 'Use Restock for supplier/stock top-ups. Records cash out only — stock levels managed separately in Products.'
                 : 'Restock is available to admins only. You can still record normal expenses below.'}
             </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -316,8 +316,8 @@ export function ExpensesPage() {
           <>
             <p>
               Cash out total: <strong>{money(listQ.data?.total)}</strong> (Operating{' '}
-              {money(operatingTotal)} + Inventory transfers{' '}
-              {money(inventoryTransferTotal)})
+              {money(operatingTotal)} + Restock{' '}
+              {money(inventoryTransferTotal)}) {/* D4-A */}
             </p>
             <Table>
               <thead>
@@ -335,7 +335,7 @@ export function ExpensesPage() {
                     <td>{formatShopDate(ex.date, timeZone)}</td>
                     <td>
                       {ex.kind === 'inventory_fund_transfer'
-                        ? 'Inventory transfer'
+                        ? 'Restock (cash out)' // D4-A
                         : 'Operating expense'}
                     </td>
                     <td>{ex.description}</td>

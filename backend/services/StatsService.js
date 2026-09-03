@@ -572,6 +572,9 @@ class StatsService {
         month: sumSales(monthSales),
         todayExpenses: todayExpensesTotal,
         todayInventoryTransfers: todayInventoryTransfersTotal,
+        // D3-A: Relabeled from 'todayLeft' to clarify this is operating result, not till
+        todayOperatingResult: round2(todaySummary.revenue - todayExpensesTotal),
+        // Legacy alias for backward compatibility (remove in future version)
         todayLeft: round2(todaySummary.revenue - todayExpensesTotal),
         cashAvailable,
         laybyeDue: {
