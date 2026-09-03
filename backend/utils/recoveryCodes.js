@@ -11,11 +11,23 @@ export const RECOVERY_CODE_COUNT = 8;
 const ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz";
 
 function pepper() {
-  return (
-    process.env.RECOVERY_CODE_PEPPER ||
-    process.env.SESSION_SECRET ||
-    "chartshop-recovery-v1"
-  );
+  const configured = process.env.RECOVERY_CODE_PEPPER || process.env.SESSION_SECRET;
+  
+  // In production, require proper secret configuration
+  if (process.env.NODE_ENV === 'production' && !configured) {
+    throw new Error(
+      'SECURITY: RECOVERY_CODE_PEPPER must be set in production. ' +
+      'Generate with: node -e "console.log(crypto.randomBytes(32).toString(\'hex\'))"'
+    );
+  }
+  
+  // Development fallback with warning
+  if (!configured) {
+    console.warn('WARNING: Using default recovery pepper in development. Set RECOVERY_CODE_PEPPER in production.');
+    return "chartshop-recovery-v1-dev-only";
+  }
+  
+  return configured;
 }
 
 function randomSegment(length) {

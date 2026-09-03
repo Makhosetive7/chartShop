@@ -10,6 +10,7 @@ Register once with a **username** and **4-digit PIN**, then use those credential
 | **Backend** | [backend/README.md](./backend/README.md) — API, bots, Render, env vars |
 | **Frontend** | [frontend/README.md](./frontend/README.md) — Vite app, Vercel, routes |
 | **REST API** | [backend/scripts/WEB_API_V1.md](./backend/scripts/WEB_API_V1.md) |
+| **Security** | [backend/docs/SECURITY.md](./backend/docs/SECURITY.md) — Auth, secrets, incident response |
 
 ---
 

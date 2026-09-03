@@ -3,6 +3,7 @@ import User from "../../models/User.js";
 import AuthService from "../../services/AuthService.js";
 import ActivityService from "../../services/ActivityService.js";
 import SessionStore from "../../services/sessionStore.js";
+import SessionSecurityService from "../../services/SessionSecurityService.js";
 import { publicShop, publicUser, stripMarkdown } from "../../utils/apiResponse.js";
 import { normalizeUsername } from "../../utils/channelIdentity.js";
 import {
@@ -952,6 +953,124 @@ export async function regenerateRecovery(req, res) {
     return res.status(500).json({
       success: false,
       error: "Failed to regenerate recovery codes.",
+    });
+  }
+}
+
+// ==========================================
+// SESSION SECURITY ENDPOINTS (Issue 3)
+// ==========================================
+
+export async function listSessions(req, res) {
+  try {
+    const { shop, user } = req;
+    const currentToken = req.session?.sessionToken;
+
+    const result = await SessionSecurityService.listUserSessions(shop._id, {
+      userId: user?._id,
+      currentToken
+    });
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        error: result.message || "Failed to list sessions"
+      });
+    }
+
+    return res.json({
+      success: true,
+      sessions: result.sessions,
+      total: result.total
+    });
+
+  } catch (error) {
+    console.error("[api/auth/sessions]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to list sessions"
+    });
+  }
+}
+
+export async function revokeSessions(req, res) {
+  try {
+    const { shop, user } = req;
+    const { sessionIds, revokeAll } = req.body;
+    const currentToken = req.session?.sessionToken;
+
+    let result;
+    
+    if (revokeAll) {
+      result = await SessionSecurityService.revokeAllUserSessions(shop._id, {
+        userId: user?._id,
+        currentToken,
+        includeCurrent: false
+      });
+    } else if (sessionIds && Array.isArray(sessionIds)) {
+      result = await SessionSecurityService.revokeSessions(shop._id, sessionIds, {
+        currentToken,
+        includeCurrent: false
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: "Either sessionIds array or revokeAll=true is required"
+      });
+    }
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        error: result.message || "Failed to revoke sessions"
+      });
+    }
+
+    // Log activity
+    await ActivityService.logActivity(shop._id, "sessions_revoked", {
+      actorId: actorId(user),
+      count: result.revokedCount,
+      type: revokeAll ? 'all' : 'selective'
+    });
+
+    return res.json({
+      success: true,
+      message: result.message,
+      revokedCount: result.revokedCount
+    });
+
+  } catch (error) {
+    console.error("[api/auth/sessions/revoke]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to revoke sessions"
+    });
+  }
+}
+
+export async function getSessionSecurity(req, res) {
+  try {
+    const { shop } = req;
+
+    const [summary, anomalies] = await Promise.all([
+      SessionSecurityService.getSessionSecuritySummary(shop._id),
+      SessionSecurityService.detectSessionAnomalies(shop._id)
+    ]);
+
+    return res.json({
+      success: true,
+      security: {
+        summary: summary.summary,
+        anomalies: anomalies.anomalies,
+        riskLevel: summary.summary?.riskLevel || 'unknown'
+      }
+    });
+
+  } catch (error) {
+    console.error("[api/auth/security]", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to get security information"
     });
   }
 }

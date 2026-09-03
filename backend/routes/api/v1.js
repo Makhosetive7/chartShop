@@ -1,5 +1,6 @@
 import express from "express";
 import { requireApiAuth, requireAdmin } from "../../middleware/requireApiAuth.js";
+import { authRateLimit, criticalAuthRateLimit, progressiveAuthDelay, resetAuthDelayOnSuccess } from "../../middleware/rateLimiter.js";
 import * as authController from "../../controllers/api/authController.js";
 import * as teamController from "../../controllers/api/teamController.js";
 import * as productController from "../../controllers/api/productController.js";
@@ -15,19 +16,24 @@ import * as activityController from "../../controllers/api/activityController.js
 
 const router = express.Router();
 
-// Auth (public)
-router.post("/auth/register", authController.register);
-router.post("/auth/login", authController.login);
+// Auth (public) - with progressive rate limiting
+router.post("/auth/register", authRateLimit, progressiveAuthDelay, resetAuthDelayOnSuccess, authController.register);
+router.post("/auth/login", authRateLimit, progressiveAuthDelay, resetAuthDelayOnSuccess, authController.login);
 router.get("/auth/demos", authController.listDemos);
-router.post("/auth/demo", authController.enterDemo);
+router.post("/auth/demo", authRateLimit, authController.enterDemo);
 router.get("/auth/status", authController.status);
 router.get("/auth/username", authController.checkUsername);
-router.post("/auth/recovery/redeem", authController.redeemRecovery);
-router.post("/auth/setup-pin", authController.setupPin);
+router.post("/auth/recovery/redeem", criticalAuthRateLimit, progressiveAuthDelay, authController.redeemRecovery);
+router.post("/auth/setup-pin", criticalAuthRateLimit, progressiveAuthDelay, authController.setupPin);
 
 // Auth (session)
 router.post("/auth/logout", requireApiAuth, authController.logout);
 router.get("/auth/me", requireApiAuth, authController.me);
+
+// Session Security (Issue 3)
+router.get("/auth/sessions", requireApiAuth, authController.listSessions);
+router.post("/auth/sessions/revoke", requireApiAuth, authController.revokeSessions);  
+router.get("/auth/security", requireApiAuth, authController.getSessionSecurity);
 router.get("/auth/profile", requireApiAuth, authController.profile);
 router.get("/auth/recovery", requireApiAuth, authController.recoveryStatus);
 router.post(

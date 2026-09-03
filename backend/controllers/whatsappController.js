@@ -20,17 +20,35 @@ export const verifyWebhook = (req, res) => {
  */
 export const handleWebhook = async (req, res) => {
   try {
-    // Always 200 quickly so Meta does not retry aggressively
-    res.sendStatus(200);
-
     if (!isWhatsAppConfigured()) {
       console.log("[whatsapp] Webhook hit but adapter disabled/misconfigured");
-      return;
+      return res.sendStatus(200);
     }
 
-    await handleWhatsAppWebhook(req.body);
+    // Extract signature for verification
+    const signature = req.headers['x-hub-signature-256'];
+    const rawBody = req.rawBody ? req.rawBody.toString() : JSON.stringify(req.body);
+
+    const result = await handleWhatsAppWebhook(req.body, {
+      signature,
+      rawBody
+    });
+
+    // Check for signature verification failure
+    if (result.error && result.reason === 'signature_verification_failed') {
+      console.error("[whatsapp] Rejecting webhook due to signature failure");
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Webhook signature verification failed'
+      });
+    }
+
+    // Always 200 for valid webhooks so Meta doesn't retry aggressively
+    res.sendStatus(200);
+    
   } catch (error) {
     console.error("[whatsapp] Webhook error:", error);
+    res.sendStatus(200); // Still return 200 to prevent Meta retries
   }
 };
 

@@ -24,6 +24,7 @@ import {
   normalizeRecoveryCode,
   recoveryCodesMatch,
 } from "../utils/recoveryCodes.js";
+import SessionSecurityService from "./SessionSecurityService.js";
 
 class AuthService {
   constructor() {
@@ -1114,6 +1115,13 @@ class AuthService {
         await user.save();
         await SessionStore.deletePinChange(channel, channelKey);
 
+        // Revoke all sessions on PIN change for security
+        await SessionSecurityService.revokeSessionsOnCredentialChange(
+          user.shopId,
+          user._id,
+          'pin_change'
+        );
+
         return {
           success: true,
           completed: true,
@@ -1719,6 +1727,13 @@ class AuthService {
     user.lockedUntil = null;
     await user.save();
 
+    // Revoke any existing sessions since PIN was just set
+    await SessionSecurityService.revokeSessionsOnCredentialChange(
+      user.shopId,
+      user._id,
+      'pin_setup'
+    );
+
     return {
       success: true,
       message: "PIN set. You can sign in with your username and new PIN.",
@@ -2287,7 +2302,13 @@ class AuthService {
     user.pin = await bcrypt.hash(String(newPin).trim(), 12);
     await user.resetLoginAttempts();
 
+    // Revoke all existing sessions for security
     await SessionStore.deleteLoginSessionsByUserId(user._id);
+    await SessionSecurityService.revokeSessionsOnCredentialChange(
+      shop._id, 
+      user._id, 
+      'pin_recovery'
+    );
 
     const remaining = await RecoveryCode.countDocuments({
       shopId: shop._id,

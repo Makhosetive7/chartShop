@@ -1,4 +1,5 @@
 import axios from "axios";
+import crypto from "crypto";
 import { handleInboundMessage } from "./inbound.js";
 
 /**
@@ -32,6 +33,51 @@ export function verifyWhatsAppWebhook(query = {}) {
   }
 
   return { ok: false };
+}
+
+/**
+ * Verify WhatsApp webhook signature for POST requests.
+ * Meta signs webhook payloads with HMAC-SHA256 using the app secret.
+ */
+export function verifyWhatsAppSignature(rawBody, signature, appSecret) {
+  if (!appSecret) {
+    console.warn("[whatsapp] WHATSAPP_APP_SECRET not set - signature verification disabled");
+    return { verified: false, reason: 'no_secret' };
+  }
+
+  if (!signature) {
+    console.warn("[whatsapp] No X-Hub-Signature-256 header received");
+    return { verified: false, reason: 'no_signature' };
+  }
+
+  // Meta sends: "sha256=<hex-encoded-hash>"
+  if (!signature.startsWith('sha256=')) {
+    console.warn("[whatsapp] Invalid signature format:", signature.substring(0, 20));
+    return { verified: false, reason: 'invalid_format' };
+  }
+
+  const expectedHash = signature.substring(7); // Remove "sha256=" prefix
+  const computedHash = crypto
+    .createHmac('sha256', appSecret)
+    .update(rawBody, 'utf8')
+    .digest('hex');
+
+  // Use timing-safe comparison
+  const isValid = crypto.timingSafeEqual(
+    Buffer.from(expectedHash, 'hex'),
+    Buffer.from(computedHash, 'hex')
+  );
+
+  if (!isValid) {
+    console.warn("[whatsapp] Signature verification failed");
+    console.warn("Expected:", expectedHash.substring(0, 16) + "...");
+    console.warn("Computed:", computedHash.substring(0, 16) + "...");
+  }
+
+  return { 
+    verified: isValid, 
+    reason: isValid ? 'valid' : 'mismatch'
+  };
 }
 
 export async function sendWhatsAppText(to, body) {
@@ -82,8 +128,9 @@ function extractInboundMessages(payload) {
 
 /**
  * Handle Meta WhatsApp Cloud API webhook POST body.
+ * Now requires signature verification in production.
  */
-export async function handleWhatsAppWebhook(payload) {
+export async function handleWhatsAppWebhook(payload, options = {}) {
   const cfg = getConfig();
   if (!cfg.enabled) {
     return { ignored: true, reason: "whatsapp_disabled" };
@@ -92,6 +139,32 @@ export async function handleWhatsAppWebhook(payload) {
   if (!cfg.token || !cfg.phoneNumberId) {
     console.warn("[whatsapp] Enabled but WHATSAPP_TOKEN / PHONE_NUMBER_ID missing");
     return { ignored: true, reason: "misconfigured" };
+  }
+
+  // Verify webhook signature in production or when app secret is configured
+  if ((process.env.NODE_ENV === 'production' || cfg.appSecret) && options.signature !== undefined) {
+    const verification = verifyWhatsAppSignature(
+      options.rawBody || JSON.stringify(payload),
+      options.signature,
+      cfg.appSecret
+    );
+
+    if (!verification.verified) {
+      console.error(`[whatsapp] Webhook signature verification failed: ${verification.reason}`);
+      
+      // In production, reject unsigned webhooks
+      if (process.env.NODE_ENV === 'production') {
+        return { 
+          error: true, 
+          reason: 'signature_verification_failed',
+          details: verification.reason 
+        };
+      } else {
+        console.warn("[whatsapp] Development mode: continuing despite signature failure");
+      }
+    } else {
+      console.log("[whatsapp] Webhook signature verified successfully");
+    }
   }
 
   const inbound = extractInboundMessages(payload);
