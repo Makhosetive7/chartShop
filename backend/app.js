@@ -4,6 +4,9 @@ import whatsappRoutes from "./routes/whatsapp.js";
 import apiV1Routes from "./routes/api/v1.js";
 import { isWhatsAppConfigured } from "./adapters/whatsapp.js";
 
+// Import models to ensure they're registered
+import "./models/IdempotencyRecord.js";
+
 /**
  * Build the Express app (no listen / no Telegram polling).
  * Used by server.js and API tests.

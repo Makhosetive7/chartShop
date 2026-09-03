@@ -211,7 +211,11 @@ Details: [frontend/README.md](./frontend/README.md#production-deploy-vercel).
 
 1. New Web Service from the same repo; **Root Directory** = `backend`.
 2. Build: `npm install` · Start: `npm start` · Health: `/health`.
-3. Set production env (never commit secrets):
+3. **Hosting Tier Considerations:**
+   - **Free Tier**: Service sleeps after 15 minutes of inactivity. Cold starts take 10-30 seconds.
+   - **Webhook Impact**: Telegram/WhatsApp may timeout during cold starts (acceptable for demos/small shops).
+   - **Paid Tier**: Always-on service eliminates cold starts. Recommended when user scale justifies cost (~$7-21/month).
+4. Set production env (never commit secrets):
 
    ```bash
    NODE_ENV=production
@@ -233,6 +237,7 @@ Details: [backend/README.md](./backend/README.md#production-deploy-render).
 2. Frontend can log in against Render  
 3. CORS allows `https://chart-shop.vercel.app`  
 4. Hard-load `/login` and `/app` on Vercel (SPA rewrite)
+5. **Free Tier**: Test webhook response during cold start (may require 1-2 bot messages to wake service)
 
 ---
 

@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Sale from "../models/Sale.js";
 import Customer from "../models/Customer.js";
 import InventoryService from "./InventoryService.js";
+import { withOptionalTransaction } from "../utils/transactions.js";
 
 class CancellationService {
   /**
@@ -77,42 +78,6 @@ class CancellationService {
     }
   }
 
-  /**
-   * Run work inside a Mongo transaction when supported; otherwise run plain.
-   */
-  async withOptionalTransaction(work) {
-    let session = null;
-    try {
-      session = await mongoose.startSession();
-      session.startTransaction();
-      const result = await work(session);
-      await session.commitTransaction();
-      return result;
-    } catch (error) {
-      if (session) {
-        try {
-          await session.abortTransaction();
-        } catch (_) {
-          /* ignore */
-        }
-      }
-
-      const needsFallback =
-        /replica set|transactions? (are|is) not supported|Transaction numbers/i.test(
-          error.message || ""
-        );
-
-      if (needsFallback) {
-        return await work(null);
-      }
-
-      throw error;
-    } finally {
-      if (session) {
-        session.endSession();
-      }
-    }
-  }
 
   /**
    * Full reversal: restore stock, reverse credit balance if needed, mark cancelled.
@@ -126,7 +91,7 @@ class CancellationService {
         };
       }
 
-      await this.withOptionalTransaction(async (session) => {
+      await withOptionalTransaction(async (session) => {
         await InventoryService.restoreSaleItems(sale.items, session);
 
         if (sale.type === "credit" && sale.customerId) {
