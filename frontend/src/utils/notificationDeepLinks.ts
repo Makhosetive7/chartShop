@@ -125,21 +125,21 @@ export function getLaybyeAlertDeepLink(item: LaybyeAlertItem): string {
 
 /**
  * Generate deep link for activity alerts
- * Routes to appropriate page based on activity type
+ * Routes to appropriate page based on activity action
  */
 export function getActivityAlertDeepLink(item: ActivityItem): string {
-  // Activity items have different types, route accordingly
+  // Activity items have different actions, route accordingly
   const params = new URLSearchParams({
     source: 'notification',
     timestamp: new Date().toISOString()
   });
   
-  // Route based on activity context (this depends on ActivityItem structure)
-  if (item.type === 'sale') {
+  // Route based on activity action (using the actual ActivityItem structure)
+  if (item.action.includes('sale')) {
     return `/sales?${params.toString()}`;
-  } else if (item.type === 'order') {
+  } else if (item.action.includes('order')) {
     return `/orders?${params.toString()}`;
-  } else if (item.type === 'product') {
+  } else if (item.action.includes('product')) {
     return `/products?${params.toString()}`;
   } else {
     // Default to activity/dashboard
