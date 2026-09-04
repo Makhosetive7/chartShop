@@ -5,7 +5,7 @@
  * Preserves existing UI while adding contextual navigation.
  */
 
-import { ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { getNotificationDeepLink, getNotificationActionLabel } from '@/utils/notificationDeepLinks';
@@ -93,7 +93,7 @@ export function NotificationRow({ row, onMarkRead, children, className }: Notifi
   const deepLink = getNotificationDeepLink(row);
   const actionLabel = getNotificationActionLabel(row.kind, getItemStatus(row));
   
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = () => {
     // Mark as read when clicked
     if (row.unread) {
       onMarkRead();

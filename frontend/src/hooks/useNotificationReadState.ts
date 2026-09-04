@@ -9,7 +9,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import {
-  addSeenNotificationKeys,
   getNotificationReadState,
   migrateLocalStorageReadState,
   updateNotificationReadState,
@@ -19,7 +18,6 @@ import {
   readSeenKeys,
   writeSeenKeys,
   countUnreadNotifications,
-  markNotificationsSeen,
   type PrefixedSeen
 } from '@/utils/notificationUnread';
 import type { CreditDueItem } from '@/api/sales';
@@ -51,7 +49,7 @@ export function useNotificationReadState(options: NotificationReadStateOptions =
     queryFn: getNotificationReadState,
     enabled: Boolean(shopId) && opts.enableServerSync && !fallbackMode,
     staleTime: 30_000, // 30 second cache
-    retry: (failureCount, error) => {
+    retry: (failureCount) => {
       // Fall back to localStorage after 2 failed attempts
       if (failureCount >= 2 && opts.fallbackToLocalStorage) {
         console.warn('[notifications] Server sync failed, falling back to localStorage');
@@ -84,8 +82,8 @@ export function useNotificationReadState(options: NotificationReadStateOptions =
     onSuccess: (data) => {
       queryClient.setQueryData(['notification-read-state', shopId], data);
     },
-    onError: (error) => {
-      console.error('[notifications] Failed to update server read state:', error);
+    onError: () => {
+      console.error('[notifications] Failed to update server read state');
       if (opts.fallbackToLocalStorage) {
         console.warn('[notifications] Falling back to localStorage');
         setFallbackMode(true);
@@ -101,8 +99,8 @@ export function useNotificationReadState(options: NotificationReadStateOptions =
       setMigrationCompleted(true);
       console.log('[notifications] Successfully migrated localStorage to server');
     },
-    onError: (error) => {
-      console.error('[notifications] Migration failed:', error);
+    onError: () => {
+      console.error('[notifications] Migration failed');
       setMigrationCompleted(true); // Don't retry failed migrations
     }
   });
@@ -245,7 +243,7 @@ export function useNotificationReadState(options: NotificationReadStateOptions =
     forceServerSync: () => {
       if (fallbackMode) {
         setFallbackMode(false);
-        queryClient.invalidateQueries(['notification-read-state', shopId]);
+        queryClient.invalidateQueries({ queryKey: ['notification-read-state', shopId] });
       }
     },
     forceFallback: () => {
