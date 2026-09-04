@@ -493,7 +493,7 @@ class PDFService {
     const outflowItems =
       cashFlow.outflows.expenses.count +
       (cashFlow.outflows.inventoryTransfers?.count || 0) +
-      cashFlow.outflows.refunds.count;
+      (cashFlow.outflows.cashRefunds?.count || 0);
     const revenueTx =
       revenue.cash.count + revenue.credit.count + revenue.completedLaybyes.count;
     const outstandingAccounts =
@@ -588,8 +588,8 @@ class PDFService {
           : []),
         {
           label: 'Refunds',
-          amount: this.moneyParen(cashFlow.outflows.refunds.amount),
-          count: cashFlow.outflows.refunds.count,
+          amount: this.moneyParen(cashFlow.outflows.cashRefunds?.amount || 0),
+          count: cashFlow.outflows.cashRefunds?.count || 0,
           accent: true,
         },
       ],

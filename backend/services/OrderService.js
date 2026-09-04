@@ -10,6 +10,7 @@ import {
   getPrimaryVariant,
   findPack,
 } from "../utils/productVariants.js";
+import { withOptionalTransaction, withIdempotency } from "../utils/transactions.js";
 
 class OrderService {
   /**
@@ -236,27 +237,67 @@ class OrderService {
           order.readyAt = new Date();
           break;
         case "completed": {
-          order.completedAt = new Date();
-          order.paymentStatus = "paid";
-          // Deduct stock once, then record the matching sale for revenue
-          await this.deductOrderStock(order);
-          try {
-            const sale = await this.createSaleFromOrder(order);
-            order.saleId = sale._id;
-            if (order.customerId) {
-              const customer = await Customer.findById(order.customerId);
-              if (customer) {
-                await CustomerService.linkSaleToCustomer(
-                  sale,
-                  customer,
-                  order.total
-                );
+          // Use idempotency to prevent double-application if order.save() fails later
+          const idempotencyKey = `order-complete:${order._id}:${order.status}`;
+          
+          const { sale, completedOrder } = await withIdempotency(idempotencyKey, async () => {
+            return await withOptionalTransaction(async (session) => {
+              // 1. Update order status first (within transaction)
+              const updatedOrder = await Order.findByIdAndUpdate(
+                order._id,
+                {
+                  status: "completed",
+                  completedAt: new Date(),
+                  paymentStatus: "paid"
+                },
+                { session, new: true }
+              );
+
+              if (!updatedOrder) {
+                throw new Error('Order not found during completion');
               }
-            }
-          } catch (saleError) {
-            await this.restoreOrderStock(order);
-            throw saleError;
-          }
+
+              // 2. Deduct stock (session-aware)
+              const stockResult = await InventoryService.deductSaleItems(
+                this.orderStockItems(updatedOrder),
+                session
+              );
+              
+              if (!stockResult.success) {
+                throw new Error(stockResult.message || "Failed to deduct order stock");
+              }
+
+              // 3. Create sale (within same transaction)
+              const sale = await this.createSaleFromOrderWithSession(updatedOrder, session);
+              
+              // 4. Update order with sale reference
+              updatedOrder.saleId = sale._id;
+              await updatedOrder.save({ session });
+
+              // 5. Link to customer if needed (best effort, can fail without rollback)
+              if (updatedOrder.customerId) {
+                try {
+                  const customer = await Customer.findById(updatedOrder.customerId).session(session);
+                  if (customer) {
+                    await CustomerService.linkSaleToCustomerWithSession(
+                      sale,
+                      customer,
+                      updatedOrder.total,
+                      session
+                    );
+                  }
+                } catch (customerError) {
+                  console.warn('Customer linking failed during order completion:', customerError);
+                  // Don't fail the entire transaction for customer stats
+                }
+              }
+
+              return { sale, completedOrder: updatedOrder };
+            });
+          });
+
+          // Update the local order object to reflect changes
+          Object.assign(order, completedOrder.toObject());
           break;
         }
         case "cancelled":
@@ -268,7 +309,11 @@ class OrderService {
         order.notes = notes;
       }
 
-      await order.save();
+      // Order saving is now handled within the transaction for "completed" status
+      // For other statuses, save normally
+      if (newStatus !== "completed") {
+        await order.save();
+      }
 
       return {
         success: true,
@@ -328,6 +373,14 @@ class OrderService {
    * Create a cash sale from a completed order (stock already deducted).
    */
   async createSaleFromOrder(order) {
+    return this.createSaleFromOrderWithSession(order, null);
+  }
+
+  /**
+   * Create a cash sale from a completed order with optional session support.
+   * Used by both standalone and transactional order completion.
+   */
+  async createSaleFromOrderWithSession(order, session) {
     const productIds = [
       ...new Set(
         (order.items || [])
@@ -360,7 +413,7 @@ class OrderService {
 
     const { lineItems, costTotal, profit } = buildSaleLineItems(pricingItems);
 
-    return Sale.create({
+    const saleData = {
       shopId: order.shopId,
       type: "cash",
       items: lineItems,
@@ -376,7 +429,16 @@ class OrderService {
       orderId: order._id,
       createdByUserId: order.createdByUserId || null,
       date: order.completedAt || new Date(),
-    });
+    };
+
+    if (session) {
+      // Use session for transactional creation
+      const [sale] = await Sale.create([saleData], { session });
+      return sale;
+    } else {
+      // Standalone creation
+      return Sale.create(saleData);
+    }
   }
 
   /**

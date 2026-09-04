@@ -165,6 +165,13 @@ class CustomerService {
    * Link sale to customer and update statistics
    */
   async linkSaleToCustomer(sale, customer, saleTotal) {
+    return this.linkSaleToCustomerWithSession(sale, customer, saleTotal, null);
+  }
+
+  /**
+   * Link sale to customer and update statistics with session support
+   */
+  async linkSaleToCustomerWithSession(sale, customer, saleTotal, session) {
     try {
       console.log('[CustomerService] Linking sale to customer:', {
         saleId: sale._id,
@@ -178,7 +185,8 @@ class CustomerService {
       customer.lastPurchaseDate = new Date();
       customer.loyaltyPoints += Math.floor(saleTotal);
 
-      await customer.save();
+      const saveOptions = session ? { session } : {};
+      await customer.save(saveOptions);
       console.log('[CustomerService] Customer updated:', {
         totalSpent: customer.totalSpent,
         totalVisits: customer.totalVisits,
@@ -189,7 +197,8 @@ class CustomerService {
       sale.customerId = customer._id;
       sale.customerName = customer.name;
       sale.customerPhone = customer.phone;
-      await sale.save();
+      const saleOptions = session ? { session } : {};
+      await sale.save(saleOptions);
       console.log('[CustomerService] Sale updated with customer info');
 
       return true;
