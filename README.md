@@ -1,5 +1,7 @@
 # ChartShop
 
+> **Production-Ready POS System with Solid Foundations** ✅
+
 Business management for SMEs — **Telegram & WhatsApp chat POS** plus a **web dashboard**. One shop account. Same login everywhere.
 
 Register once with a **username** and **4-digit PIN**, then use those credentials on web, Telegram, and WhatsApp. All three surfaces share the same products, sales, customers, orders, expenses, and reports.
