@@ -6,6 +6,7 @@ import { isWhatsAppConfigured } from "./adapters/whatsapp.js";
 
 // Import models to ensure they're registered
 import "./models/IdempotencyRecord.js";
+import "./models/NotificationReadState.js";
 
 // Import rate limiting middleware
 import { apiRateLimit } from "./middleware/rateLimiter.js";

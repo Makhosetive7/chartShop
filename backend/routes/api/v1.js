@@ -13,6 +13,7 @@ import * as helpController from "../../controllers/api/helpController.js";
 import * as statsController from "../../controllers/api/statsController.js";
 import * as chatController from "../../controllers/api/chatController.js";
 import * as activityController from "../../controllers/api/activityController.js";
+import * as notificationController from "../../controllers/api/notificationController.js";
 
 const router = express.Router();
 
@@ -242,6 +243,14 @@ router.get("/chat/history", requireApiAuth, chatController.getChatHistory);
 
 // Activity audit feed
 router.get("/activity", requireApiAuth, activityController.listActivity);
+
+// Notifications read state (Issue 4)
+router.get("/notifications/read-state", requireApiAuth, notificationController.getReadState);
+router.post("/notifications/read-state", requireApiAuth, notificationController.updateReadState);
+router.post("/notifications/read-state/add", requireApiAuth, notificationController.addSeenKeys);
+router.post("/notifications/read-state/migrate", requireApiAuth, notificationController.migrateLocalStorage);
+router.delete("/notifications/read-state", requireApiAuth, notificationController.clearReadState);
+router.get("/notifications/stats", requireApiAuth, requireAdmin, notificationController.getReadStateStats);
 
 // Help
 router.get("/help", requireApiAuth, helpController.help);

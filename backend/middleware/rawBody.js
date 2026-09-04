@@ -46,6 +46,22 @@ export function captureRawBody(options = {}) {
     req.on('end', () => {
       try {
         req.rawBody = Buffer.concat(chunks);
+        
+        // Also parse the JSON for req.body since we consumed the stream
+        // This ensures express.json() middleware can still work
+        if (req.rawBody.length > 0) {
+          try {
+            const contentType = req.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+              req.body = JSON.parse(req.rawBody.toString('utf8'));
+            }
+          } catch (parseError) {
+            // If JSON parsing fails, leave req.body undefined
+            // The downstream middleware will handle this appropriately
+            console.warn('Failed to parse JSON from raw body:', parseError.message);
+          }
+        }
+        
         next();
       } catch (error) {
         next(error);

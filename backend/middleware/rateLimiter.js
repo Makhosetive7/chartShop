@@ -288,7 +288,7 @@ export const apiRateLimit = createRateLimit('api');
 export const authRateLimit = createRateLimit('auth');
 export const criticalAuthRateLimit = createRateLimit('criticalAuth');
 export const progressiveAuthDelay = createProgressiveAuthDelay();
-export const resetAuthDelayOnSuccess = resetAuthDelayOnSuccess;
+export { resetAuthDelayOnSuccess };
 
 // Export utilities for testing and monitoring
-export { globalLimiter, RATE_LIMITS, getClientIP };
+export { globalLimiter, RATE_LIMITS, getClientIP, MemoryRateLimiter };
