@@ -70,7 +70,8 @@ describe('notificationDeepLinks', () => {
         customerId: 'customer-123',
         customerName: 'John Doe',
         customerPhone: '+1234567890',
-        totalCredit: 15000,
+        customerBalance: 15000,
+        total: 15000,
         dueDate: '2024-01-15',
         status: 'overdue',
         daysOverdue: 5,
@@ -91,10 +92,11 @@ describe('notificationDeepLinks', () => {
     it('should fallback to customers list when no customer ID', () => {
       const item: CreditDueItem = {
         id: 'credit-2',
-        customerId: null,
+        customerId: 'customer-456',
         customerName: 'Unknown Customer',
         customerPhone: null,
-        totalCredit: 5000,
+        customerBalance: 5000,
+        total: 5000,
         dueDate: '2024-01-20',
         status: 'due',
         daysOverdue: 0,
