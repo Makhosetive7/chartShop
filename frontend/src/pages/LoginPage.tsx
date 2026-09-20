@@ -22,13 +22,37 @@ const ActionRow = styled.div`
   align-items: flex-start;
 `;
 
+const FieldNote = styled.p<{ $tone: 'ok' | 'bad' | 'muted' }>`
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: ${({ theme }) => theme.fontWeights.regular};
+  color: ${({ theme, $tone }) =>
+    $tone === 'ok'
+      ? theme.colors.success
+      : $tone === 'bad'
+        ? theme.colors.danger
+        : theme.colors.textMuted};
+`;
+
+const CLIPBOARD_BLOCKED = 'Keep things secure — no copying and pasting';
+
 export function LoginPage() {
   const { isAuthenticated, login } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [clipboardField, setClipboardField] = useState<
+    'username' | 'pin' | null
+  >(null);
   const [pending, setPending] = useState(false);
+
+  function blockClipboard(field: 'username' | 'pin') {
+    return (event: { preventDefault: () => void }) => {
+      event.preventDefault();
+      setClipboardField(field);
+    };
+  }
 
   if (isAuthenticated) {
     return <Navigate to="/app/dashboard" replace />;
@@ -37,6 +61,7 @@ export function LoginPage() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setClipboardField(null);
     setPending(true);
     try {
       await login(username.trim().toLowerCase(), pin.trim());
@@ -109,12 +134,21 @@ export function LoginPage() {
         <Hint>Your personal login — same on web, Telegram, and WhatsApp</Hint>
         <Input
           value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(e) => {
+            setUsername(e.target.value);
+            setClipboardField(null);
+          }}
           placeholder="Your username"
           autoComplete="username"
           pattern="[A-Za-z0-9_]{3,32}"
+          onCopy={blockClipboard('username')}
+          onCut={blockClipboard('username')}
+          onPaste={blockClipboard('username')}
           required
         />
+        {clipboardField === 'username' ? (
+          <FieldNote $tone="bad">{CLIPBOARD_BLOCKED}</FieldNote>
+        ) : null}
       </Field>
       <Field>
         PIN
@@ -125,11 +159,20 @@ export function LoginPage() {
           pattern="\d{4}"
           maxLength={4}
           value={pin}
-          onChange={(e) => setPin(e.target.value)}
+          onChange={(e) => {
+            setPin(e.target.value);
+            setClipboardField(null);
+          }}
           placeholder="4-digit PIN"
           autoComplete="current-password"
+          onCopy={blockClipboard('pin')}
+          onCut={blockClipboard('pin')}
+          onPaste={blockClipboard('pin')}
           required
         />
+        {clipboardField === 'pin' ? (
+          <FieldNote $tone="bad">{CLIPBOARD_BLOCKED}</FieldNote>
+        ) : null}
       </Field>
       {error ? <ErrorText>{error}</ErrorText> : null}
     </AuthShell>
