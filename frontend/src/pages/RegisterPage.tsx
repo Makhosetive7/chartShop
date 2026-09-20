@@ -15,6 +15,7 @@ import {
   Hint,
   Input,
 } from '@/components/marketing/AuthShell';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import {
   buildLocalSuggestions,
   sanitizeUsernameInput,
@@ -439,8 +440,8 @@ export function RegisterPage() {
       <Field>
         PIN
         <Hint>Exactly 4 digits — remember it for chat login</Hint>
-        <Input
-          type="password"
+        <PasswordInput
+          variant="auth"
           inputMode="numeric"
           pattern="\d{4}"
           maxLength={4}
@@ -453,8 +454,8 @@ export function RegisterPage() {
       </Field>
       <Field>
         Confirm PIN
-        <Input
-          type="password"
+        <PasswordInput
+          variant="auth"
           inputMode="numeric"
           pattern="\d{4}"
           maxLength={4}

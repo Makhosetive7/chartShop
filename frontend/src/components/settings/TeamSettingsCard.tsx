@@ -18,6 +18,7 @@ import {
   Row,
   Field,
   Input,
+  PasswordInput,
   Button,
   Badge,
 } from '@/components/ui/primitives';
@@ -645,8 +646,7 @@ export function TeamSettingsCard() {
                 <Field>
                   PIN
                   <FieldHint>Exactly 4 digits</FieldHint>
-                  <Input
-                    type="password"
+                  <PasswordInput
                     inputMode="numeric"
                     pattern="\d{4}"
                     maxLength={4}

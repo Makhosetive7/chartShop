@@ -38,6 +38,7 @@ import {
   Row,
   Field,
   Input,
+  PasswordInput,
   TextArea,
   Select,
   Button,
@@ -948,8 +949,7 @@ export function SettingsPage() {
             <Row>
               <Field>
                 Current PIN
-                <Input
-                  type="password"
+                <PasswordInput
                   inputMode="numeric"
                   pattern="\d{4}"
                   maxLength={4}
@@ -962,8 +962,7 @@ export function SettingsPage() {
               </Field>
               <Field>
                 New PIN
-                <Input
-                  type="password"
+                <PasswordInput
                   inputMode="numeric"
                   pattern="\d{4}"
                   maxLength={4}
@@ -976,8 +975,7 @@ export function SettingsPage() {
               </Field>
               <Field>
                 Confirm PIN
-                <Input
-                  type="password"
+                <PasswordInput
                   inputMode="numeric"
                   pattern="\d{4}"
                   maxLength={4}

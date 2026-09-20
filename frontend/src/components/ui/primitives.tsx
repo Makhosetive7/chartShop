@@ -3,6 +3,8 @@ import type { ReactNode, TableHTMLAttributes } from 'react';
 
 export { Button } from './Button';
 export type { ButtonProps } from './Button';
+export { PasswordInput } from './PasswordInput';
+export type { PasswordInputProps } from './PasswordInput';
 
 export const Page = styled.div`
   position: relative;

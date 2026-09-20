@@ -13,6 +13,7 @@ import {
   Hint,
   Input,
 } from '@/components/marketing/AuthShell';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 
 const ActionRow = styled.div`
   display: flex;
@@ -143,8 +144,8 @@ export function RecoverPage() {
       <Field>
         New PIN
         <Hint>Exactly 4 digits — avoid 1234 / 0000</Hint>
-        <Input
-          type="password"
+        <PasswordInput
+          variant="auth"
           inputMode="numeric"
           pattern="\d{4}"
           maxLength={4}
@@ -157,8 +158,8 @@ export function RecoverPage() {
       </Field>
       <Field>
         Confirm new PIN
-        <Input
-          type="password"
+        <PasswordInput
+          variant="auth"
           inputMode="numeric"
           pattern="\d{4}"
           maxLength={4}

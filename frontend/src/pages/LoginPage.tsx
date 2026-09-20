@@ -13,6 +13,7 @@ import {
   Hint,
   Input,
 } from '@/components/marketing/AuthShell';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 
 const ActionRow = styled.div`
   display: flex;
@@ -118,8 +119,8 @@ export function LoginPage() {
       <Field>
         PIN
         <Hint>4-digit PIN</Hint>
-        <Input
-          type="password"
+        <PasswordInput
+          variant="auth"
           inputMode="numeric"
           pattern="\d{4}"
           maxLength={4}
