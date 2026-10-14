@@ -11,6 +11,7 @@ Register once with a **username** and **4-digit PIN**, then use those credential
 | **This file** | Product overview, architecture, local + production, chat commands |
 | **Backend** | [backend/README.md](./backend/README.md) — API, bots, Render, env vars |
 | **Frontend** | [frontend/README.md](./frontend/README.md) — Vite app, Vercel, routes |
+| **Android** | [android/README.md](./android/README.md) — Kotlin + Compose app, build, local API |
 | **REST API** | [backend/scripts/WEB_API_V1.md](./backend/scripts/WEB_API_V1.md) |
 | **Security** | [backend/docs/SECURITY.md](./backend/docs/SECURITY.md) — Auth, secrets, incident response |
 
@@ -80,6 +81,7 @@ chartShop/
   README.md             # you are here
   backend/              # Express API + Telegram/WhatsApp  →  Render
   frontend/             # Vite + React + TypeScript        →  Vercel
+  android/              # Kotlin + Jetpack Compose app     →  same REST API
 ```
 
 | Package | Stack | Deploy |

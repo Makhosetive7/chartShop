@@ -159,6 +159,20 @@ const Bottom = styled.div`
   font-size: 0.85rem;
 `;
 
+const LegalLinks = styled.nav`
+  display: flex;
+  gap: ${({ theme }) => theme.space[4]};
+
+  a {
+    color: ${({ theme }) => theme.colors.textOnDarkMuted};
+    text-decoration: none;
+
+    &:hover {
+      color: ${({ theme }) => theme.colors.textOnDark};
+    }
+  }
+`;
+
 const PRODUCT_LINKS = [
   { href: '/#problem', label: 'The Friday feeling' },
   { href: '/#solution', label: 'How it works' },
@@ -260,6 +274,10 @@ export function SiteFooter() {
 
       <Bottom>
         <span>Built for shops that move fast.</span>
+        <LegalLinks aria-label="Legal">
+          <Link to="/privacy">Privacy Policy</Link>
+          <Link to="/terms">Terms and Conditions</Link>
+        </LegalLinks>
         <span>© {year} ChartShop. All rights reserved.</span>
       </Bottom>
     </Foot>

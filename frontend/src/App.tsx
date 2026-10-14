@@ -22,6 +22,7 @@ import { ExpensesPage } from '@/pages/ExpensesPage';
 import { ReportsPage } from '@/pages/ReportsPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { PrivacyPage, TermsPage } from '@/pages/LegalPage';
 
 export function App() {
   useEffect(() => {
@@ -41,6 +42,8 @@ export function App() {
               <Route path="register" element={<RegisterPage />} />
               <Route path="recover" element={<RecoverPage />} />
               <Route path="setup" element={<SetupPage />} />
+              <Route path="privacy" element={<PrivacyPage />} />
+              <Route path="terms" element={<TermsPage />} />
             </Route>
 
             <Route path="app" element={<ProtectedRoute />}>
