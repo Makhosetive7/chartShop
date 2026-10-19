@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,6 +28,7 @@ import {
   formatShopTime,
   shopDayKey,
 } from '@/utils/dates';
+import { getChatActivityPath } from '@/utils/chatActivityLinks';
 
 type FeedFilter = 'all' | 'sales' | 'commands';
 
@@ -490,7 +492,11 @@ const BubbleAvatar = styled.div`
   }
 `;
 
-const Bubble = styled.div<{ $mine?: boolean; $activity?: boolean }>`
+const Bubble = styled.div<{
+  $mine?: boolean;
+  $activity?: boolean;
+  $clickable?: boolean;
+}>`
   /* Leave a clear opposite gutter so left/right bubbles read side-by-side */
   flex: 0 1 auto;
   max-width: ${({ $mine }) => ($mine ? '82%' : 'calc(100% - 28px)')};
@@ -521,6 +527,23 @@ const Bubble = styled.div<{ $mine?: boolean; $activity?: boolean }>`
   word-break: break-word;
   font-size: 0.8rem;
   line-height: 1.4;
+  cursor: ${({ $clickable }) => ($clickable ? 'pointer' : 'default')};
+  transition: ${({ $clickable }) =>
+    $clickable ? 'border-color 0.15s ease, background 0.15s ease' : 'none'};
+
+  ${({ $clickable, theme }) =>
+    $clickable
+      ? `
+    &:hover {
+      border-color: ${theme.colors.primary};
+      background: rgba(139, 30, 58, 0.1);
+    }
+    &:focus-visible {
+      outline: 2px solid ${theme.colors.primary};
+      outline-offset: 2px;
+    }
+  `
+      : ''}
 
   @media (min-width: 560px) {
     max-width: min(72%, 520px);
@@ -946,6 +969,7 @@ const bubbleMotion = {
 
 export function ChatPage() {
   const { shop, isDemo } = useAuth();
+  const navigate = useNavigate();
   const timeZone = useShopTimezone();
   const queryClient = useQueryClient();
   const guardDemoWrite = useGuardDemoWrite();
@@ -1204,6 +1228,11 @@ export function ChatPage() {
               const showDay = Boolean(day) && day !== lastDay;
               if (showDay) lastDay = day;
               const mine = msg.role === 'user';
+              const activityPath =
+                msg.type === 'activity' ? getChatActivityPath(msg) : null;
+              const openActivity = () => {
+                if (activityPath) navigate(activityPath);
+              };
               return (
                 <div key={msg.id || `${msg.role}-${index}-${msg.createdAt}`}>
                   {showDay ? (
@@ -1224,7 +1253,27 @@ export function ChatPage() {
                         <MessageCircle size={14} />
                       </BubbleAvatar>
                     ) : null}
-                    <Bubble $mine={mine} $activity={msg.type === 'activity'}>
+                    <Bubble
+                      $mine={mine}
+                      $activity={msg.type === 'activity'}
+                      $clickable={Boolean(activityPath)}
+                      role={activityPath ? 'link' : undefined}
+                      tabIndex={activityPath ? 0 : undefined}
+                      onClick={activityPath ? openActivity : undefined}
+                      onKeyDown={
+                        activityPath
+                          ? (e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                openActivity();
+                              }
+                            }
+                          : undefined
+                      }
+                      title={
+                        activityPath ? 'Open related page' : undefined
+                      }
+                    >
                       {msg.text}
                       <Meta $mine={mine}>
                         {msg.createdAt

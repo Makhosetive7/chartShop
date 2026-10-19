@@ -222,6 +222,9 @@ describe("API activity attribution", () => {
     );
     assert.equal(saleBubble.actorUsername, username);
     assert.equal(saleBubble.channel, "web");
+    assert.equal(saleBubble.entityType, "sale");
+    assert.ok(saleBubble.entityId);
+    assert.ok(saleBubble.customerId);
 
     const credit = await request(server, {
       method: "POST",
