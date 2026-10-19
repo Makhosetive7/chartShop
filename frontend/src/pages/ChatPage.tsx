@@ -20,12 +20,40 @@ import { useAuth } from '@/auth';
 import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { BrandMark } from '@/components/ui/BrandMark';
 import { ChatThreadSkeleton } from '@/components/skeletons/PageSkeletons';
+import { Tabs, Tab } from '@/components/ui/primitives';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import {
   formatShopDayLabel,
   formatShopTime,
   shopDayKey,
 } from '@/utils/dates';
+
+type FeedFilter = 'all' | 'sales' | 'commands';
+
+const FEED_FILTERS: Array<{ id: FeedFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'sales', label: 'Sales' },
+  { id: 'commands', label: 'Commands' },
+];
+
+function isSalesActivity(msg: ChatBubble): boolean {
+  if (msg.type !== 'activity') return false;
+  const action = String(msg.action || '');
+  return (
+    action.startsWith('sale.') ||
+    action.startsWith('laybye.') ||
+    action.startsWith('customer.credit') ||
+    action.startsWith('customer.payment')
+  );
+}
+
+function matchesFeedFilter(msg: ChatBubble, filter: FeedFilter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'sales') return isSalesActivity(msg);
+  // commands: chat turns only (not activity logs)
+  return msg.type !== 'activity';
+}
+
 const SUGGESTIONS = [
   { cmd: 'help', label: 'Help', icon: Sparkles },
   { cmd: 'list', label: 'Products', icon: Package },
@@ -306,6 +334,24 @@ const NewChatBtn = styled.button`
     box-shadow: 0 6px 16px rgba(74, 14, 28, 0.12);
     transform: translateY(-1px);
   }
+`;
+
+const FeedTabs = styled(Tabs)`
+  margin: 0 0 4px;
+  flex-shrink: 0;
+
+  @media (min-width: 560px) {
+    margin-bottom: 8px;
+  }
+`;
+
+const FilterEmpty = styled.p`
+  margin: 24px auto;
+  max-width: 280px;
+  text-align: center;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: ${({ theme }) => theme.colors.textMuted};
 `;
 
 const Thread = styled.div<{ $roomy?: boolean }>`
@@ -906,6 +952,7 @@ export function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
   const [local, setLocal] = useState<ChatBubble[]>([]);
+  const [feedFilter, setFeedFilter] = useState<FeedFilter>('all');
   const [sessionOnly, setSessionOnly] = useState(false);
   const [sessionStartedAt, setSessionStartedAt] = useState(() =>
     new Date().toISOString(),
@@ -937,6 +984,7 @@ export function ChatPage() {
   // After login / shop switch, show full cross-channel history (not a local filter).
   useEffect(() => {
     setSessionOnly(false);
+    setFeedFilter('all');
     setLocal([]);
     setSessionStartedAt(new Date().toISOString());
   }, [shop?.id]);
@@ -949,9 +997,24 @@ export function ChatPage() {
     );
   }, [history.data?.messages, sessionOnly, sessionStartedAt]);
 
-  const messages = [...historyMessages, ...local];
+  const messages = useMemo(() => {
+    const merged = [...historyMessages, ...local];
+    if (feedFilter === 'all') return merged;
+    // Keep in-flight local turns visible while typing/sending under any filter.
+    return merged.filter(
+      (m) => local.includes(m) || matchesFeedFilter(m, feedFilter),
+    );
+  }, [historyMessages, local, feedFilter]);
+
+  const hasAnyHistory =
+    historyMessages.length > 0 || local.length > 0 || Boolean(history.data?.messages?.length);
   const isEmpty =
-    messages.length === 0 && !history.isLoading && !history.isError;
+    !hasAnyHistory && !history.isLoading && !history.isError;
+  const filterEmpty =
+    !isEmpty &&
+    messages.length === 0 &&
+    !history.isLoading &&
+    feedFilter !== 'all';
   const isDemoMode = Boolean(isDemo);
 
   useEffect(() => {
@@ -1049,9 +1112,32 @@ export function ChatPage() {
 
         <Thread $roomy={!isEmpty}>
           <ThreadInner>
+            {hasAnyHistory ? (
+              <FeedTabs role="tablist" aria-label="Chat feed filter">
+                {FEED_FILTERS.map(({ id, label }) => (
+                  <Tab
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={feedFilter === id}
+                    $active={feedFilter === id}
+                    onClick={() => setFeedFilter(id)}
+                  >
+                    {label}
+                  </Tab>
+                ))}
+              </FeedTabs>
+            ) : null}
             <AnimatePresence>
-              {history.isLoading && messages.length === 0 ? (
+              {history.isLoading && messages.length === 0 && !filterEmpty ? (
                 <ChatThreadSkeleton />
+              ) : null}
+              {filterEmpty ? (
+                <FilterEmpty>
+                  {feedFilter === 'sales'
+                    ? 'No sales in this feed yet. Ring one up on Sales or switch to All.'
+                    : 'No commands in this feed yet. Send help or switch to All.'}
+                </FilterEmpty>
               ) : null}
               {history.isError && messages.length === 0 ? (
                 <Empty
