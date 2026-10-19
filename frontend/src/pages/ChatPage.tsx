@@ -981,12 +981,28 @@ export function ChatPage() {
   const [sessionStartedAt, setSessionStartedAt] = useState(() =>
     new Date().toISOString(),
   );
+  const [tabVisible, setTabVisible] = useState(
+    () =>
+      typeof document === 'undefined' ||
+      document.visibilityState === 'visible',
+  );
+
+  useEffect(() => {
+    const onVisibility = () => {
+      setTabVisible(document.visibilityState === 'visible');
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
 
   const history = useQuery({
     queryKey: ['chat', 'history', shop?.id],
     queryFn: fetchChatHistory,
     enabled: Boolean(shop?.id),
     staleTime: 0,
+    // Pick up sales/commands from other tabs/devices while Chat stays open.
+    refetchInterval: tabVisible ? 8_000 : false,
+    refetchOnWindowFocus: true,
   });
 
   const send = useMutation({
