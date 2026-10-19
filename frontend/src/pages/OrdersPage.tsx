@@ -82,6 +82,8 @@ export function OrdersPage() {
       setLine(emptyCatalogLine());
       setNotes('');
       void qc.invalidateQueries({ queryKey: ['orders'] });
+      void qc.invalidateQueries({ queryKey: ['chat', 'history'] });
+      void qc.invalidateQueries({ queryKey: ['activity'] });
     },
     onError: (e) => toastError(getErrorMessage(e)),
   });
@@ -140,6 +142,8 @@ export function OrdersPage() {
       );
       setCancelOrder(null);
       void qc.invalidateQueries({ queryKey: ['orders'] });
+      void qc.invalidateQueries({ queryKey: ['chat', 'history'] });
+      void qc.invalidateQueries({ queryKey: ['activity'] });
     } catch (err) {
       toastError(getErrorMessage(err));
     } finally {

@@ -9,7 +9,7 @@ if (!process.env.TELEGRAM_BOT_TOKEN) {
 const { connectTestDb, disconnectTestDb, wipeShopData } = await import(
   "./helpers/mongo.js"
 );
-const { createTestShop, createTestProduct } = await import(
+const { createTestShop, createTestProduct, createTestCustomer } = await import(
   "./helpers/fixtures.js"
 );
 const { default: createApp } = await import("../app.js");
@@ -181,6 +181,85 @@ describe("API activity attribution", () => {
     assert.equal(String(logs[0].actorId), String(memberId));
 
     await wipeShopData({ username: memberUser });
+  });
+
+  it("includes API sales as activity bubbles in /chat/history", async () => {
+    await createTestCustomer(shop._id, { name: "Jane Chat" });
+
+    const sale = await request(server, {
+      method: "POST",
+      path: "/api/v1/sales/to-customer",
+      token,
+      body: {
+        customer: "Jane Chat",
+        items: [{ name: "attribbread", quantity: 1 }],
+      },
+    });
+    assert.equal(sale.status, 201, JSON.stringify(sale.body));
+
+    const help = await request(server, {
+      method: "POST",
+      path: "/api/v1/chat",
+      token,
+      body: { message: "help" },
+    });
+    assert.equal(help.status, 200, JSON.stringify(help.body));
+
+    const history = await request(server, {
+      method: "GET",
+      path: "/api/v1/chat/history?limit=50",
+      token,
+    });
+    assert.equal(history.status, 200, JSON.stringify(history.body));
+    const messages = history.body.messages || [];
+
+    const saleBubble = messages.find(
+      (m) => m.type === "activity" && /Sale to Jane Chat/i.test(m.text || "")
+    );
+    assert.ok(
+      saleBubble,
+      `expected Sale to Jane Chat activity bubble, got: ${JSON.stringify(messages)}`
+    );
+    assert.equal(saleBubble.actorUsername, username);
+    assert.equal(saleBubble.channel, "web");
+
+    const credit = await request(server, {
+      method: "POST",
+      path: "/api/v1/sales/credit",
+      token,
+      body: {
+        customer: "Jane Chat",
+        items: [{ name: "attribbread", quantity: 1 }],
+        dueDate: "2030-01-15",
+      },
+    });
+    assert.equal(credit.status, 201, JSON.stringify(credit.body));
+
+    const history2 = await request(server, {
+      method: "GET",
+      path: "/api/v1/chat/history?limit=50",
+      token,
+    });
+    assert.equal(history2.status, 200);
+    const creditBubble = (history2.body.messages || []).find(
+      (m) => m.type === "activity" && /Credit to Jane Chat/i.test(m.text || "")
+    );
+    assert.ok(
+      creditBubble,
+      `expected Credit to Jane Chat bubble, got: ${JSON.stringify(history2.body.messages)}`
+    );
+
+    const helpIn = messages.find(
+      (m) => m.role === "user" && String(m.text || "").toLowerCase() === "help"
+    );
+    const helpOut = messages.find(
+      (m) =>
+        m.role === "assistant" &&
+        m.type !== "activity" &&
+        /help|command/i.test(m.text || "")
+    );
+    assert.ok(helpIn, "expected user help bubble");
+    assert.ok(helpOut, "expected assistant help reply bubble");
   });
 
   it("supports promote and demote via team role API", async () => {

@@ -93,9 +93,7 @@ export async function sendChatMessage(req, res) {
 export async function getChatHistory(req, res) {
   try {
     const limit = req.query.limit || 100;
-    const messages = req.isDemo
-      ? await ActivityService.demoActivityFeed(req.shopId, { limit })
-      : await ActivityService.chatHistory(req.shopId, { limit });
+    const messages = await ActivityService.chatHistory(req.shopId, { limit });
     return res.json({
       success: true,
       demoFeed: Boolean(req.isDemo),
