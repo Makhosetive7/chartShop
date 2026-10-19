@@ -9,10 +9,17 @@ data class ChatBubble(
     val role: String = ROLE_ASSISTANT,
     val text: String = "",
     val type: String? = null,
+    val action: String? = null,
+    val entityType: String? = null,
+    val entityId: String? = null,
+    val customerId: String? = null,
     val channel: String? = null,
+    val actorUsername: String? = null,
+    val actorDisplayName: String? = null,
     val createdAt: String? = null,
 ) {
     val mine: Boolean get() = role == ROLE_USER
+    val isActivity: Boolean get() = type == "activity"
 
     companion object {
         const val ROLE_USER = "user"

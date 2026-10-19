@@ -10,13 +10,14 @@ import com.chartshop.app.data.shop.ShopRepository
 import com.chartshop.app.domain.ShopDates
 import com.chartshop.app.ui.Remote
 import com.chartshop.app.ui.ScreenViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -32,6 +33,7 @@ val CHAT_SUGGESTIONS = listOf(
 )
 
 const val CHAT_HISTORY_LIMIT = 120
+private const val CHAT_POLL_MS = 8_000L
 
 private val DEMO_SAFE_COMMANDS = setOf(
     "help", "list", "daily", "weekly", "monthly", "best", "low stock", "customers", "orders", "status", "expenses",
@@ -48,13 +50,16 @@ fun isDemoSafeCommand(text: String): Boolean {
 
 data class ChatUi(
     val messages: List<ChatBubble> = emptyList(),
+    val feedFilter: ChatFeedFilter = ChatFeedFilter.All,
+    val hasAnyHistory: Boolean = false,
+    val filterEmpty: Boolean = false,
     val loading: Boolean = false,
     val error: String? = null,
     val slow: Boolean = false,
     val sending: Boolean = false,
     val draft: String = "",
 ) {
-    val isEmpty: Boolean get() = messages.isEmpty() && !loading && error == null
+    val isEmpty: Boolean get() = !hasAnyHistory && !loading && error == null
 }
 
 class ChatViewModel(
@@ -67,20 +72,57 @@ class ChatViewModel(
     private val local = MutableStateFlow<List<ChatBubble>>(emptyList())
     private val draft = MutableStateFlow("")
     private val sending = MutableStateFlow(false)
+    private val feedFilter = MutableStateFlow(ChatFeedFilter.All)
 
     /** "New conversation" hides older history on this screen only; nothing is deleted. */
     private val sessionStartedAt = MutableStateFlow<String?>(null)
 
-    val ui: StateFlow<ChatUi> = combine(history, local, draft, sending, sessionStartedAt) { h, l, d, s, since ->
-        val rows = h.data?.messages.orEmpty()
-        val visible = if (since == null) rows else rows.filter { (it.createdAt ?: "") >= since }
+    private data class BaseUi(
+        val sessionRows: List<ChatBubble>,
+        val local: List<ChatBubble>,
+        val hasServerHistory: Boolean,
+        val loading: Boolean,
+        val error: String?,
+        val slow: Boolean,
+        val sending: Boolean,
+        val draft: String,
+    )
+
+    val ui: StateFlow<ChatUi> = combine(
+        combine(history, local, draft, sending, sessionStartedAt) { h, l, d, s, since ->
+            val rows = h.data?.messages.orEmpty()
+            val sessionRows = if (since == null) rows else rows.filter { (it.createdAt ?: "") >= since }
+            BaseUi(
+                sessionRows = sessionRows,
+                local = l,
+                hasServerHistory = rows.isNotEmpty(),
+                loading = h.loading && h.data == null,
+                error = h.error.takeIf { h.data == null },
+                slow = h.slow,
+                sending = s,
+                draft = d,
+            )
+        },
+        feedFilter,
+    ) { base, filter ->
+        val filteredHistory = if (filter == ChatFeedFilter.All) {
+            base.sessionRows
+        } else {
+            base.sessionRows.filter { matchesFeedFilter(it, filter) }
+        }
+        // Keep in-flight local turns visible under any filter.
+        val visible = filteredHistory + base.local
+        val hasAny = base.sessionRows.isNotEmpty() || base.local.isNotEmpty() || base.hasServerHistory
         ChatUi(
-            messages = visible + l,
-            loading = h.loading && h.data == null,
-            error = h.error.takeIf { h.data == null },
-            slow = h.slow,
-            sending = s,
-            draft = d,
+            messages = visible,
+            feedFilter = filter,
+            hasAnyHistory = hasAny,
+            filterEmpty = hasAny && visible.isEmpty() && !base.loading && filter != ChatFeedFilter.All,
+            loading = base.loading,
+            error = base.error,
+            slow = base.slow,
+            sending = base.sending,
+            draft = base.draft,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChatUi(loading = true))
 
@@ -89,18 +131,43 @@ class ChatViewModel(
 
     init {
         refresh()
+        reloadOnChanges { silentRefresh() }
+        viewModelScope.launch {
+            while (isActive) {
+                delay(CHAT_POLL_MS)
+                silentRefresh()
+            }
+        }
     }
 
     fun refresh() {
         load(history) { owner { chatHistory(CHAT_HISTORY_LIMIT) } }
     }
 
+    private fun silentRefresh() {
+        viewModelScope.launch {
+            when (val result = repository.owner { chatHistory(CHAT_HISTORY_LIMIT) }) {
+                is ApiResult.Success -> {
+                    history.update {
+                        it.copy(data = result.value, loading = false, error = null, slow = false)
+                    }
+                }
+                is ApiResult.Failure -> Unit
+            }
+        }
+    }
+
     fun onDraft(value: String) {
         draft.value = value
     }
 
+    fun setFeedFilter(filter: ChatFeedFilter) {
+        feedFilter.value = filter
+    }
+
     fun newConversation() {
         sessionStartedAt.value = Instant.now().toString()
+        feedFilter.value = ChatFeedFilter.All
         local.value = emptyList()
         draft.value = ""
     }

@@ -63,6 +63,7 @@ import com.chartshop.app.ui.components.BrandMark
 import com.chartshop.app.ui.components.SkeletonBar
 import com.chartshop.app.ui.components.SlowServerHint
 import com.chartshop.app.ui.components.ToastHost
+import com.chartshop.app.ui.shell.AppDestination
 import com.chartshop.app.ui.theme.ChartShopColors
 
 private sealed interface ThreadRow {
@@ -80,7 +81,11 @@ private fun suggestionIcon(cmd: String): ImageVector = when (cmd) {
 }
 
 @Composable
-fun ChatScreen(viewModel: ChatViewModel, shopName: String) {
+fun ChatScreen(
+    viewModel: ChatViewModel,
+    shopName: String,
+    onOpen: (AppDestination) -> Unit = {},
+) {
     val ui by viewModel.ui.collectAsState()
     val toast by viewModel.toast.collectAsState()
     val dates = viewModel.dates
@@ -109,8 +114,8 @@ fun ChatScreen(viewModel: ChatViewModel, shopName: String) {
             SlowServerHint(ui.slow && ui.messages.isEmpty(), Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
-                    ui.loading && ui.messages.isEmpty() -> ThreadSkeleton()
-                    ui.error != null && ui.messages.isEmpty() -> ChatEmpty(
+                    ui.loading && ui.messages.isEmpty() && !ui.filterEmpty -> ThreadSkeleton()
+                    ui.error != null && ui.messages.isEmpty() && !ui.hasAnyHistory -> ChatEmpty(
                         title = "Couldn’t load chat history",
                         body = "Your past commands from web and Telegram should appear here after login. " +
                             "Check your connection and try again.",
@@ -127,25 +132,78 @@ fun ChatScreen(viewModel: ChatViewModel, shopName: String) {
                             EmptyAction(suggestionIcon(s.cmd), s.label, s.cmd) { viewModel.submit(s.cmd) }
                         }
                     }
-                    else -> LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        items(rows, key = { it.key }) { row ->
-                            when (row) {
-                                is ThreadRow.Day -> DayDivider(row.label)
-                                is ThreadRow.Message -> MessageRow(row.bubble, dates.time(row.bubble.createdAt))
+                    else -> Column(Modifier.fillMaxSize()) {
+                        if (ui.hasAnyHistory) {
+                            FeedFilterRow(ui.feedFilter, viewModel::setFeedFilter)
+                        }
+                        if (ui.filterEmpty) {
+                            Text(
+                                if (ui.feedFilter == ChatFeedFilter.Sales) {
+                                    "No sales in this feed yet. Ring one up on Sales or switch to All."
+                                } else {
+                                    "No commands in this feed yet. Send help or switch to All."
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 28.dp, vertical = 32.dp),
+                                color = ChartShopColors.TextMuted,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            )
+                        } else {
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                items(rows, key = { it.key }) { row ->
+                                    when (row) {
+                                        is ThreadRow.Day -> DayDivider(row.label)
+                                        is ThreadRow.Message -> MessageRow(
+                                            row.bubble,
+                                            dates.time(row.bubble.createdAt),
+                                            onOpen = onOpen,
+                                        )
+                                    }
+                                }
+                                if (ui.sending) item(key = "typing") { TypingRow() }
                             }
                         }
-                        if (ui.sending) item(key = "typing") { TypingRow() }
                     }
                 }
             }
             Footer(ui, viewModel)
         }
         ToastHost(toast, viewModel::dismissToast, Modifier.align(Alignment.TopCenter).padding(12.dp))
+    }
+}
+
+@Composable
+private fun FeedFilterRow(active: ChatFeedFilter, onSelect: (ChatFeedFilter) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .background(ChartShopColors.PeachSoft)
+            .padding(6.dp)
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        ChatFeedFilter.entries.forEach { filter ->
+            val selected = filter == active
+            Text(
+                filter.label,
+                modifier = Modifier
+                    .background(if (selected) ChartShopColors.Surface else Color.Transparent)
+                    .clickable { onSelect(filter) }
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                color = ChartShopColors.Maroon,
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
@@ -230,9 +288,14 @@ private fun BubbleAvatar() {
 }
 
 @Composable
-private fun MessageRow(msg: ChatBubble, time: String) {
+private fun MessageRow(
+    msg: ChatBubble,
+    time: String,
+    onOpen: (AppDestination) -> Unit = {},
+) {
     val mine = msg.mine
-    val activity = msg.type == "activity"
+    val activity = msg.isActivity
+    val destination = chatActivityDestination(msg)
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
@@ -246,7 +309,13 @@ private fun MessageRow(msg: ChatBubble, time: String) {
             mine -> Modifier.background(Brush.linearGradient(listOf(ChartShopColors.Coral, ChartShopColors.Maroon)))
             activity -> Modifier.background(ChartShopColors.PeachSoft).border(1.dp, ChartShopColors.Border)
             else -> Modifier.background(ChartShopColors.Surface).border(1.dp, ChartShopColors.Border)
-        }
+        }.then(
+            if (destination != null) {
+                Modifier.clickable { onOpen(destination) }
+            } else {
+                Modifier
+            },
+        )
         Column(bubble.widthIn(max = 300.dp).padding(horizontal = 13.dp, vertical = 9.dp)) {
             Text(
                 msg.text,
@@ -256,6 +325,8 @@ private fun MessageRow(msg: ChatBubble, time: String) {
             )
             val meta = buildString {
                 if (msg.createdAt != null) append(time)
+                val actor = msg.actorUsername
+                if (!actor.isNullOrBlank()) append(" · @$actor")
                 if (msg.channel != null && !mine) append(" · ${msg.channel}")
                 if (activity) append(" · log")
             }
