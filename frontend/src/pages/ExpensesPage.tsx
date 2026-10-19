@@ -115,6 +115,8 @@ export function ExpensesPage() {
       void qc.invalidateQueries({ queryKey: ['expenses'] });
       void qc.invalidateQueries({ queryKey: ['stats'] });
       void qc.invalidateQueries({ queryKey: ['reports'] });
+      void qc.invalidateQueries({ queryKey: ['chat', 'history'] });
+      void qc.invalidateQueries({ queryKey: ['activity'] });
     },
     onError: (e) => {
       const insufficient = getInsufficientCashError(e);

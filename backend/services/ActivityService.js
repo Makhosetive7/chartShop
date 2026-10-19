@@ -200,37 +200,29 @@ class ActivityService {
     });
   }
 
-  /** Chat transcript derived from chat.turn logs (oldest → newest for UI). */
+  /**
+   * Chat transcript for /app/chat: all shop activity (commands + page mutations).
+   * Oldest → newest for UI. Demo and real shops share this feed.
+   */
   async chatHistory(shopId, { limit = 100 } = {}) {
-    const items = await this.list(shopId, {
-      limit,
-      action: "chat.turn",
-    });
-    return this.turnsToBubbles(items);
+    const fetchLimit = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 200);
+    const items = await this.list(shopId, { limit: fetchLimit });
+    return this.activityToBubbles(items);
   }
 
-  /**
-   * Demo /app feed: chat transcript plus system/other logs.
-   * Sale/expense rows that already appear as chat.turn are skipped to avoid doubles.
-   */
-  async demoActivityFeed(shopId, { limit = 120 } = {}) {
-    const fetchLimit = Math.min(Math.max(parseInt(limit, 10) || 120, 40) * 2, 200);
-    const items = await this.list(shopId, { limit: fetchLimit });
-    const keep = items.filter(
-      (row) =>
-        row.action === "chat.turn" ||
-        row.action === "demo.seeded" ||
-        (row.action !== "sale.cash" &&
-          row.action !== "sale.credit" &&
-          row.action !== "expense.recorded")
-    );
-    return this.activityToBubbles(keep.slice(0, Math.min(fetchLimit, 200)));
+  /** @deprecated Prefer chatHistory — kept as an alias for callers/tests. */
+  async demoActivityFeed(shopId, opts = {}) {
+    return this.chatHistory(shopId, opts);
   }
 
   turnsToBubbles(items) {
     return items.reverse().flatMap((row) => {
       const input = row.metadata?.input || "";
       const reply = row.metadata?.reply || row.summary;
+      const actor = {
+        actorUsername: row.actorUsername || null,
+        actorDisplayName: row.actorDisplayName || null,
+      };
       const bubbles = [];
       if (input) {
         bubbles.push({
@@ -239,6 +231,7 @@ class ActivityService {
           text: input,
           channel: row.channel,
           createdAt: row.createdAt,
+          ...actor,
         });
       }
       if (reply) {
@@ -249,6 +242,7 @@ class ActivityService {
           replyType: row.metadata?.replyType || "text",
           channel: row.channel,
           createdAt: row.createdAt,
+          ...actor,
         });
       }
       return bubbles;
@@ -262,14 +256,18 @@ class ActivityService {
         return this.turnsToBubbles([row]);
       }
 
+      const summary = String(row.summary || "").trim();
       const label = row.action.replace(/\./g, " · ");
       return [
         {
           id: row.id,
           role: "assistant",
-          text: `${label}\n${row.summary}`,
+          text: summary || label,
           type: "activity",
+          action: row.action,
           channel: row.channel,
+          actorUsername: row.actorUsername || null,
+          actorDisplayName: row.actorDisplayName || null,
           createdAt: row.createdAt,
         },
       ];

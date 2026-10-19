@@ -1144,6 +1144,9 @@ export function ChatPage() {
                         {msg.createdAt
                           ? formatShopTime(msg.createdAt, timeZone)
                           : ''}
+                        {msg.actorUsername
+                          ? ` · @${msg.actorUsername}`
+                          : ''}
                         {msg.channel && !mine ? ` · ${msg.channel}` : ''}
                         {msg.type === 'activity' ? ' · log' : ''}
                       </Meta>

@@ -74,7 +74,7 @@ export async function createCashSale(req, res) {
       summary: `Cash sale ${money(total)} (${itemCountLabel(lineItems.length)})`,
       entityType: "sale",
       entityId: sale._id,
-      metadata: { total, itemCount: lineItems.length },
+      metadata: { total, itemCount: lineItems.length, kind: "cash" },
     });
 
     return res.status(201).json({ success: true, sale: serializeSale(sale) });
@@ -179,14 +179,16 @@ export async function createCreditSale(req, res) {
 
     await logApiActivity(req, {
       action: "sale.credit",
-      summary: `Credit sale ${money(total)} (${itemCountLabel(lineItems.length)})`,
+      summary: `Credit to ${customer.name} ${money(total)} (${itemCountLabel(lineItems.length)})`,
       entityType: "sale",
       entityId: sale._id,
       metadata: {
         total,
         itemCount: lineItems.length,
         customerId: String(customer._id),
+        customerName: customer.name,
         dueDate: due.dueDate,
+        kind: "credit",
       },
     });
 

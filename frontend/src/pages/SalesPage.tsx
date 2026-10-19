@@ -247,6 +247,8 @@ export function SalesPage() {
     void qc.invalidateQueries({ queryKey: ['products'] });
     void qc.invalidateQueries({ queryKey: ['customers'] });
     void qc.invalidateQueries({ queryKey: ['stats'] });
+    void qc.invalidateQueries({ queryKey: ['chat', 'history'] });
+    void qc.invalidateQueries({ queryKey: ['activity'] });
   }
 
   const sellM = useMutation({

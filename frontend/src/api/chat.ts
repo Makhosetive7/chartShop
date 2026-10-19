@@ -5,7 +5,10 @@ export type ChatBubble = {
   role: 'user' | 'assistant';
   text: string;
   type?: string;
+  action?: string;
   channel?: string;
+  actorUsername?: string | null;
+  actorDisplayName?: string | null;
   createdAt?: string;
 };
 

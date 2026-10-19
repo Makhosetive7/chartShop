@@ -421,6 +421,8 @@ export function ProductsPage() {
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ['products'] });
     void qc.invalidateQueries({ queryKey: ['stats'] });
+    void qc.invalidateQueries({ queryKey: ['chat', 'history'] });
+    void qc.invalidateQueries({ queryKey: ['activity'] });
   };
 
   const createM = useMutation({

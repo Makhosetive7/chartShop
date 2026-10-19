@@ -932,30 +932,13 @@ async function seedDemoActivityLog({
       .filter(Boolean)
       .join("\n");
 
+    // Chat turn only — avoid a parallel sale.* row that would double in /chat/history.
     push({
       channel,
       action: "chat.turn",
       entityType: "chat",
       summary: `→ ${input} · ← ${reply}`.slice(0, 400),
       metadata: { input, reply, replyType: "text" },
-      createdAt: sale.date,
-    });
-
-    push({
-      channel,
-      action: sale.type === "credit" ? "sale.credit" : "sale.cash",
-      entityType: "sale",
-      summary: `${sale.type} sale $${Number(sale.total).toFixed(2)}${
-        sale.customerName ? ` · ${sale.customerName}` : ""
-      }`,
-      metadata: {
-        total: sale.total,
-        type: sale.type,
-        items: sale.items.map((it) => ({
-          name: it.productName,
-          quantity: it.quantity,
-        })),
-      },
       createdAt: sale.date,
     });
   }
@@ -968,24 +951,13 @@ async function seedDemoActivityLog({
     const reply = `EXPENSE RECORDED\n\nAmount: $${Number(exp.amount).toFixed(
       2
     )}\nDescription: ${exp.description}`;
+    // Chat turn only — avoid a parallel expense.recorded row that would double in /chat/history.
     push({
       channel: "web",
       action: "chat.turn",
       entityType: "chat",
       summary: `→ ${input} · ← ${reply}`.slice(0, 400),
       metadata: { input, reply, replyType: "text" },
-      createdAt: exp.date,
-    });
-    push({
-      channel: "web",
-      action: "expense.recorded",
-      entityType: "expense",
-      summary: `Expense $${Number(exp.amount).toFixed(2)} · ${exp.description}`,
-      metadata: {
-        amount: exp.amount,
-        description: exp.description,
-        category: exp.category,
-      },
       createdAt: exp.date,
     });
   }
