@@ -258,6 +258,10 @@ class ActivityService {
 
       const summary = String(row.summary || "").trim();
       const label = row.action.replace(/\./g, " · ");
+      const customerId =
+        row.metadata?.customerId != null
+          ? String(row.metadata.customerId)
+          : null;
       return [
         {
           id: row.id,
@@ -265,6 +269,9 @@ class ActivityService {
           text: summary || label,
           type: "activity",
           action: row.action,
+          entityType: row.entityType || null,
+          entityId: row.entityId || null,
+          customerId,
           channel: row.channel,
           actorUsername: row.actorUsername || null,
           actorDisplayName: row.actorDisplayName || null,

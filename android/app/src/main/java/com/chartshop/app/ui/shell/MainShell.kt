@@ -171,6 +171,7 @@ fun MainShell(session: SessionState.SignedIn) {
                                     ChatViewModel(it.shopRepository, dates, session.shop.isDemo)
                                 },
                                 shopName = session.shop.businessName,
+                                onOpen = { nav.navigate(it.route) { launchSingleTop = true } },
                             )
                             AppDestination.More -> MoreScreen(
                                 session = session,

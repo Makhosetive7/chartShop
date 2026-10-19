@@ -6,6 +6,9 @@ export type ChatBubble = {
   text: string;
   type?: string;
   action?: string;
+  entityType?: string | null;
+  entityId?: string | null;
+  customerId?: string | null;
   channel?: string;
   actorUsername?: string | null;
   actorDisplayName?: string | null;

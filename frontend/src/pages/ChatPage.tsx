@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -20,12 +21,41 @@ import { useAuth } from '@/auth';
 import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { BrandMark } from '@/components/ui/BrandMark';
 import { ChatThreadSkeleton } from '@/components/skeletons/PageSkeletons';
+import { Tabs, Tab } from '@/components/ui/primitives';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import {
   formatShopDayLabel,
   formatShopTime,
   shopDayKey,
 } from '@/utils/dates';
+import { getChatActivityPath } from '@/utils/chatActivityLinks';
+
+type FeedFilter = 'all' | 'sales' | 'commands';
+
+const FEED_FILTERS: Array<{ id: FeedFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'sales', label: 'Sales' },
+  { id: 'commands', label: 'Commands' },
+];
+
+function isSalesActivity(msg: ChatBubble): boolean {
+  if (msg.type !== 'activity') return false;
+  const action = String(msg.action || '');
+  return (
+    action.startsWith('sale.') ||
+    action.startsWith('laybye.') ||
+    action.startsWith('customer.credit') ||
+    action.startsWith('customer.payment')
+  );
+}
+
+function matchesFeedFilter(msg: ChatBubble, filter: FeedFilter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'sales') return isSalesActivity(msg);
+  // commands: chat turns only (not activity logs)
+  return msg.type !== 'activity';
+}
+
 const SUGGESTIONS = [
   { cmd: 'help', label: 'Help', icon: Sparkles },
   { cmd: 'list', label: 'Products', icon: Package },
@@ -308,6 +338,24 @@ const NewChatBtn = styled.button`
   }
 `;
 
+const FeedTabs = styled(Tabs)`
+  margin: 0 0 4px;
+  flex-shrink: 0;
+
+  @media (min-width: 560px) {
+    margin-bottom: 8px;
+  }
+`;
+
+const FilterEmpty = styled.p`
+  margin: 24px auto;
+  max-width: 280px;
+  text-align: center;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: ${({ theme }) => theme.colors.textMuted};
+`;
+
 const Thread = styled.div<{ $roomy?: boolean }>`
   position: relative;
   flex: 1;
@@ -444,7 +492,11 @@ const BubbleAvatar = styled.div`
   }
 `;
 
-const Bubble = styled.div<{ $mine?: boolean; $activity?: boolean }>`
+const Bubble = styled.div<{
+  $mine?: boolean;
+  $activity?: boolean;
+  $clickable?: boolean;
+}>`
   /* Leave a clear opposite gutter so left/right bubbles read side-by-side */
   flex: 0 1 auto;
   max-width: ${({ $mine }) => ($mine ? '82%' : 'calc(100% - 28px)')};
@@ -475,6 +527,23 @@ const Bubble = styled.div<{ $mine?: boolean; $activity?: boolean }>`
   word-break: break-word;
   font-size: 0.8rem;
   line-height: 1.4;
+  cursor: ${({ $clickable }) => ($clickable ? 'pointer' : 'default')};
+  transition: ${({ $clickable }) =>
+    $clickable ? 'border-color 0.15s ease, background 0.15s ease' : 'none'};
+
+  ${({ $clickable, theme }) =>
+    $clickable
+      ? `
+    &:hover {
+      border-color: ${theme.colors.primary};
+      background: rgba(139, 30, 58, 0.1);
+    }
+    &:focus-visible {
+      outline: 2px solid ${theme.colors.primary};
+      outline-offset: 2px;
+    }
+  `
+      : ''}
 
   @media (min-width: 560px) {
     max-width: min(72%, 520px);
@@ -900,22 +969,40 @@ const bubbleMotion = {
 
 export function ChatPage() {
   const { shop, isDemo } = useAuth();
+  const navigate = useNavigate();
   const timeZone = useShopTimezone();
   const queryClient = useQueryClient();
   const guardDemoWrite = useGuardDemoWrite();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('');
   const [local, setLocal] = useState<ChatBubble[]>([]);
+  const [feedFilter, setFeedFilter] = useState<FeedFilter>('all');
   const [sessionOnly, setSessionOnly] = useState(false);
   const [sessionStartedAt, setSessionStartedAt] = useState(() =>
     new Date().toISOString(),
   );
+  const [tabVisible, setTabVisible] = useState(
+    () =>
+      typeof document === 'undefined' ||
+      document.visibilityState === 'visible',
+  );
+
+  useEffect(() => {
+    const onVisibility = () => {
+      setTabVisible(document.visibilityState === 'visible');
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
 
   const history = useQuery({
     queryKey: ['chat', 'history', shop?.id],
     queryFn: fetchChatHistory,
     enabled: Boolean(shop?.id),
     staleTime: 0,
+    // Pick up sales/commands from other tabs/devices while Chat stays open.
+    refetchInterval: tabVisible ? 8_000 : false,
+    refetchOnWindowFocus: true,
   });
 
   const send = useMutation({
@@ -937,6 +1024,7 @@ export function ChatPage() {
   // After login / shop switch, show full cross-channel history (not a local filter).
   useEffect(() => {
     setSessionOnly(false);
+    setFeedFilter('all');
     setLocal([]);
     setSessionStartedAt(new Date().toISOString());
   }, [shop?.id]);
@@ -949,9 +1037,24 @@ export function ChatPage() {
     );
   }, [history.data?.messages, sessionOnly, sessionStartedAt]);
 
-  const messages = [...historyMessages, ...local];
+  const messages = useMemo(() => {
+    const merged = [...historyMessages, ...local];
+    if (feedFilter === 'all') return merged;
+    // Keep in-flight local turns visible while typing/sending under any filter.
+    return merged.filter(
+      (m) => local.includes(m) || matchesFeedFilter(m, feedFilter),
+    );
+  }, [historyMessages, local, feedFilter]);
+
+  const hasAnyHistory =
+    historyMessages.length > 0 || local.length > 0 || Boolean(history.data?.messages?.length);
   const isEmpty =
-    messages.length === 0 && !history.isLoading && !history.isError;
+    !hasAnyHistory && !history.isLoading && !history.isError;
+  const filterEmpty =
+    !isEmpty &&
+    messages.length === 0 &&
+    !history.isLoading &&
+    feedFilter !== 'all';
   const isDemoMode = Boolean(isDemo);
 
   useEffect(() => {
@@ -1049,9 +1152,32 @@ export function ChatPage() {
 
         <Thread $roomy={!isEmpty}>
           <ThreadInner>
+            {hasAnyHistory ? (
+              <FeedTabs role="tablist" aria-label="Chat feed filter">
+                {FEED_FILTERS.map(({ id, label }) => (
+                  <Tab
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={feedFilter === id}
+                    $active={feedFilter === id}
+                    onClick={() => setFeedFilter(id)}
+                  >
+                    {label}
+                  </Tab>
+                ))}
+              </FeedTabs>
+            ) : null}
             <AnimatePresence>
-              {history.isLoading && messages.length === 0 ? (
+              {history.isLoading && messages.length === 0 && !filterEmpty ? (
                 <ChatThreadSkeleton />
+              ) : null}
+              {filterEmpty ? (
+                <FilterEmpty>
+                  {feedFilter === 'sales'
+                    ? 'No sales in this feed yet. Ring one up on Sales or switch to All.'
+                    : 'No commands in this feed yet. Send help or switch to All.'}
+                </FilterEmpty>
               ) : null}
               {history.isError && messages.length === 0 ? (
                 <Empty
@@ -1118,6 +1244,11 @@ export function ChatPage() {
               const showDay = Boolean(day) && day !== lastDay;
               if (showDay) lastDay = day;
               const mine = msg.role === 'user';
+              const activityPath =
+                msg.type === 'activity' ? getChatActivityPath(msg) : null;
+              const openActivity = () => {
+                if (activityPath) navigate(activityPath);
+              };
               return (
                 <div key={msg.id || `${msg.role}-${index}-${msg.createdAt}`}>
                   {showDay ? (
@@ -1138,7 +1269,27 @@ export function ChatPage() {
                         <MessageCircle size={14} />
                       </BubbleAvatar>
                     ) : null}
-                    <Bubble $mine={mine} $activity={msg.type === 'activity'}>
+                    <Bubble
+                      $mine={mine}
+                      $activity={msg.type === 'activity'}
+                      $clickable={Boolean(activityPath)}
+                      role={activityPath ? 'link' : undefined}
+                      tabIndex={activityPath ? 0 : undefined}
+                      onClick={activityPath ? openActivity : undefined}
+                      onKeyDown={
+                        activityPath
+                          ? (e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                openActivity();
+                              }
+                            }
+                          : undefined
+                      }
+                      title={
+                        activityPath ? 'Open related page' : undefined
+                      }
+                    >
                       {msg.text}
                       <Meta $mine={mine}>
                         {msg.createdAt
