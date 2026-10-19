@@ -5,7 +5,7 @@ plugins {
 }
 
 val debugApiBaseUrl = providers.gradleProperty("chartshop.debugApiBaseUrl")
-    .getOrElse("https://chartshop.onrender.com/api/v1/")
+    .getOrElse("http://10.0.2.2:3006/api/v1/")
 
 android {
     namespace = "com.chartshop.app"

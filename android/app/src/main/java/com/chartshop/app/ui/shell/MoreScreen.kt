@@ -54,6 +54,7 @@ import com.chartshop.app.ui.welcome.openSafely
 @Composable
 fun MoreScreen(
     session: SessionState.SignedIn,
+    badge: Int,
     onOpen: (AppDestination) -> Unit,
 ) {
     val account = containerViewModel { AccountViewModel(it.authRepository) }
@@ -79,7 +80,10 @@ fun MoreScreen(
                     },
                     headlineContent = { Text(destination.label) },
                     trailingContent = {
-                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (destination == AppDestination.Notifications && badge > 0) CountBadge(badge)
+                            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
+                        }
                     },
                 )
             }

@@ -20,8 +20,12 @@ data class ApiError(
     val code: String? = null,
     val suggestions: List<String> = emptyList(),
     val retryAfterSeconds: Long? = null,
+    /** Set on `409 INSUFFICIENT_CASH`, when an expense is larger than the recorded till cash. */
+    val cashShortfall: CashShortfall? = null,
 ) {
     enum class Kind { Http, Network, Timeout, Unexpected }
+
+    data class CashShortfall(val cashAvailable: Double, val amount: Double, val shortfall: Double)
 
     companion object {
         const val CODE_MUST_SET_PIN = "MUST_SET_PIN"
@@ -50,6 +54,11 @@ data class ApiError(
                 code = body.code?.takeIf { it.isNotBlank() },
                 suggestions = body.suggestions,
                 retryAfterSeconds = body.retryAfter,
+                cashShortfall = if (body.code == CODE_INSUFFICIENT_CASH && body.cashAvailable != null && body.amount != null && body.shortfall != null) {
+                    CashShortfall(body.cashAvailable, body.amount, body.shortfall)
+                } else {
+                    null
+                },
             )
         }
 

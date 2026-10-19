@@ -123,4 +123,7 @@ data class ErrorBody(
     val message: String? = null,
     val suggestions: List<String> = emptyList(),
     val retryAfter: Long? = null,
+    val cashAvailable: Double? = null,
+    val amount: Double? = null,
+    val shortfall: Double? = null,
 )
