@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { listCustomers, createCustomer } from '@/api/customers';
 import { getErrorMessage, money } from '@/api/types';
@@ -13,20 +14,27 @@ import {
   Input,
   Button,
   Table,
+  HighlightRow,
   Badge,
   Tabs,
   Tab,
 } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { toastError, toastSuccess } from '@/lib/toast';
+import { useDeepLinkHighlight } from '@/hooks/useDeepLinkHighlight';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate } from '@/utils/dates';
 
 export function CustomersPage() {
   const qc = useQueryClient();
   const timeZone = useShopTimezone();
+  const [searchParams] = useSearchParams();
   const [filter, setFilter] = useState<'all' | 'active'>('all');
   const [form, setForm] = useState({ name: '', phone: '', email: '' });
+
+  useEffect(() => {
+    if (searchParams.get('customer')) setFilter('all');
+  }, [searchParams]);
 
   const listQ = useQuery({
     queryKey: ['customers', filter],
@@ -53,6 +61,10 @@ export function CustomersPage() {
   }
 
   const customers = listQ.data || [];
+  const highlightCustomerId = useDeepLinkHighlight(
+    'customer',
+    useMemo(() => customers.map((c) => c.id), [customers]),
+  );
 
   return (
     <Page>
@@ -131,7 +143,11 @@ export function CustomersPage() {
             </thead>
             <tbody>
               {customers.map((c) => (
-                <tr key={c.id}>
+                <HighlightRow
+                  key={c.id}
+                  $active={highlightCustomerId === c.id}
+                  data-hl={c.id}
+                >
                   <td>{c.name}</td>
                   <td>{c.phone}</td>
                   <td>{c.email || '—'}</td>
@@ -149,7 +165,7 @@ export function CustomersPage() {
                       ? formatShopDate(c.lastPurchaseDate, timeZone)
                       : '—'}
                   </td>
-                </tr>
+                </HighlightRow>
               ))}
             </tbody>
           </Table>

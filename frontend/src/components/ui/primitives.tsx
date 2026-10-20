@@ -1,4 +1,4 @@
-import styled, { css } from 'styled-components';
+import styled, { css, keyframes } from 'styled-components';
 import type { ReactNode, TableHTMLAttributes } from 'react';
 
 export { Button } from './Button';
@@ -295,6 +295,29 @@ export function Table({
     </TableWrap>
   );
 }
+
+const deepLinkPulse = keyframes`
+  0%,
+  100% {
+    background-color: rgba(139, 30, 58, 0.08);
+  }
+  50% {
+    background-color: rgba(139, 30, 58, 0.18);
+  }
+`;
+
+/** Table row flash when arriving from Chat / notifications deep links. */
+export const HighlightRow = styled.tr<{ $active?: boolean }>`
+  ${({ $active, theme }) =>
+    $active
+      ? css`
+          td {
+            animation: ${deepLinkPulse} 1.1s ease-in-out 2;
+            box-shadow: inset 0 0 0 1.5px ${theme.colors.primary};
+          }
+        `
+      : ''}
+`;
 
 export const Badge = styled.span<{ $tone?: 'success' | 'warning' | 'danger' | 'info' }>`
   display: inline-flex;

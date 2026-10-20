@@ -24,6 +24,7 @@ import {
   Input,
   Button,
   Table,
+  HighlightRow,
   Badge,
   Tabs,
   Tab,
@@ -33,6 +34,7 @@ import { TableSkeleton } from '@/components/ui/Skeleton';
 import { ProductLineFields } from '@/components/products/ProductLineFields';
 import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { toastError, toastSuccess } from '@/lib/toast';
+import { useDeepLinkHighlight } from '@/hooks/useDeepLinkHighlight';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate, formatShopDateTime, addShopCalendarDays } from '@/utils/dates';
 import {
@@ -235,6 +237,17 @@ export function SalesPage() {
 
   const products = productsQ.data || [];
   const customers = customersQ.data || [];
+  const recentSales = recentQ.data || [];
+  const highlightSaleId = useDeepLinkHighlight(
+    'sale',
+    useMemo(
+      () =>
+        recentSales.map(
+          (s) => s.id || String((s as { _id?: string })._id || ''),
+        ),
+      [recentSales],
+    ),
+  );
 
   const items: SaleItemInput[] = useMemo(
     () => lines.map(lineToSaleItem).filter((item): item is SaleItemInput => item != null),
@@ -452,13 +465,18 @@ export function SalesPage() {
               </tr>
             </thead>
             <tbody>
-              {(recentQ.data || []).map((s) => {
+              {recentSales.map((s) => {
                 const saleId = s.id || String((s as { _id?: string })._id || '');
                 const customerName =
                   s.customerName || (s.type === 'cash' ? 'Walk-in' : '—');
                 const itemsLabel = itemsSummary(s);
+                const active = Boolean(saleId && highlightSaleId === saleId);
                 return (
-                  <tr key={saleId || `${s.date}-${s.total}`}>
+                  <HighlightRow
+                    key={saleId || `${s.date}-${s.total}`}
+                    $active={active}
+                    data-hl={saleId || undefined}
+                  >
                     <td>
                       <Truncate title={customerName}>{customerName}</Truncate>
                     </td>
@@ -494,7 +512,7 @@ export function SalesPage() {
                         Cancel
                       </Button>
                     </td>
-                  </tr>
+                  </HighlightRow>
                 );
               })}
             </tbody>
