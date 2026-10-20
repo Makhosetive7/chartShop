@@ -15,11 +15,13 @@ import {
   Input,
   Button,
   Table,
+  HighlightRow,
 } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { ProductLineFields } from '@/components/products/ProductLineFields';
 import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { toastError, toastSuccess } from '@/lib/toast';
+import { useDeepLinkHighlight } from '@/hooks/useDeepLinkHighlight';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate } from '@/utils/dates';
 import {
@@ -55,6 +57,11 @@ export function LaybyesPage() {
 
   const products = productsQ.data || [];
   const customers = customersQ.data || [];
+  const laybyes = laybyesQ.data || [];
+  const highlightLaybyeId = useDeepLinkHighlight(
+    'laybye',
+    useMemo(() => laybyes.map((lb) => lb.id), [laybyes]),
+  );
 
   const items: SaleItemInput[] = useMemo(
     () => lines.map(lineToSaleItem).filter((item): item is SaleItemInput => item != null),
@@ -193,11 +200,15 @@ export function LaybyesPage() {
               </tr>
             </thead>
             <tbody>
-              {(laybyesQ.data || []).map((lb) => {
+              {laybyes.map((lb) => {
                 const key = lb.id;
                 const canComplete = Number(lb.balanceDue) <= 0;
                 return (
-                  <tr key={key}>
+                  <HighlightRow
+                    key={key}
+                    $active={highlightLaybyeId === key}
+                    data-hl={key}
+                  >
                     <td>{lb.customerName}</td>
                     <td>
                       {money(lb.amountPaid)} / {money(lb.totalAmount)}
@@ -242,13 +253,13 @@ export function LaybyesPage() {
                         </Button>
                       </Row>
                     </td>
-                  </tr>
+                  </HighlightRow>
                 );
               })}
             </tbody>
           </Table>
         )}
-        {!laybyesQ.isLoading && !(laybyesQ.data || []).length ? (
+        {!laybyesQ.isLoading && !laybyes.length ? (
           <p>No active laybyes.</p>
         ) : null}
       </Card>

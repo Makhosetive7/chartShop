@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import styled, { keyframes } from 'styled-components';
 import { Loader2, Search } from 'lucide-react';
@@ -27,6 +28,7 @@ import {
   Select,
   Button,
   Table,
+  HighlightRow,
   Badge,
   Tabs,
   Tab,
@@ -37,6 +39,7 @@ import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { ProductsSummarySkeleton } from '@/components/skeletons/PageSkeletons';
 import { toastError, toastSuccess } from '@/lib/toast';
+import { useDeepLinkHighlight } from '@/hooks/useDeepLinkHighlight';
 import { activeVariants, productHasOptions } from '@/utils/productCatalog';
 
 const SizeList = styled.div`
@@ -338,11 +341,19 @@ export function ProductsPage() {
   const qc = useQueryClient();
   const { shop } = useAuth();
   const guardDemoWrite = useGuardDemoWrite();
+  const [searchParams] = useSearchParams();
   const defaultThreshold = String(
     (shop?.settings as { lowStockAlert?: number } | undefined)?.lowStockAlert ?? 10,
   );
   const [tab, setTab] = useState<FilterTab>('all');
   const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    if (searchParams.get('product')) {
+      setTab('all');
+      setQuery('');
+    }
+  }, [searchParams]);
   const [form, setForm] = useState({
     name: '',
     lowStockThreshold: defaultThreshold,
@@ -459,6 +470,15 @@ export function ProductsPage() {
       return true;
     });
   }, [products, query, tab]);
+
+  const highlightProductId = useDeepLinkHighlight(
+    'product',
+    useMemo(() => products.map((p) => p.id), [products]),
+  );
+
+  useEffect(() => {
+    if (highlightProductId) setExpandedId(highlightProductId);
+  }, [highlightProductId]);
 
   function onCreate(e: FormEvent) {
     e.preventDefault();
@@ -886,7 +906,11 @@ export function ProductsPage() {
                 const variants = variantsOf(p);
                 const multi = productHasOptions(p);
                 return (
-                  <tr key={p.id}>
+                  <HighlightRow
+                    key={p.id}
+                    $active={highlightProductId === p.id}
+                    data-hl={p.id}
+                  >
                     <td>
                       <NameCell>
                         <Truncate title={p.name}>{p.name}</Truncate>
@@ -943,7 +967,7 @@ export function ProductsPage() {
                         </Button>
                       </Row>
                     </td>
-                  </tr>
+                  </HighlightRow>
                 );
               })}
             </tbody>

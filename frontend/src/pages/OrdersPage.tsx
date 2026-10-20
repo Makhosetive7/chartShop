@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { listProducts } from '@/api/products';
 import { listCustomers } from '@/api/customers';
@@ -16,6 +17,7 @@ import {
   Select,
   Button,
   Table,
+  HighlightRow,
   Badge,
   Tabs,
   Tab,
@@ -25,6 +27,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ProductLineFields } from '@/components/products/ProductLineFields';
 import { useGuardDemoWrite } from '@/components/demo/DemoUpgradeProvider';
 import { toastError, toastSuccess } from '@/lib/toast';
+import { useDeepLinkHighlight } from '@/hooks/useDeepLinkHighlight';
 import { useShopTimezone } from '@/hooks/useShopTimezone';
 import { formatShopDate } from '@/utils/dates';
 import {
@@ -41,6 +44,7 @@ export function OrdersPage() {
   const qc = useQueryClient();
   const guardDemoWrite = useGuardDemoWrite();
   const timeZone = useShopTimezone();
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<(typeof STATUSES)[number]>('all');
   const [customer, setCustomer] = useState('');
   const [orderType, setOrderType] = useState('pickup');
@@ -51,6 +55,10 @@ export function OrdersPage() {
     id: string;
     label: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get('order')) setStatus('all');
+  }, [searchParams]);
 
   const productsQ = useQuery({
     queryKey: ['products', 'all'],
@@ -91,6 +99,10 @@ export function OrdersPage() {
   const products = productsQ.data || [];
   const customers = customersQ.data || [];
   const orders = ordersQ.data || [];
+  const highlightOrderId = useDeepLinkHighlight(
+    'order',
+    useMemo(() => orders.map((o) => o.id), [orders]),
+  );
 
   const nextActions = useMemo(
     () =>
@@ -250,7 +262,11 @@ export function OrdersPage() {
             </thead>
             <tbody>
               {orders.map((o) => (
-                <tr key={o.id}>
+                <HighlightRow
+                  key={o.id}
+                  $active={highlightOrderId === o.id}
+                  data-hl={o.id}
+                >
                   <td>{o.shortId || o.id.slice(-4)}</td>
                   <td>{o.customerName}</td>
                   <td>{orderItemsLabel(o.items)}</td>
@@ -290,7 +306,7 @@ export function OrdersPage() {
                       ))}
                     </Row>
                   </td>
-                </tr>
+                </HighlightRow>
               ))}
             </tbody>
           </Table>
